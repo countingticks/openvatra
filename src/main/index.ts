@@ -1,7 +1,15 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { applySecurityPolicy } from './security'
+
+// The only URL the app window may show: the dev server while developing, the bundled index.html otherwise.
+const appUrl =
+  is.dev && process.env['ELECTRON_RENDERER_URL']
+    ? process.env['ELECTRON_RENDERER_URL']
+    : pathToFileURL(join(__dirname, '../renderer/index.html')).href
 
 function createWindow(): void {
   // Create the browser window.
@@ -28,18 +36,7 @@ function createWindow(): void {
     mainWindow.show()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  void mainWindow.loadURL(appUrl)
 }
 
 // This method will be called when Electron has finished
@@ -48,6 +45,9 @@ function createWindow(): void {
 app.whenReady().then(() => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.countingticks.openvatra')
+
+  // Before any window exists, so every window and web view is guarded from its first moment.
+  applySecurityPolicy(appUrl)
 
   // Default open or close DevTools by F12 in development
   // and ignore CommandOrControl + R in production.

@@ -7,7 +7,8 @@
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
-    "tests/e2e/**/*"
+    "tests/e2e/**/*",
+    "tests/unit/main/**/*"
   ],
   "compilerOptions": {
     "composite": true,

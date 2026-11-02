@@ -9,6 +9,7 @@
     "tests/setup.ts",
     "tests/unit/**/*"
   ],
+  "exclude": ["tests/unit/main/**/*"],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
