@@ -28,5 +28,13 @@ export default defineConfig(
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },
+  {
+    // shadcn/ui components export their style helpers (e.g. buttonVariants) next to the component.
+    // Keeping upstream's file layout makes future shadcn updates easy to merge.
+    files: ['src/renderer/src/components/ui/**/*.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off'
+    }
+  },
   eslintConfigPrettier
 )
