@@ -9,15 +9,15 @@ Automations tabs. It runs everything on the user's own PC. Nothing is hosted.
 
 It controls, but does not replace, these local services (all bound to `127.0.0.1`):
 
-| Service | Role |
-|---|---|
+| Service                | Role                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------- |
 | llama-swap + llama.cpp | Runs the chat models; one OpenAI-compatible endpoint that swaps models on demand |
-| Ollama | Embedding model for document search (optional engine for chat models) |
-| Open WebUI backend | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
-| OpenCode / OpenClaw | Code and automation agents (later phases) |
+| Ollama                 | Embedding model for document search (optional engine for chat models)            |
+| Open WebUI backend     | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
+| OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
-**Status:** early development. The app scaffold (`package.json`, `src/`) does not exist yet; commands below
-apply once it does.
+**Status:** early development. The Electron + React + TypeScript scaffold exists; `npm test` and
+`npm run test:e2e` arrive with the test setup.
 
 ## Stack
 
@@ -58,7 +58,7 @@ vendor/          git submodules (Open WebUI); never edit files here
 - Prettier formatting (2 spaces, single quotes, no semicolons); ESLint must pass.
 - The renderer never uses Node APIs or the file system directly. Everything privileged goes through
   `window.api`, typed in `src/shared/ipc.ts`.
-- Keep comments for the *why*; the code should say the *what*.
+- Keep comments for the _why_; the code should say the _what_.
 
 ## Security rules
 

@@ -1,0 +1,24 @@
+# Packaging config. Fully set up in roadmap Step 5 (release); Windows only for now.
+appId: com.countingticks.openvatra
+productName: OpenVatra
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!tests/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!vitest.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,components.json,CHANGELOG.md,README.md,AGENTS.md}'
+  - '!{.env,.env.*,.npmrc,.nvmrc}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+win:
+  executableName: OpenVatra
+nsis:
+  artifactName: ${name}-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+npmRebuild: false

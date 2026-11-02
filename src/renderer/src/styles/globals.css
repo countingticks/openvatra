@@ -1,0 +1,8 @@
+/* Placeholder until Tailwind is added (next task). */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}

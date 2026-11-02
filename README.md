@@ -2,7 +2,7 @@
 
 **Your AI's home hearth.** Local models, chat, code and automations in one open-source desktop app.
 
-*Vatra* is Romanian for *hearth*: the fire at the center of a home. OpenVatra keeps your AI at home too —
+_Vatra_ is Romanian for _hearth_: the fire at the center of a home. OpenVatra keeps your AI at home too —
 models run on your own PC, and your conversations never leave it.
 
 > **Status: early development.** There is nothing to install yet. Follow the repository for the first release.
