@@ -19,7 +19,6 @@ const appUrl =
     : pathToFileURL(join(__dirname, '../renderer/index.html')).href
 
 let mainWindow: BrowserWindow | null = null
-// Module level on purpose: a tray that gets garbage-collected vanishes from the taskbar.
 let tray: AppTray | null = null
 
 // Set by 'before-quit'. Until then, closing the window only hides it to the tray.
