@@ -73,6 +73,30 @@ async function setAside(filePath: string, reason: 'corrupt' | 'invalid'): Promis
   return { settings: defaults(), outcome: { kind: 'recovered', reason, backupPath } }
 }
 
+/** The logger methods used here. A parameter, not an import, so tests can pass a fake. */
+export interface Logger {
+  info(...params: unknown[]): void
+  warn(...params: unknown[]): void
+  error(...params: unknown[]): void
+}
+
+export function logLoadOutcome(logger: Logger, filePath: string, outcome: LoadOutcome): void {
+  switch (outcome.kind) {
+    case 'loaded':
+      logger.info(`Settings loaded from ${filePath}`)
+      break
+    case 'missing':
+      logger.info(`No settings file at ${filePath} yet; using defaults`)
+      break
+    case 'recovered':
+      logger.warn(`Settings file was ${outcome.reason}; kept it as ${outcome.backupPath} and using defaults`)
+      break
+    case 'unreadable':
+      logger.error(`Could not read settings at ${filePath}; using defaults`, outcome.error)
+      break
+  }
+}
+
 /**
  * Validates, then writes atomically: the full file goes to a temporary file, is flushed to disk, and is renamed
  * over the old one. A rename either happens completely or not at all, so a crash never leaves half a file.

@@ -2,8 +2,8 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { loadSettings, migrate, saveSettings } from '../../../src/main/settings'
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
+import { loadSettings, logLoadOutcome, migrate, saveSettings } from '../../../src/main/settings'
 import { defaultSettings, type Settings } from '../../../src/shared/settings'
 
 const saved: Settings = { ...defaultSettings, theme: 'dark', lastTab: 'code' }
@@ -97,5 +97,41 @@ describe('migrate', () => {
     ['non-objects', [1, 2]]
   ])('leaves %s unchanged', (_case, raw) => {
     expect(migrate(raw)).toEqual(raw)
+  })
+})
+
+describe('logLoadOutcome', () => {
+  const path = 'D:/data/settings.json'
+  const fakeLogger = (): Record<'info' | 'warn' | 'error', Mock> => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn()
+  })
+
+  it('logs a normal load and a first launch as info', () => {
+    const logger = fakeLogger()
+    logLoadOutcome(logger, path, { kind: 'loaded' })
+    logLoadOutcome(logger, path, { kind: 'missing' })
+    expect(logger.info).toHaveBeenCalledTimes(2)
+    expect(logger.warn).not.toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('warns where the bad file was kept after a recovery', () => {
+    const logger = fakeLogger()
+    logLoadOutcome(logger, path, {
+      kind: 'recovered',
+      reason: 'corrupt',
+      backupPath: 'D:/data/settings.json.bak'
+    })
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('corrupt'))
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('D:/data/settings.json.bak'))
+  })
+
+  it('logs an unreadable file as an error, with the cause', () => {
+    const logger = fakeLogger()
+    const cause = new Error('EBUSY')
+    logLoadOutcome(logger, path, { kind: 'unreadable', error: cause })
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining(path), cause)
   })
 })
