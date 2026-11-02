@@ -16,22 +16,24 @@ const theme = z.enum(['system', 'light', 'dark'])
 const startWithWindows = z.boolean()
 const lastTab = z.enum(tabIds)
 
+/** The window's last normal (not maximized) position and size, in DIPs. */
+export const windowBoundsSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  width: z.number().min(windowMinSize.width),
+  height: z.number().min(windowMinSize.height)
+})
+
 export const settingsSchema = z.object({
   schemaVersion: z.literal(settingsSchemaVersion),
   theme: theme.default('system'),
   startWithWindows: startWithWindows.default(false),
   lastTab: lastTab.default('chat'),
-  window: z
-    .object({
-      x: z.number(),
-      y: z.number(),
-      width: z.number().min(windowMinSize.width),
-      height: z.number().min(windowMinSize.height)
-    })
-    .optional()
+  window: windowBoundsSchema.optional()
 })
 
 export type Settings = z.infer<typeof settingsSchema>
+export type WindowBounds = z.infer<typeof windowBoundsSchema>
 
 // Frozen so no caller can change the defaults everyone else gets.
 export const defaultSettings: Readonly<Settings> = Object.freeze(
