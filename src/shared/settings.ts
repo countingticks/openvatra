@@ -29,7 +29,9 @@ export const settingsSchema = z.object({
   theme: theme.default('system'),
   startWithWindows: startWithWindows.default(false),
   lastTab: lastTab.default('chat'),
-  window: windowBoundsSchema.optional()
+  window: windowBoundsSchema.optional(),
+  /** The "still running in the tray" notice is shown once, the first time the window is closed. */
+  closeToTrayNoticeShown: z.boolean().default(false)
 })
 
 export type Settings = z.infer<typeof settingsSchema>
@@ -42,8 +44,9 @@ export const defaultSettings: Readonly<Settings> = Object.freeze(
 
 /**
  * A change sent by the UI over IPC. Only these keys, and any other key is an error (strict), because the UI is
- * untrusted: window bounds and schemaVersion belong to the main process. Built from the bare field schemas, not
- * settingsSchema, because a zod default would fill in absent keys and turn `{}` into "reset everything".
+ * untrusted: window bounds, the tray notice flag and schemaVersion belong to the main process. Built from the bare
+ * field schemas, not settingsSchema, because a zod default would fill in absent keys and turn `{}` into "reset
+ * everything".
  */
 export const settingsPatchSchema = z.strictObject({
   theme: theme.optional(),

@@ -1,5 +1,5 @@
 // The one in-memory copy of the settings, shared by everything in main. Changes go through `update` (from the UI)
-// or `setWindowBounds` (from main), which validate them, save them, and only then make them current.
+// or the main-only setters, which validate them, save them, and only then make them current.
 // No Electron imports, so it's unit-testable.
 import { type Settings, settingsPatchSchema, windowBoundsSchema } from '../shared/settings'
 import { saveSettings } from './settings'
@@ -10,6 +10,8 @@ export interface SettingsStore {
   update(patch: unknown): Promise<Settings>
   /** Main process only; the UI can't reach this, so it can't move or resize the window through settings. */
   setWindowBounds(bounds: unknown): Promise<Settings>
+  /** Main process only: the one-time close-to-tray notice has been shown. */
+  markCloseToTrayNoticeShown(): Promise<Settings>
   /** Resolves once every save asked for so far has finished, so quitting doesn't cut one off. */
   whenIdle(): Promise<void>
 }
@@ -55,6 +57,7 @@ export function createSettingsStore(
     get: () => structuredClone(current),
     update,
     setWindowBounds,
+    markCloseToTrayNoticeShown: () => enqueue(() => ({ closeToTrayNoticeShown: true })),
     whenIdle: () => queue.then(() => undefined)
   }
 }

@@ -44,6 +44,19 @@ export function createMainWindow(appUrl: string, store: SettingsStore): BrowserW
   return window
 }
 
+/**
+ * Closing the window hides it; the app keeps running in the tray. Only a real quit (tray menu, Windows shutdown)
+ * lets the close go through, so `isQuitting` must turn true on Electron's 'before-quit'.
+ */
+export function hideOnClose(window: BrowserWindow, isQuitting: () => boolean, onHidden: () => void): void {
+  window.on('close', (event) => {
+    if (isQuitting()) return
+    event.preventDefault()
+    window.hide()
+    onHidden()
+  })
+}
+
 function rememberBounds(window: BrowserWindow, store: SettingsStore): void {
   const saveBounds = debounce(() => {
     // Normal bounds: the size it returns to from maximized, so a maximized window doesn't save as the full screen.

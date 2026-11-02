@@ -13,7 +13,8 @@ describe('defaultSettings', () => {
       schemaVersion: settingsSchemaVersion,
       theme: 'system',
       startWithWindows: false,
-      lastTab: 'chat'
+      lastTab: 'chat',
+      closeToTrayNoticeShown: false
     })
   })
 
@@ -36,7 +37,8 @@ describe('settingsSchema', () => {
       theme: 'light',
       startWithWindows: true,
       lastTab: 'code',
-      window: { x: -1200, y: 40, width: 1280, height: 800 }
+      window: { x: -1200, y: 40, width: 1280, height: 800 },
+      closeToTrayNoticeShown: true
     }
     expect(settingsSchema.parse(settings)).toEqual(settings)
   })
@@ -76,6 +78,7 @@ describe('settingsPatchSchema', () => {
     ['not an object', null],
     ['schemaVersion', { schemaVersion: 1 }],
     ['window bounds', { window: { x: 0, y: 0, width: 1280, height: 800 } }],
+    ['the close-to-tray notice flag', { closeToTrayNoticeShown: true }],
     ['an unknown key', { theme: 'dark', admin: true }],
     ['an invalid value', { theme: 'blue' }]
   ])('rejects %s', (_case, input) => {

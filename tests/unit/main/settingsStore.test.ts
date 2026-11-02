@@ -98,6 +98,15 @@ describe('createSettingsStore', () => {
     expect(store.get().window).toBeUndefined()
   })
 
+  it('remembers that the close-to-tray notice was shown', async () => {
+    const { store, save } = setUp()
+
+    await store.markCloseToTrayNoticeShown()
+
+    expect(store.get().closeToTrayNoticeShown).toBe(true)
+    expect(save).toHaveBeenCalledWith(filePath, { ...defaultSettings, closeToTrayNoticeShown: true })
+  })
+
   it('whenIdle waits for every save asked for so far, even failed ones', async () => {
     let finishSave = (): void => {}
     const save = vi.fn<Save>(() => new Promise<void>((resolve) => (finishSave = resolve)))

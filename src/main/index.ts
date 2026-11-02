@@ -8,7 +8,8 @@ import { log, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
 import { createSettingsStore } from './settingsStore'
-import { createMainWindow } from './window'
+import { type AppTray, createTray } from './tray'
+import { createMainWindow, hideOnClose } from './window'
 
 // The only URL the app window may show: the dev server while developing, the bundled index.html otherwise.
 const appUrl =
@@ -17,8 +18,13 @@ const appUrl =
     : pathToFileURL(join(__dirname, '../renderer/index.html')).href
 
 let mainWindow: BrowserWindow | null = null
+// Module level on purpose: a tray that gets garbage-collected vanishes from the taskbar.
+let tray: AppTray | null = null
 
-/** Brings the existing window to the front (used when OpenVatra is started a second time). */
+// Set by 'before-quit'. Until then, closing the window only hides it to the tray.
+let quitting = false
+
+/** Brings the window back: from the tray, or when OpenVatra is started a second time. */
 function focusMainWindow(): void {
   if (!mainWindow) return
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -44,6 +50,7 @@ function start(): void {
   log.info(`OpenVatra ${app.getVersion()} starting`)
 
   app.on('second-instance', focusMainWindow)
+  app.on('before-quit', () => (quitting = true))
 
   app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.countingticks.openvatra')
@@ -65,6 +72,19 @@ function start(): void {
     mainWindow = createMainWindow(appUrl, store)
     mainWindow.on('closed', () => (mainWindow = null))
 
+    tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
+    hideOnClose(
+      mainWindow,
+      () => quitting,
+      () => {
+        if (store.get().closeToTrayNoticeShown) return
+        tray?.notify('OpenVatra is still running', 'Open it again or quit from the tray icon.')
+        void store
+          .markCloseToTrayNoticeShown()
+          .catch((error) => log.warn('Close-to-tray notice flag could not be saved', error))
+      }
+    )
+
     // Electron exits without waiting for file writes, so the quit pauses until pending saves (like the window
     // position saved on close) have finished. Then exit(), not quit(): will-quit is the last step, and a second
     // quit() from inside it is ignored, which left the process running.
@@ -73,8 +93,6 @@ function start(): void {
       void store.whenIdle().finally(() => app.exit())
     })
   })
-
-  app.on('window-all-closed', () => app.quit())
 }
 
 // Entry point. One OpenVatra at a time: a second copy would fight the first over settings and the local AI
