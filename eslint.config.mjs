@@ -4,6 +4,7 @@ import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
 import eslintPluginReact from 'eslint-plugin-react'
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
+import eslintPluginJsxA11y from 'eslint-plugin-jsx-a11y'
 
 export default defineConfig(
   { ignores: ['**/node_modules', '**/dist', '**/out'] },
@@ -27,6 +28,11 @@ export default defineConfig(
       ...eslintPluginReactHooks.configs.recommended.rules,
       ...eslintPluginReactRefresh.configs.vite.rules
     }
+  },
+  {
+    // Accessibility checks for everything that renders UI.
+    files: ['**/*.tsx'],
+    ...eslintPluginJsxA11y.flatConfigs.recommended
   },
   {
     // shadcn/ui components export their style helpers (e.g. buttonVariants) next to the component.
