@@ -76,7 +76,11 @@ vendor/          git submodules (Open WebUI); never edit files here
 ## Git workflow
 
 - `main` is protected: changes land through pull requests with passing checks.
-- Branch names: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`.
+- Branch names: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, `ci/<topic>`.
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, unit tests and build on Windows for every
+  pull request and push to `main`. Actions are pinned to commit SHAs with the release in a comment.
+- Dependency install scripts need approval (`allowScripts` in `package.json`); review any new prompt from
+  `npm install-scripts ls` instead of approving everything.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
   `type(scope): summary` — types `feat`, `fix`, `docs`, `test`, `refactor`, `chore`, `ci`, `build`;
   scope is the module (`shell`, `services`, `chat`, `code`, `automations`, `setup`).
