@@ -16,8 +16,8 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 | Open WebUI backend     | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
 | OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
-**Status:** early development. The Electron + React + TypeScript scaffold and unit tests exist;
-`npm run test:e2e` arrives with the end-to-end setup.
+**Status:** early development. The Electron + React + TypeScript scaffold, unit tests, end-to-end tests and CI
+exist; the app shows a placeholder screen.
 
 ## Stack
 
@@ -36,7 +36,7 @@ npm run format       # format everything with Prettier (format:check only verifi
 npm test             # unit and component tests (Vitest)
 npm run build        # typecheck + production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
-npm run test:e2e     # end-to-end tests (Playwright) — not set up yet
+npm run test:e2e     # build, then launch the real app with Playwright (tests/e2e)
 ```
 
 Run `typecheck`, `lint`, `format:check` and `test` before every commit.
@@ -77,7 +77,7 @@ vendor/          git submodules (Open WebUI); never edit files here
 
 - `main` is protected: changes land through pull requests with passing checks.
 - Branch names: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, `ci/<topic>`.
-- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, unit tests and build on Windows for every
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, unit tests, build and e2e tests on Windows for every
   pull request and push to `main`. Actions are pinned to commit SHAs with the release in a comment.
 - Dependency install scripts need approval (`allowScripts` in `package.json`); review any new prompt from
   `npm install-scripts ls` instead of approving everything.

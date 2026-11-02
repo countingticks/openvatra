@@ -48,3 +48,16 @@ jobs:
 
       - name: Build
         run: npx electron-vite build
+
+      # Launches the app built in the previous step (no second build).
+      - name: End-to-end tests
+        run: npx playwright test
+
+      # Traces and failure details, downloadable from the run's summary page.
+      - name: Upload end-to-end results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results
+          path: test-results/
+          retention-days: 7
