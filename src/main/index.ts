@@ -1,14 +1,16 @@
-import { app, BrowserWindow } from 'electron'
+import { app, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
 import { defaultSettings, type Settings } from '../shared/settings'
+import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { registerIpcHandlers } from './ipc'
 import { log, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
 import { createSettingsStore } from './settingsStore'
+import { type AppTray, createTray } from './tray'
+import { createMainWindow, hideOnClose } from './window'
 
 // The only URL the app window may show: the dev server while developing, the bundled index.html otherwise.
 const appUrl =
@@ -17,34 +19,12 @@ const appUrl =
     : pathToFileURL(join(__dirname, '../renderer/index.html')).href
 
 let mainWindow: BrowserWindow | null = null
+let tray: AppTray | null = null
 
-function createWindow(): void {
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 800,
-    minHeight: 560,
-    title: 'OpenVatra',
-    show: false,
-    autoHideMenuBar: true,
-    icon,
-    // Security baseline (AGENTS.md): the UI runs like an untrusted web page. It has no Node.js access, lives in
-    // its own isolated JavaScript world, and the preload that bridges to it is sandboxed too.
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  })
+// Set by 'before-quit'. Until then, closing the window only hides it to the tray.
+let quitting = false
 
-  mainWindow.on('ready-to-show', () => mainWindow?.show())
-  mainWindow.on('closed', () => (mainWindow = null))
-
-  void mainWindow.loadURL(appUrl)
-}
-
-/** Brings the existing window to the front (used when OpenVatra is started a second time). */
+/** Brings the window back: from the tray, or when OpenVatra is started a second time. */
 function focusMainWindow(): void {
   if (!mainWindow) return
   if (mainWindow.isMinimized()) mainWindow.restore()
@@ -70,6 +50,7 @@ function start(): void {
   log.info(`OpenVatra ${app.getVersion()} starting`)
 
   app.on('second-instance', focusMainWindow)
+  app.on('before-quit', () => (quitting = true))
 
   app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.countingticks.openvatra')
@@ -88,10 +69,37 @@ function start(): void {
     // Before the window, so the UI's first request always finds a handler.
     registerIpcHandlers(store, appUrl)
 
-    createWindow()
-  })
+    // At startup too, so the Run entry points at this install even if the app moved since it was written.
+    applyStartWithWindows(store.get().startWithWindows)
+    store.onChange((settings, previous) => {
+      if (settings.startWithWindows !== previous.startWithWindows)
+        applyStartWithWindows(settings.startWithWindows)
+    })
 
-  app.on('window-all-closed', () => app.quit())
+    mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
+    mainWindow.on('closed', () => (mainWindow = null))
+
+    tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
+    hideOnClose(
+      mainWindow,
+      () => quitting,
+      () => {
+        if (store.get().closeToTrayNoticeShown) return
+        tray?.notify('OpenVatra is still running', 'Open it again or quit from the tray icon.')
+        void store
+          .markCloseToTrayNoticeShown()
+          .catch((error) => log.warn('Close-to-tray notice flag could not be saved', error))
+      }
+    )
+
+    // Electron exits without waiting for file writes, so the quit pauses until pending saves (like the window
+    // position saved on close) have finished. Then exit(), not quit(): will-quit is the last step, and a second
+    // quit() from inside it is ignored, which left the process running.
+    app.once('will-quit', (event) => {
+      event.preventDefault()
+      void store.whenIdle().finally(() => app.exit())
+    })
+  })
 }
 
 // Entry point. One OpenVatra at a time: a second copy would fight the first over settings and the local AI

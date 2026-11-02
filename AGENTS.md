@@ -18,7 +18,8 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 
 **Status:** early development. The scaffold, tests, CI, security baseline, a validated settings file
 (`%APPDATA%\OpenVatra\settings.json`, read and changed over typed IPC) and a log file
-(`%APPDATA%\OpenVatra\logs\main.log`) exist; the app shows a placeholder screen.
+(`%APPDATA%\OpenVatra\logs\main.log`) exist. The window remembers its position, closing it hides it to the tray,
+and the app can start with Windows (installed builds only). The window shows a placeholder screen.
 
 ## Stack
 

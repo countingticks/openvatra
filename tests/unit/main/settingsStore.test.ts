@@ -79,6 +79,86 @@ describe('createSettingsStore', () => {
     expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'code' })
   })
 
+  it('saves window bounds set by the main process', async () => {
+    const { store, save } = setUp()
+    const bounds = { x: -1500, y: 100, width: 1000, height: 700 }
+
+    await store.setWindowBounds(bounds)
+
+    expect(store.get().window).toEqual(bounds)
+    expect(save).toHaveBeenCalledWith(filePath, { ...defaultSettings, window: bounds })
+  })
+
+  it('rejects window bounds below the minimum size', async () => {
+    const { store, save } = setUp()
+
+    await expect(store.setWindowBounds({ x: 0, y: 0, width: 300, height: 200 })).rejects.toThrow()
+
+    expect(save).not.toHaveBeenCalled()
+    expect(store.get().window).toBeUndefined()
+  })
+
+  it('remembers that the close-to-tray notice was shown', async () => {
+    const { store, save } = setUp()
+
+    await store.markCloseToTrayNoticeShown()
+
+    expect(store.get().closeToTrayNoticeShown).toBe(true)
+    expect(save).toHaveBeenCalledWith(filePath, { ...defaultSettings, closeToTrayNoticeShown: true })
+  })
+
+  it('tells change listeners the new and previous settings, after saving', async () => {
+    const { store, save } = setUp()
+    const listener = vi.fn(() => expect(save).toHaveBeenCalledOnce())
+    store.onChange(listener)
+
+    await store.update({ startWithWindows: true })
+
+    expect(listener).toHaveBeenCalledExactlyOnceWith(
+      { ...defaultSettings, startWithWindows: true },
+      defaultSettings
+    )
+  })
+
+  it('does not tell listeners about a change that failed to save', async () => {
+    const save = vi.fn<Save>(async () => undefined).mockRejectedValueOnce(new Error('disk full'))
+    const { store } = setUp(save)
+    const listener = vi.fn()
+    store.onChange(listener)
+
+    await expect(store.update({ startWithWindows: true })).rejects.toThrow('disk full')
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('stops calling a listener once it unsubscribes', async () => {
+    const { store } = setUp()
+    const listener = vi.fn()
+    const unsubscribe = store.onChange(listener)
+
+    unsubscribe()
+    await store.update({ theme: 'dark' })
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('whenIdle waits for every save asked for so far, even failed ones', async () => {
+    let finishSave = (): void => {}
+    const save = vi.fn<Save>(() => new Promise<void>((resolve) => (finishSave = resolve)))
+    const { store } = setUp(save)
+    const failing = store.update({ theme: 'nope' }).catch(() => undefined)
+    const saving = store.setWindowBounds({ x: 0, y: 0, width: 900, height: 600 })
+
+    let idle = false
+    const whenIdle = store.whenIdle().then(() => (idle = true))
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
+    expect(idle).toBe(false)
+
+    finishSave()
+    await Promise.all([failing, saving, whenIdle])
+    expect(idle).toBe(true)
+  })
+
   it('hands out copies, so callers cannot change its state', () => {
     const { store } = setUp()
     store.get().theme = 'dark'
