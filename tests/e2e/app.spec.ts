@@ -21,9 +21,19 @@ test.afterAll(async () => {
   await removeUserDataDir(userDataDir)
 })
 
-test('opens the main window titled OpenVatra', async () => {
+test('opens the main window titled OpenVatra, on the Chat tab', async () => {
   await expect(mainWindow).toHaveTitle('OpenVatra')
-  await expect(mainWindow.getByRole('heading', { level: 1, name: 'OpenVatra' })).toBeVisible()
+  await expect(mainWindow.getByRole('navigation', { name: 'Main' })).toBeVisible()
+  await expect(mainWindow.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible()
+})
+
+test('switches tabs with Ctrl+number in the real window', async () => {
+  // Runs in Electron, where a menu or the OS could swallow the keys before the page sees them.
+  await mainWindow.keyboard.press('Control+2')
+  await expect(mainWindow.getByRole('heading', { level: 1, name: 'Code' })).toBeVisible()
+
+  await mainWindow.keyboard.press('Control+1')
+  await expect(mainWindow.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible()
 })
 
 test('shows exactly one window', async () => {
