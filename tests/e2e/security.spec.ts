@@ -97,10 +97,19 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
   const shape = await mainWindow.evaluate(() => ({
     api: Object.keys(window.api).sort(),
     settings: Object.keys(window.api.settings).sort(),
-    settingsFrozen: Object.isFrozen(window.api.settings)
+    settingsFrozen: Object.isFrozen(window.api.settings),
+    files: Object.keys(window.api.files).sort(),
+    filesFrozen: Object.isFrozen(window.api.files)
   }))
 
-  expect(shape).toEqual({ api: ['runtime', 'settings'], settings: ['get', 'update'], settingsFrozen: true })
+  expect(shape).toEqual({
+    api: ['files', 'runtime', 'settings'],
+    settings: ['get', 'update'],
+    settingsFrozen: true,
+    // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders.
+    files: ['locations', 'openFolder'],
+    filesFrozen: true
+  })
 })
 
 test('a web link opens in the browser and the app stays on its own page', async () => {

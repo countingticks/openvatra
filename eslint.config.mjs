@@ -35,6 +35,20 @@ export default defineConfig(
     ...eslintPluginJsxA11y.flatConfigs.recommended
   },
   {
+    // Our <Label> (shadcn) is a <label>: check every use of it is tied to a control (htmlFor or a nested input).
+    files: ['**/*.tsx'],
+    rules: {
+      'jsx-a11y/label-has-associated-control': ['error', { labelComponents: ['Label'], assert: 'either' }]
+    }
+  },
+  {
+    // The Label wrapper itself only passes props through; its uses are checked by the rule above.
+    files: ['src/renderer/src/components/ui/label.tsx'],
+    rules: {
+      'jsx-a11y/label-has-associated-control': 'off'
+    }
+  },
+  {
     // shadcn/ui components export their style helpers (e.g. buttonVariants) next to the component.
     // Keeping upstream's file layout makes future shadcn updates easy to merge.
     files: ['src/renderer/src/components/ui/**/*.tsx'],

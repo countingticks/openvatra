@@ -14,6 +14,8 @@ describe('defaultSettings', () => {
       theme: 'system',
       startWithWindows: false,
       lastTab: 'chat',
+      closeAction: 'tray',
+      sidebarOpen: true,
       closeToTrayNoticeShown: false
     })
   })
@@ -37,10 +39,18 @@ describe('settingsSchema', () => {
       theme: 'light',
       startWithWindows: true,
       lastTab: 'code',
+      closeAction: 'quit',
+      sidebarOpen: false,
       window: { x: -1200, y: 40, width: 1280, height: 800 },
       closeToTrayNoticeShown: true
     }
     expect(settingsSchema.parse(settings)).toEqual(settings)
+  })
+
+  it('reads a file written before closeAction and sidebarOpen existed, with their defaults', () => {
+    const older = { schemaVersion: 1, theme: 'dark', startWithWindows: true, lastTab: 'code' }
+
+    expect(settingsSchema.parse(older)).toMatchObject({ closeAction: 'tray', sidebarOpen: true })
   })
 
   it('drops keys it does not know', () => {
@@ -54,6 +64,8 @@ describe('settingsSchema', () => {
     ['an unknown theme', { schemaVersion: 1, theme: 'blue' }],
     ['a non-boolean startWithWindows', { schemaVersion: 1, startWithWindows: 'yes' }],
     ['an unknown tab', { schemaVersion: 1, lastTab: 'mail' }],
+    ['an unknown close action', { schemaVersion: 1, closeAction: 'minimize' }],
+    ['a non-boolean sidebarOpen', { schemaVersion: 1, sidebarOpen: 'open' }],
     [
       'a window smaller than the minimum',
       { schemaVersion: 1, window: { x: 0, y: 0, width: 400, height: 300 } }
@@ -70,7 +82,13 @@ describe('settingsPatchSchema', () => {
   })
 
   it('accepts any of the keys the UI may change', () => {
-    const patch = { theme: 'dark', startWithWindows: true, lastTab: 'automations' }
+    const patch = {
+      theme: 'dark',
+      startWithWindows: true,
+      lastTab: 'automations',
+      closeAction: 'quit',
+      sidebarOpen: false
+    }
     expect(settingsPatchSchema.parse(patch)).toEqual(patch)
   })
 

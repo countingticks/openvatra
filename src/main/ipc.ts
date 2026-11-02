@@ -1,12 +1,21 @@
 // IPC handlers: main's side of the contract in src/shared/ipc.ts. Every request is treated as untrusted.
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
-import { ipcChannels } from '../shared/ipc'
+import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { dirname } from 'path'
+import { z } from 'zod'
+import { appFolders, ipcChannels, type AppFolder, type FileLocations } from '../shared/ipc'
 import type { Settings } from '../shared/settings'
 import { log } from './logger'
 import type { SettingsStore } from './settingsStore'
 import { isAppUrl } from './urlPolicy'
 
-export function registerIpcHandlers(store: SettingsStore, appUrl: string): void {
+const appFolderSchema = z.enum(appFolders)
+
+export function registerIpcHandlers(store: SettingsStore, appUrl: string, locations: FileLocations): void {
+  const folders: Record<AppFolder, string> = {
+    settings: dirname(locations.settingsFile),
+    logs: locations.logsFolder
+  }
+
   /** Answers only our own UI page; the navigation guards should make anything else impossible, this double-checks. */
   function assertFromApp(event: IpcMainInvokeEvent): void {
     const url = event.senderFrame?.url ?? ''
@@ -30,6 +39,27 @@ export function registerIpcHandlers(store: SettingsStore, appUrl: string): void 
       log.warn('Settings update rejected', error)
       // Electron sends only the message to the UI; the cause stays in main.
       throw new Error('Settings could not be updated', { cause: error })
+    }
+  })
+
+  ipcMain.handle(ipcChannels.filesLocations, (event): FileLocations => {
+    assertFromApp(event)
+    return locations
+  })
+
+  // The UI names one of our folders; it can never make Explorer open (or run) a path of its choosing.
+  ipcMain.handle(ipcChannels.filesOpenFolder, async (event, folder: unknown): Promise<void> => {
+    assertFromApp(event)
+    const parsed = appFolderSchema.safeParse(folder)
+    if (!parsed.success) {
+      log.warn('Refused to open an unknown folder', folder)
+      throw new Error('Unknown folder')
+    }
+    // openPath resolves with an error message instead of rejecting.
+    const failure = await shell.openPath(folders[parsed.data])
+    if (failure) {
+      log.warn(`Could not open the ${parsed.data} folder: ${failure}`)
+      throw new Error('The folder could not be opened')
     }
   })
 }

@@ -61,6 +61,8 @@ describe('Ember', () => {
   })
 
   it('loops idle forever: after a full 7.2 s cycle it is back on its first frame', () => {
+    // Pin the random blink to 10 s, so it can't land on the moment being compared.
+    vi.spyOn(Math, 'random').mockReturnValue(0.9999)
     render(<Ember state="idle" />)
     const first = pixels()
 

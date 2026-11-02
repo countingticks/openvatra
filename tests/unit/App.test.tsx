@@ -25,7 +25,7 @@ describe('App', () => {
   })
 
   it('opens on the tab saved last time', () => {
-    renderWithStore(<App />, 'automations')
+    renderWithStore(<App />, { lastTab: 'automations' })
 
     expect(tabButton('Automations')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('heading', { level: 1, name: 'Automations' })).toBeInTheDocument()
@@ -49,7 +49,7 @@ describe('App', () => {
     ['4', 'Settings']
   ])('Ctrl+%s opens %s', (key, name) => {
     // Start somewhere else, so Ctrl+1 really has to switch.
-    renderWithStore(<App />, key === '1' ? 'settings' : 'chat')
+    renderWithStore(<App />, { lastTab: key === '1' ? 'settings' : 'chat' })
 
     fireEvent.keyDown(window, { key, ctrlKey: true })
 

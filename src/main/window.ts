@@ -47,12 +47,13 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
 }
 
 /**
- * Closing the window hides it; the app keeps running in the tray. Only a real quit (tray menu, Windows shutdown)
- * lets the close go through, so `isQuitting` must turn true on Electron's 'before-quit'.
+ * Closing the window hides it to the tray while `shouldHide()` says so: false during a real quit (tray menu,
+ * Windows shutdown) and when the user chose "Quit OpenVatra" for closing. Then the close goes through, and with
+ * the last window gone Electron quits the app.
  */
-export function hideOnClose(window: BrowserWindow, isQuitting: () => boolean, onHidden: () => void): void {
+export function hideOnClose(window: BrowserWindow, shouldHide: () => boolean, onHidden: () => void): void {
   window.on('close', (event) => {
-    if (isQuitting()) return
+    if (!shouldHide()) return
     event.preventDefault()
     window.hide()
     onHidden()

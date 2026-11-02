@@ -1,6 +1,7 @@
 import { ComingSoon } from '@renderer/components/ComingSoon'
 import { Ember } from '@renderer/components/Ember'
 import { PixelBackdrop } from '@renderer/components/PixelBackdrop'
+import { SettingsPage } from '@renderer/components/settings/SettingsPage'
 import { useAppSelector } from '@renderer/store/hooks'
 import { selectActiveTab } from '@renderer/store/uiSlice'
 
@@ -33,6 +34,6 @@ export function TabView(): React.JSX.Element {
         />
       )
     case 'settings':
-      return <ComingSoon title="Settings" description="General settings arrive in the next update." />
+      return <SettingsPage />
   }
 }

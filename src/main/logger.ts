@@ -1,5 +1,11 @@
 // One log file for bug reports: %APPDATA%\OpenVatra\logs\main.log (electron-log uses app.getPath('logs')).
+import { dirname } from 'path'
 import log from 'electron-log/main'
+
+/** The folder the log file is in, as electron-log resolves it (so Settings shows where it really writes). */
+export function logsFolder(): string {
+  return dirname(log.transports.file.getFile().path)
+}
 
 export function setUpLogging(): void {
   // info and above: milestones and problems, without debug noise.
