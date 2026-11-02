@@ -1,4 +1,9 @@
-# OpenVatra
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lockup-horizontal-dark.svg" />
+    <img src=".github/assets/lockup-horizontal-light.svg" alt="OpenVatra" width="372" />
+  </picture>
+</h1>
 
 **Your AI's home hearth.** Local models, chat, code and automations in one open-source desktop app.
 
@@ -36,3 +41,6 @@ OpenVatra brings together excellent open-source projects:
 ## License
 
 [MIT](LICENSE) © 2026 countingticks. Third-party components keep their own licenses.
+
+The OpenVatra name, logo and ember mascot are not covered by the MIT license. Please don't use them to represent
+other projects or forks; you're welcome to use them to refer to OpenVatra itself.
