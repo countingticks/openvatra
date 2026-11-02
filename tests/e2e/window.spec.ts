@@ -32,6 +32,11 @@ test.afterAll(async () => {
 })
 
 test('closing the window hides it to the tray instead of quitting', async () => {
+  // The window shows itself on 'ready-to-show', which can come after firstWindow() returns on a slow machine;
+  // closing before that would let it show itself again right after.
+  await expect
+    .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
+    .toBe(true)
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
 
   const window = await app.evaluate(({ BrowserWindow }) =>
