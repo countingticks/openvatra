@@ -3,7 +3,12 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { defaultSettings, type Settings } from '../shared/settings'
+import { registerIpcHandlers } from './ipc'
+import { log, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
+import { loadSettings, logLoadOutcome } from './settings'
+import { createSettingsStore } from './settingsStore'
 
 // The only URL the app window may show: the dev server while developing, the bundled index.html otherwise.
 const appUrl =
@@ -47,10 +52,26 @@ function focusMainWindow(): void {
   mainWindow.focus()
 }
 
+/** Settings are read before the first window, which will need them (theme, size). */
+async function loadSettingsAtStartup(filePath: string): Promise<Settings> {
+  try {
+    const { settings, outcome } = await loadSettings(filePath)
+    logLoadOutcome(log, filePath, outcome)
+    return settings
+  } catch (error) {
+    // e.g. the bad file couldn't be renamed to .bak. Defaults still apply; settings never stop the app.
+    log.error(`Settings could not be loaded from ${filePath}; using defaults`, error)
+    return structuredClone(defaultSettings)
+  }
+}
+
 function start(): void {
+  setUpLogging()
+  log.info(`OpenVatra ${app.getVersion()} starting`)
+
   app.on('second-instance', focusMainWindow)
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     electronApp.setAppUserModelId('com.countingticks.openvatra')
 
     // Before any window exists, so every window and web view is guarded from its first moment.
@@ -61,6 +82,11 @@ function start(): void {
     app.on('browser-window-created', (_, window) => {
       optimizer.watchWindowShortcuts(window)
     })
+
+    const settingsPath = join(app.getPath('userData'), 'settings.json')
+    const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
+    // Before the window, so the UI's first request always finds a handler.
+    registerIpcHandlers(store, appUrl)
 
     createWindow()
   })

@@ -1,12 +1,15 @@
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
 
 let app: ElectronApplication
 let mainWindow: Page
+let userDataDir: string
 
 type Recorder = typeof globalThis & { openedExternally: string[] }
 
 test.beforeAll(async () => {
-  app = await electron.launch({ args: ['.'] })
+  userDataDir = await createUserDataDir()
+  app = await electron.launch({ args: appArgs(userDataDir) })
   mainWindow = await app.firstWindow()
 
   // Test double: record what would open in the user's browser instead of really opening it.
@@ -37,6 +40,7 @@ async function clickLink(href: string): Promise<void> {
 
 test.afterAll(async () => {
   await app.close()
+  await removeUserDataDir(userDataDir)
 })
 
 test('the window runs sandboxed and isolated, without Node integration', async () => {
@@ -86,6 +90,17 @@ test('the page gets the typed, read-only window.api', async () => {
 
   const frozen = await mainWindow.evaluate(() => Object.isFrozen(window.api.runtime))
   expect(frozen).toBe(true)
+})
+
+test('window.api offers exactly the reviewed functions, nothing more', async () => {
+  // An allow-list: anything added to the API must be added here too, on purpose.
+  const shape = await mainWindow.evaluate(() => ({
+    api: Object.keys(window.api).sort(),
+    settings: Object.keys(window.api.settings).sort(),
+    settingsFrozen: Object.isFrozen(window.api.settings)
+  }))
+
+  expect(shape).toEqual({ api: ['runtime', 'settings'], settings: ['get', 'update'], settingsFrozen: true })
 })
 
 test('a web link opens in the browser and the app stays on its own page', async () => {

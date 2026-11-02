@@ -1,6 +1,6 @@
 // Runs in a sandbox before the UI loads. Its only job: hand the UI the API defined in src/shared/ipc.ts.
-import { contextBridge } from 'electron'
-import type { Api } from '../shared/ipc'
+import { contextBridge, ipcRenderer } from 'electron'
+import { type Api, ipcChannels } from '../shared/ipc'
 
 const api: Api = {
   runtime: Object.freeze({
@@ -10,6 +10,11 @@ const api: Api = {
       chrome: process.versions.chrome,
       node: process.versions.node
     })
+  }),
+  // Thin wrappers: only these two channels can be reached, and main validates whatever arrives on them.
+  settings: Object.freeze({
+    get: () => ipcRenderer.invoke(ipcChannels.settingsGet),
+    update: (patch) => ipcRenderer.invoke(ipcChannels.settingsUpdate, patch)
   })
 }
 

@@ -1,21 +1,24 @@
 import { spawn } from 'child_process'
 import { createRequire } from 'module'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
 
 // In Node, the 'electron' package exports the path of the Electron executable.
 const electronPath = createRequire(__filename)('electron') as string
 
 let app: ElectronApplication
 let mainWindow: Page
+let userDataDir: string
 
 test.beforeAll(async () => {
-  // '.' starts Electron with this project: package.json "main" points to the built out/main/index.js.
-  app = await electron.launch({ args: ['.'] })
+  userDataDir = await createUserDataDir()
+  app = await electron.launch({ args: appArgs(userDataDir) })
   mainWindow = await app.firstWindow()
 })
 
 test.afterAll(async () => {
   await app.close()
+  await removeUserDataDir(userDataDir)
 })
 
 test('opens the main window titled OpenVatra', async () => {
@@ -34,7 +37,8 @@ test('a second launch exits and hands over to the running app', async () => {
     electronApp.on('second-instance', () => counter.secondLaunches++)
   })
 
-  const second = spawn(electronPath, ['.'], { stdio: 'ignore' })
+  // Same profile as the running app: the single-instance lock belongs to the user-data folder.
+  const second = spawn(electronPath, appArgs(userDataDir), { stdio: 'ignore' })
   const exitCode = await new Promise<number | null>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error('second instance did not exit within 15 s')), 15_000)
     second.on('exit', (code) => {

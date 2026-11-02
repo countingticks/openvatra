@@ -16,8 +16,9 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 | Open WebUI backend     | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
 | OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
-**Status:** early development. The Electron + React + TypeScript scaffold, unit tests, end-to-end tests and CI
-exist; the app shows a placeholder screen.
+**Status:** early development. The scaffold, tests, CI, security baseline, a validated settings file
+(`%APPDATA%\OpenVatra\settings.json`, read and changed over typed IPC) and a log file
+(`%APPDATA%\OpenVatra\logs\main.log`) exist; the app shows a placeholder screen.
 
 ## Stack
 
@@ -53,7 +54,7 @@ src/shared/      types shared by main and renderer (IPC contract, settings schem
 src/renderer/    React UI
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
                  query by role or label, the way a user finds things — not by class names
-tests/e2e/       Playwright
+tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one
 vendor/          git submodules (Open WebUI); never edit files here
 ```
 
