@@ -9,15 +9,15 @@ Automations tabs. It runs everything on the user's own PC. Nothing is hosted.
 
 It controls, but does not replace, these local services (all bound to `127.0.0.1`):
 
-| Service | Role |
-|---|---|
+| Service                | Role                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------- |
 | llama-swap + llama.cpp | Runs the chat models; one OpenAI-compatible endpoint that swaps models on demand |
-| Ollama | Embedding model for document search (optional engine for chat models) |
-| Open WebUI backend | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
-| OpenCode / OpenClaw | Code and automation agents (later phases) |
+| Ollama                 | Embedding model for document search (optional engine for chat models)            |
+| Open WebUI backend     | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
+| OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
-**Status:** early development. The app scaffold (`package.json`, `src/`) does not exist yet; commands below
-apply once it does.
+**Status:** early development. The Electron + React + TypeScript scaffold and unit tests exist;
+`npm run test:e2e` arrives with the end-to-end setup.
 
 ## Stack
 
@@ -28,16 +28,21 @@ Do not add dependencies outside this list without asking.
 ## Commands
 
 ```
-npm install          # install dependencies
+npm ci               # install exact dependencies from package-lock.json (Node 26, see .nvmrc)
 npm run dev          # run the app with hot reload
-npm run typecheck    # TypeScript checks for main, preload and renderer
-npm run lint         # ESLint
-npm test             # unit tests (Vitest)
-npm run test:e2e     # end-to-end tests (Playwright)
-npm run build        # production build
+npm run typecheck    # TypeScript checks for main/preload (tsconfig.node) and renderer (tsconfig.web)
+npm run lint         # ESLint incl. accessibility rules; zero warnings allowed
+npm run format       # format everything with Prettier (format:check only verifies)
+npm test             # unit and component tests (Vitest)
+npm run build        # typecheck + production build to out/
+npm run build:win    # build + Windows installer (electron-builder)
+npm run test:e2e     # end-to-end tests (Playwright) — not set up yet
 ```
 
-Run `typecheck`, `lint` and `test` before every commit.
+Run `typecheck`, `lint`, `format:check` and `test` before every commit.
+
+UI components come from shadcn/ui: add them with `npx shadcn@latest add <name>` (config in `components.json`);
+they land in `src/renderer/src/components/ui/` and are ours to edit.
 
 ## Structure
 
@@ -46,7 +51,8 @@ src/main/        Electron main process: windows, tray, settings, starting servic
 src/preload/     the only bridge between UI and main; exposes a typed window.api
 src/shared/      types shared by main and renderer (IPC contract, settings schema)
 src/renderer/    React UI
-tests/unit/      Vitest
+tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
+                 query by role or label, the way a user finds things — not by class names
 tests/e2e/       Playwright
 vendor/          git submodules (Open WebUI); never edit files here
 ```
@@ -58,7 +64,7 @@ vendor/          git submodules (Open WebUI); never edit files here
 - Prettier formatting (2 spaces, single quotes, no semicolons); ESLint must pass.
 - The renderer never uses Node APIs or the file system directly. Everything privileged goes through
   `window.api`, typed in `src/shared/ipc.ts`.
-- Keep comments for the *why*; the code should say the *what*.
+- Keep comments for the _why_; the code should say the _what_.
 
 ## Security rules
 

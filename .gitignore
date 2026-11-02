@@ -22,9 +22,14 @@ coverage/
 playwright-report/
 test-results/
 
-# Editor and OS files
+# Tool caches
+.eslintcache
+
+# Editor and OS files (shared VS Code config is committed)
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/launch.json
 .idea/
 *.log
 Thumbs.db
