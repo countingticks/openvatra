@@ -21,6 +21,7 @@ describe('App', () => {
 
     expect(tabButton('Chat')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('heading', { level: 1, name: 'Chat' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Ember, idle' })).toBeInTheDocument()
   })
 
   it('opens on the tab saved last time', () => {

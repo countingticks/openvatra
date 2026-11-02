@@ -1,4 +1,5 @@
 import { ComingSoon } from '@renderer/components/ComingSoon'
+import { Ember } from '@renderer/components/Ember'
 import { useAppSelector } from '@renderer/store/hooks'
 import { selectActiveTab } from '@renderer/store/uiSlice'
 
@@ -7,7 +8,11 @@ export function TabView(): React.JSX.Element {
   switch (useAppSelector(selectActiveTab)) {
     case 'chat':
       return (
-        <ComingSoon title="Chat" description="Talk to the models on your PC. Chat arrives in a later step." />
+        <ComingSoon
+          title="Chat"
+          description="Talk to the models on your PC. Chat arrives in a later step."
+          art={<Ember state="idle" scale={3} />}
+        />
       )
     case 'code':
       return (
