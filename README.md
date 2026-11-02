@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-**Your AI's home hearth.** Local models, chat, code and automations in one open-source desktop app.
+**OpenVatra™ — your AI's home hearth.** Local models, chat, code and automations in one open-source desktop app.
 
 _Vatra_ is Romanian for _hearth_: the fire at the center of a home. OpenVatra keeps your AI at home too —
 models run on your own PC, and your conversations never leave it.
@@ -40,7 +40,15 @@ OpenVatra brings together excellent open-source projects:
 
 ## License
 
-[MIT](LICENSE) © 2026 countingticks. Third-party components keep their own licenses.
+The source code is [MIT](LICENSE) © 2026 countingticks. Third-party components keep their own licenses.
 
-The OpenVatra name, logo and ember mascot are not covered by the MIT license. Please don't use them to represent
-other projects or forks; you're welcome to use them to refer to OpenVatra itself.
+## Trademark and brand
+
+OpenVatra™ is a trademark of countingticks. The name, logo, wordmark and ember mascot are **not** covered by the
+MIT license; the artwork is © 2026 countingticks, all rights reserved.
+
+- ✅ Use the name to refer to OpenVatra, and show the unmodified logo or mascot when linking to or writing about it.
+- ❌ Don't use the name, logo or mascot for other projects, products or forks, or modify the artwork.
+- Forks must use a different name and their own logo.
+
+The exact terms and the list of covered files are in [NOTICE](NOTICE).
