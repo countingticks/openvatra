@@ -28,8 +28,21 @@ const fileSchema = z.object({
   loop: z.union([z.boolean(), z.number()]).optional(),
   then: z.enum(mascotStates).optional(),
   pal: z.record(z.string().length(1), z.string().regex(/^#[0-9A-Fa-f]{6}$/)),
-  frames: z.record(z.string(), frameSchema)
+  frames: z.record(z.string(), frameSchema),
+  /** loading only: the row its ash line ("hearth") is drawn on. */
+  barRow: z
+    .number()
+    .int()
+    .min(0)
+    .max(mascotSize - 1)
+    .optional()
 })
+
+/** The eyes' area: rows 9–12, columns 5–11. In idle it only changes while blinking (brand notes). */
+const eyeBox = { top: 9, left: 5, width: 7, height: 4 } as const
+
+/** What's inside the eye box: `eyeBox.height` strings of `eyeBox.width` pixels. */
+export type Eyes = readonly string[]
 
 export interface Animation {
   state: MascotState
@@ -42,6 +55,10 @@ export interface Animation {
   /** The state a one-shot hands over to when it ends. */
   then?: MascotState
   palette: Readonly<Record<string, string>>
+  /** idle only: the blink, lifted out of the loop so it can play at any moment, and the eyes when open. */
+  blink?: { open: Eyes; steps: readonly Eyes[] }
+  /** loading only: `bar-00…NN` (none to all embers lit) on `row`, and the `ready-*` burst played at 100%. */
+  progress?: { row: number; bars: readonly Frame[]; ready: readonly Frame[] }
 }
 
 export function parseAnimation(json: unknown): Animation {
@@ -53,12 +70,86 @@ export function parseAnimation(json: unknown): Animation {
   const plain = names.filter((name) => /^\d+$/.test(name)).map((name) => file.frames[name])
 
   // Named frames (intro-01, loop-01) say what they are; plain numbered ones loop unless the file says loop: false.
-  // Other named frames (loading's bar-NN, ready-N) are extras for later.
+  // loading's bar-NN and ready-N frames are kept for progress below.
   const intro = [...pick('intro-'), ...(file.loop === false ? plain : [])]
   const loop = [...(file.loop === false ? [] : plain), ...pick('loop-')]
   if (intro.length + loop.length === 0) throw new Error(`Mascot "${file.state}" has no frames to play`)
 
-  return { state: file.state, ms: file.ms, intro, loop, then: file.then, palette: file.pal }
+  const animation: Animation = {
+    state: file.state,
+    ms: file.ms,
+    intro,
+    loop,
+    then: file.then,
+    palette: file.pal
+  }
+  if (file.state === 'idle') animation.blink = findBlink(loop)
+  const bars = pick('bar-')
+  if (file.barRow !== undefined && bars.length > 0) {
+    animation.progress = { row: file.barRow, bars, ready: pick('ready-') }
+  }
+  return animation
+}
+
+export function eyesOf(frame: Frame): Eyes {
+  return frame
+    .slice(eyeBox.top, eyeBox.top + eyeBox.height)
+    .map((row) => row.slice(eyeBox.left, eyeBox.left + eyeBox.width))
+}
+
+/** `frame` with its eye box replaced by `eyes`. */
+export function withEyes(frame: Frame, eyes: Eyes): Frame {
+  return frame.map((row, y) => {
+    const i = y - eyeBox.top
+    if (i < 0 || i >= eyeBox.height) return row
+    return row.slice(0, eyeBox.left) + eyes[i] + row.slice(eyeBox.left + eyeBox.width)
+  })
+}
+
+/** The loop's eyes when open (the first frame's) and, in order, every eye box that differs: the blink. */
+function findBlink(loop: readonly Frame[]): Animation['blink'] {
+  if (loop.length === 0) return undefined
+  const open = eyesOf(loop[0])
+  const steps = loop.map(eyesOf).filter((eyes) => eyes.join() !== open.join())
+  return steps.length > 0 ? { open, steps } : undefined
+}
+
+/** How many of the bar frames' embers to light for `progress` (0–1): 0…cells, never past the last bar. */
+export function barIndex(progress: number, barCount: number): number {
+  const cells = barCount - 1
+  return Math.min(cells, Math.max(0, Math.floor(progress * cells)))
+}
+
+/** `frame` with row `row` taken from `bar`: the progress line drawn over the live flame. */
+export function withBar(frame: Frame, bar: Frame, row: number): Frame {
+  return frame.map((line, y) => (y === row ? bar[row] : line))
+}
+
+/** The tick the next blink starts at: 6–10 s after `tick` (brand notes), using `random` in [0, 1). */
+export function nextBlinkTick(tick: number, ms: number, random: () => number = Math.random): number {
+  return tick + Math.round((6000 + random() * 4000) / ms)
+}
+
+export interface FrameOptions {
+  /** idle: the tick the current blink started at; eyes stay open outside the blink. */
+  blinkAt?: number
+  /** loading: known progress 0–1; leave out while it's unknown (the line runs like a fuse). */
+  progress?: number
+}
+
+/** The frame to draw at `tick`: the base frame, then the eyes, then the progress line. */
+export function composeFrame(animation: Animation, tick: number, options: FrameOptions = {}): Frame {
+  let { frame } = frameAt(animation, tick)
+  const { blink, progress } = animation
+
+  if (blink) {
+    const step = options.blinkAt === undefined ? -1 : tick - options.blinkAt
+    frame = withEyes(frame, blink.steps[step] ?? blink.open)
+  }
+  if (progress && options.progress !== undefined) {
+    frame = withBar(frame, progress.bars[barIndex(options.progress, progress.bars.length)], progress.row)
+  }
+  return frame
 }
 
 /**

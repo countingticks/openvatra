@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  barIndex,
+  composeFrame,
+  eyesOf,
   frameAt,
   mascotStates,
+  nextBlinkTick,
   parseAnimation,
   playLength,
   toRuns,
@@ -109,5 +113,73 @@ describe('the real frame files', () => {
     expect(loadAnimation('idle')).toMatchObject({ intro: [], loop: { length: 72 } })
     expect(loadAnimation('error')).toMatchObject({ intro: { length: 10 }, loop: { length: 60 } })
     expect(loadAnimation('success')).toMatchObject({ intro: { length: 20 }, loop: [], then: 'idle' })
+  })
+
+  it('handles a one-shot idle file with no loop frames (no blink to find)', () => {
+    expect(() => parseAnimation(file({ '01': 'A' }, { loop: false }))).not.toThrow()
+  })
+})
+
+// Rows outside the eye box (9–12), so tests can check that only the eyes changed.
+const outsideEyes = (frame: Frame): string[] => frame.filter((_, y) => y < 9 || y > 12)
+
+describe('idle blink', () => {
+  const idle = loadAnimation('idle')
+  const bakedBlink = 52 // frames 53–55 in the file (ticks 52–54) are where the generator drew the blink
+
+  it('lifts the three-step blink out of the loop', () => {
+    expect(idle.blink?.steps).toHaveLength(3)
+    expect(idle.blink?.open).toEqual(eyesOf(idle.loop[0]))
+  })
+
+  it('keeps the eyes open where the blink was baked in, and changes nothing else', () => {
+    const frame = composeFrame(idle, bakedBlink)
+
+    expect(eyesOf(frame)).toEqual(idle.blink?.open)
+    expect(outsideEyes(frame)).toEqual(outsideEyes(idle.loop[bakedBlink]))
+  })
+
+  it('plays the blink wherever it is scheduled', () => {
+    const frame = composeFrame(idle, 10, { blinkAt: 9 })
+
+    expect(eyesOf(frame)).toEqual(idle.blink?.steps[1])
+    expect(outsideEyes(frame)).toEqual(outsideEyes(idle.loop[10]))
+  })
+
+  it('reproduces the original frames when scheduled at the original moment', () => {
+    for (const tick of [52, 53, 54]) {
+      expect(composeFrame(idle, tick, { blinkAt: bakedBlink })).toEqual(idle.loop[tick])
+    }
+  })
+
+  it('schedules the next blink 6–10 s later', () => {
+    expect(nextBlinkTick(100, 100, () => 0)).toBe(160)
+    expect(nextBlinkTick(100, 100, () => 0.5)).toBe(180)
+    expect(nextBlinkTick(100, 100, () => 0.9999)).toBe(200)
+  })
+})
+
+describe('loading progress', () => {
+  const loading = loadAnimation('loading')
+
+  it('lights 0…11 embers along the line, never past full', () => {
+    expect([-1, 0, 0.09, 0.5, 0.99, 1, 2].map((p) => barIndex(p, 12))).toEqual([0, 0, 0, 5, 10, 11, 11])
+  })
+
+  it('draws the progress line over the live flame', () => {
+    const frame = composeFrame(loading, 7, { progress: 0.5 })
+    const row = loading.progress?.row ?? -1
+
+    expect(row).toBe(15)
+    expect(frame[row]).toBe(loading.progress?.bars[5][row])
+    expect(frame.slice(0, row)).toEqual(loading.loop[7].slice(0, row))
+  })
+
+  it('runs the line like a fuse while progress is unknown', () => {
+    expect(composeFrame(loading, 7)).toEqual(loading.loop[7])
+  })
+
+  it('has a ready burst that plays once and hands over to idle', () => {
+    expect(loadAnimation('ready')).toMatchObject({ intro: { length: 4 }, loop: [], then: 'idle' })
   })
 })
