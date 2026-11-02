@@ -42,6 +42,11 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
 
   rememberBounds(window, store)
   followThemeBackground(window)
+  // The page can't write files, so its errors would only reach DevTools. Copy them into main.log, where a bug
+  // report can find them. Errors only: warnings and info would bury the log.
+  window.webContents.on('console-message', ({ level, message, sourceId, lineNumber }) => {
+    if (level === 'error') log.error(`Page: ${message} (${sourceId}:${lineNumber})`)
+  })
   // Hidden or not, the page loads now, so opening it from the tray later is instant.
   if (show) window.on('ready-to-show', () => window.show())
 

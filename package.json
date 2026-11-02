@@ -16,7 +16,7 @@
     "node": ">=26"
   },
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "electron-vite dev --watch",
     "start": "electron-vite preview",
     "build": "npm run typecheck && electron-vite build",
     "build:win": "npm run build && electron-builder --win",

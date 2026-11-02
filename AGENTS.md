@@ -35,7 +35,7 @@ Do not add dependencies outside this list without asking.
 
 ```
 npm ci               # install exact dependencies from package-lock.json (Node 26, see .nvmrc)
-npm run dev          # run the app with hot reload
+npm run dev          # run the app; the UI hot-reloads, main/preload changes restart Electron
 npm run typecheck    # TypeScript checks for main/preload (tsconfig.node) and renderer (tsconfig.web)
 npm run lint         # ESLint incl. accessibility rules; zero warnings allowed
 npm run format       # format everything with Prettier (format:check only verifies)

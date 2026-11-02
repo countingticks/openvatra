@@ -1,11 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { PanelLeft } from 'lucide-react'
+import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { Sidebar } from '@renderer/components/Sidebar'
 import { TabView } from '@renderer/components/TabView'
 import { useSidebarShortcut } from '@renderer/hooks/useSidebarShortcut'
 import { useTabShortcuts } from '@renderer/hooks/useTabShortcuts'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSidebarOpen, sidebarToggled } from '@renderer/store/uiSlice'
+import { selectActiveTab, selectSidebarOpen, sidebarToggled } from '@renderer/store/uiSlice'
 import { sidebarId, sidebarShortcut } from '@renderer/tabs'
 
 export function App(): React.JSX.Element {
@@ -13,6 +14,7 @@ export function App(): React.JSX.Element {
   useSidebarShortcut()
   const dispatch = useAppDispatch()
   const sidebarOpen = useAppSelector(selectSidebarOpen)
+  const activeTab = useAppSelector(selectActiveTab)
   const openButton = useRef<HTMLButtonElement>(null)
   const closeButton = useRef<HTMLButtonElement>(null)
 
@@ -43,7 +45,10 @@ export function App(): React.JSX.Element {
         >
           <PanelLeft aria-hidden className="size-[18px]" />
         </button>
-        <TabView />
+        {/* Keyed by tab: switching tabs starts a fresh boundary, so a broken page doesn't follow you around. */}
+        <ErrorBoundary key={activeTab}>
+          <TabView />
+        </ErrorBoundary>
       </main>
     </div>
   )
