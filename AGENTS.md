@@ -16,8 +16,8 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 | Open WebUI backend     | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
 | OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
-**Status:** early development. The Electron + React + TypeScript scaffold exists; `npm test` and
-`npm run test:e2e` arrive with the test setup.
+**Status:** early development. The Electron + React + TypeScript scaffold and unit tests exist;
+`npm run test:e2e` arrives with the end-to-end setup.
 
 ## Stack
 
@@ -46,7 +46,8 @@ src/main/        Electron main process: windows, tray, settings, starting servic
 src/preload/     the only bridge between UI and main; exposes a typed window.api
 src/shared/      types shared by main and renderer (IPC contract, settings schema)
 src/renderer/    React UI
-tests/unit/      Vitest
+tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
+                 query by role or label, the way a user finds things — not by class names
 tests/e2e/       Playwright
 vendor/          git submodules (Open WebUI); never edit files here
 ```
