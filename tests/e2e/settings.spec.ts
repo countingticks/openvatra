@@ -21,6 +21,9 @@ async function settingsOnDisk(): Promise<unknown> {
 // These callbacks run inside the app's page, where the preload put the API on `window`.
 type WithApi = typeof globalThis & { api: Api }
 
+// Main saves the window's real bounds whenever it moves or resizes, including when Windows adjusts it right after
+// launch (CI's small screen does). So these tests check the fields they're about, never the whole file as is.
+
 test.beforeAll(async () => {
   userDataDir = await createUserDataDir()
   await launch()
@@ -32,31 +35,39 @@ test.afterAll(async () => {
 })
 
 test('a first launch has the default settings', async () => {
-  expect(await mainWindow.evaluate(() => (window as WithApi).api.settings.get())).toEqual(defaultSettings)
+  const settings = await mainWindow.evaluate(() => (window as WithApi).api.settings.get())
+  // toEqual treats an undefined property as missing, so this ignores only the window bounds.
+  expect({ ...settings, window: undefined }).toEqual(defaultSettings)
 })
 
 test('the UI can change a setting, and it is saved to disk', async () => {
   const updated = await mainWindow.evaluate(() => (window as WithApi).api.settings.update({ theme: 'dark' }))
 
-  expect(updated).toEqual({ ...defaultSettings, theme: 'dark' })
-  expect(await settingsOnDisk()).toEqual(updated)
+  expect(updated.theme).toBe('dark')
+  expect(await settingsOnDisk()).toMatchObject({ theme: 'dark' })
 })
 
 test('the UI cannot change what it does not own', async () => {
-  const before = await settingsOnDisk()
+  const forbidden = { x: 0, y: 0, width: 4000, height: 4000 }
 
-  const error = await mainWindow.evaluate(() =>
-    (window as WithApi).api.settings
-      // Bypasses the TypeScript type on purpose, as a compromised page would.
-      .update({ window: { x: 0, y: 0, width: 4000, height: 4000 } } as never)
-      .then(
-        () => null,
-        (reason: Error) => reason.message
-      )
+  const error = await mainWindow.evaluate(
+    (bounds) =>
+      (window as WithApi).api.settings
+        // Bypasses the TypeScript type on purpose, as a compromised page would.
+        .update({ window: bounds } as never)
+        .then(
+          () => null,
+          (reason: Error) => reason.message
+        ),
+    forbidden
   )
 
   expect(error).toContain('Settings could not be updated')
-  expect(await settingsOnDisk()).toEqual(before)
+  const current = await mainWindow.evaluate(() => (window as WithApi).api.settings.get())
+  expect(current.window).not.toEqual(forbidden)
+  expect(await settingsOnDisk()).not.toMatchObject({ window: forbidden })
+  // The rest of the file is as the earlier test left it.
+  expect(await settingsOnDisk()).toMatchObject({ theme: 'dark' })
 })
 
 test('settings survive a restart', async () => {
