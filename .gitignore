@@ -1,0 +1,31 @@
+# Private planning docs (specs, roadmap, notes) - kept local, never published
+/private/
+
+# Assistant instruction files other than AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+
+# Secrets and local environment
+.env
+.env.*
+*.key
+.webui_secret_key
+
+# Dependencies and build output
+node_modules/
+out/
+dist/
+release/
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Editor and OS files
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
+Thumbs.db
+.DS_Store
