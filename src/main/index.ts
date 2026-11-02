@@ -14,9 +14,13 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     icon,
+    // Security baseline (AGENTS.md): the UI runs like an untrusted web page. It has no Node.js access, lives in
+    // its own isolated JavaScript world, and the preload that bridges to it is sandboxed too.
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false
     }
   })
 

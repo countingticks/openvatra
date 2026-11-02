@@ -1,22 +1,18 @@
+// Runs in a sandbox before the UI loads. Its only job: hand the UI the API defined in src/shared/ipc.ts.
 import { contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import type { Api } from '../shared/ipc'
 
-// Custom APIs for renderer
-const api = {}
-
-// Use `contextBridge` APIs to expose Electron APIs to
-// renderer only if context isolation is enabled, otherwise
-// just add to the DOM global.
-if (process.contextIsolated) {
-  try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
-    contextBridge.exposeInMainWorld('api', api)
-  } catch (error) {
-    console.error(error)
-  }
-} else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
-  // @ts-ignore (define in dts)
-  window.api = api
+const api: Api = {
+  runtime: Object.freeze({
+    platform: process.platform,
+    versions: Object.freeze({
+      electron: process.versions.electron,
+      chrome: process.versions.chrome,
+      node: process.versions.node
+    })
+  })
 }
+
+// contextBridge copies the object into the page's isolated world: the page can call it but can't reach
+// anything behind it. There is deliberately no fallback without context isolation.
+contextBridge.exposeInMainWorld('api', api)
