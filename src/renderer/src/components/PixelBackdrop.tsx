@@ -94,11 +94,14 @@ export function PixelBackdrop(): React.JSX.Element {
     }
   }, [reducedMotion])
 
+  // Window-wide and pinned to the right edge, not sized to its container: while the sidebar slides, the container
+  // changes width every frame, which would resize, clear and redraw the canvas each time (stutter, and a pattern
+  // that shifts). This way the sidebar just covers and uncovers a still backdrop; the parent clips the overflow.
   return (
     <canvas
       ref={canvasRef}
       aria-hidden
-      className="pointer-events-none absolute inset-0 size-full [image-rendering:pixelated]"
+      className="pointer-events-none absolute inset-y-0 right-0 h-full w-screen [image-rendering:pixelated]"
     />
   )
 }
