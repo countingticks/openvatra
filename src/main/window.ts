@@ -11,7 +11,8 @@ import { safeWindowBounds } from './windowBounds'
 /** How long the window must be still before its position is saved; a drag fires many move events. */
 const saveBoundsDelayMs = 500
 
-export function createMainWindow(appUrl: string, store: SettingsStore): BrowserWindow {
+/** `show: false` keeps the window hidden (started at login: only the tray icon appears). */
+export function createMainWindow(appUrl: string, store: SettingsStore, show: boolean): BrowserWindow {
   // Displays are read now, not when the bounds were saved: monitors may have changed since.
   const bounds = safeWindowBounds(
     store.get().window,
@@ -38,7 +39,8 @@ export function createMainWindow(appUrl: string, store: SettingsStore): BrowserW
   })
 
   rememberBounds(window, store)
-  window.on('ready-to-show', () => window.show())
+  // Hidden or not, the page loads now, so opening it from the tray later is instant.
+  if (show) window.on('ready-to-show', () => window.show())
 
   void window.loadURL(appUrl)
   return window

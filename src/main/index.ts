@@ -3,6 +3,7 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { defaultSettings, type Settings } from '../shared/settings'
+import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { registerIpcHandlers } from './ipc'
 import { log, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
@@ -69,7 +70,14 @@ function start(): void {
     // Before the window, so the UI's first request always finds a handler.
     registerIpcHandlers(store, appUrl)
 
-    mainWindow = createMainWindow(appUrl, store)
+    // At startup too, so the Run entry points at this install even if the app moved since it was written.
+    applyStartWithWindows(store.get().startWithWindows)
+    store.onChange((settings, previous) => {
+      if (settings.startWithWindows !== previous.startWithWindows)
+        applyStartWithWindows(settings.startWithWindows)
+    })
+
+    mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
     mainWindow.on('closed', () => (mainWindow = null))
 
     tray = createTray({ open: focusMainWindow, quit: () => app.quit() })

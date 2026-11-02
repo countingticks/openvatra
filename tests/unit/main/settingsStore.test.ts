@@ -107,6 +107,41 @@ describe('createSettingsStore', () => {
     expect(save).toHaveBeenCalledWith(filePath, { ...defaultSettings, closeToTrayNoticeShown: true })
   })
 
+  it('tells change listeners the new and previous settings, after saving', async () => {
+    const { store, save } = setUp()
+    const listener = vi.fn(() => expect(save).toHaveBeenCalledOnce())
+    store.onChange(listener)
+
+    await store.update({ startWithWindows: true })
+
+    expect(listener).toHaveBeenCalledExactlyOnceWith(
+      { ...defaultSettings, startWithWindows: true },
+      defaultSettings
+    )
+  })
+
+  it('does not tell listeners about a change that failed to save', async () => {
+    const save = vi.fn<Save>(async () => undefined).mockRejectedValueOnce(new Error('disk full'))
+    const { store } = setUp(save)
+    const listener = vi.fn()
+    store.onChange(listener)
+
+    await expect(store.update({ startWithWindows: true })).rejects.toThrow('disk full')
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('stops calling a listener once it unsubscribes', async () => {
+    const { store } = setUp()
+    const listener = vi.fn()
+    const unsubscribe = store.onChange(listener)
+
+    unsubscribe()
+    await store.update({ theme: 'dark' })
+
+    expect(listener).not.toHaveBeenCalled()
+  })
+
   it('whenIdle waits for every save asked for so far, even failed ones', async () => {
     let finishSave = (): void => {}
     const save = vi.fn<Save>(() => new Promise<void>((resolve) => (finishSave = resolve)))

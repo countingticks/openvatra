@@ -14,7 +14,14 @@ export interface SettingsStore {
   markCloseToTrayNoticeShown(): Promise<Settings>
   /** Resolves once every save asked for so far has finished, so quitting doesn't cut one off. */
   whenIdle(): Promise<void>
+  /**
+   * Calls `listener` after each saved change, with the new and the previous settings. It runs once the change is
+   * on disk, so it must handle its own errors: the change already happened. Returns a function that unsubscribes.
+   */
+  onChange(listener: ChangeListener): () => void
 }
+
+export type ChangeListener = (settings: Settings, previous: Settings) => void
 
 export function createSettingsStore(
   filePath: string,
@@ -24,6 +31,7 @@ export function createSettingsStore(
   let current = structuredClone(initial)
   // Each change waits for the one before it, so saves never overlap and land in the order they were asked for.
   let queue: Promise<unknown> = Promise.resolve()
+  const listeners = new Set<ChangeListener>()
 
   /** `changes` runs inside the queue, so a validation error becomes this change's rejection. */
   function enqueue(changes: () => Partial<Settings>): Promise<Settings> {
@@ -31,7 +39,9 @@ export function createSettingsStore(
       const next: Settings = { ...current, ...changes() }
       await save(filePath, next)
       // Only after the save worked: the app never acts on a value that isn't on disk.
+      const previous = current
       current = next
+      for (const listener of listeners) listener(structuredClone(current), structuredClone(previous))
       return structuredClone(current)
     })
     // A failed change must not block the ones after it.
@@ -58,6 +68,10 @@ export function createSettingsStore(
     update,
     setWindowBounds,
     markCloseToTrayNoticeShown: () => enqueue(() => ({ closeToTrayNoticeShown: true })),
-    whenIdle: () => queue.then(() => undefined)
+    whenIdle: () => queue.then(() => undefined),
+    onChange: (listener) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }
   }
 }
