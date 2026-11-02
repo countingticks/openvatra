@@ -8,3 +8,6 @@ tsconfig.*.json
 package-lock.json
 private
 CLAUDE.md
+
+# Generated brand data (source: the maintainer's brand tools)
+src/renderer/src/assets/

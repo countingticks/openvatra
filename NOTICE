@@ -1,0 +1,37 @@
+OpenVatra
+Copyright 2026 countingticks
+
+SOURCE CODE
+The source code in this repository is licensed under the MIT License (see LICENSE).
+
+BRAND ASSETS (NOT covered by the MIT License)
+"OpenVatra" is a trademark of countingticks. The OpenVatra name, logo, wordmark and ember mascot,
+including their artwork and animations, are Copyright 2026 countingticks, all rights reserved.
+These files are brand assets and are excluded from the MIT License:
+
+  src/renderer/src/assets/brand/      logo, wordmark and mark (all versions)
+  src/renderer/src/assets/mascot/     ember mascot animation data
+  build/icon.ico, build/icon.png      app and installer icons
+  resources/icon.png                  window icon
+  resources/tray-*.png                tray icons
+  .github/assets/                     logos used in the README
+
+You may:
+  - use the name "OpenVatra" to refer to this project, e.g. in articles, reviews, tutorials or
+    "works with OpenVatra";
+  - show the unmodified logo or mascot when linking to or writing about OpenVatra;
+  - keep these files unmodified in an unmodified copy of this repository.
+
+You may not, without written permission:
+  - use the name, logo or mascot (or confusingly similar ones) for another project, product,
+    fork or service, or in a way that suggests endorsement by OpenVatra;
+  - modify, redraw or animate the logo or mascot, or use them in other artwork.
+
+If you publish a fork or modified version, give it a different name and remove or replace the brand
+assets listed above.
+
+THIRD-PARTY COMPONENTS
+Third-party software used by OpenVatra keeps its own license. The wordmark lettering is derived from the
+Silkscreen typeface by Jason Kottke, licensed under the SIL Open Font License 1.1.
+
+For permission requests, open an issue at https://github.com/countingticks/openvatra.
