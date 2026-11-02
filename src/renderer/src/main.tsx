@@ -9,6 +9,10 @@ import { Provider } from 'react-redux'
 import type { Settings } from '../../shared/settings'
 import { App } from './App'
 import { createAppStore } from './store/store'
+import { followColorScheme } from './theme'
+
+// Before anything renders, so the first frame is already in the right theme.
+followColorScheme()
 
 async function loadSettings(): Promise<Settings | undefined> {
   try {

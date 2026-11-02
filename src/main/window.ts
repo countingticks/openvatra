@@ -6,6 +6,7 @@ import { windowMinSize } from '../shared/settings'
 import { debounce } from './debounce'
 import { log } from './logger'
 import type { SettingsStore } from './settingsStore'
+import { followThemeBackground, windowBackground } from './theme'
 import { safeWindowBounds } from './windowBounds'
 
 /** How long the window must be still before its position is saved; a drag fires many move events. */
@@ -27,6 +28,7 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
     title: 'OpenVatra',
     show: false,
     autoHideMenuBar: true,
+    backgroundColor: windowBackground(),
     icon,
     // Security baseline (AGENTS.md): the UI runs like an untrusted web page. It has no Node.js access, lives in
     // its own isolated JavaScript world, and the preload that bridges to it is sandboxed too.
@@ -39,6 +41,7 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
   })
 
   rememberBounds(window, store)
+  followThemeBackground(window)
   // Hidden or not, the page loads now, so opening it from the tray later is instant.
   if (show) window.on('ready-to-show', () => window.show())
 

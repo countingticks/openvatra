@@ -9,6 +9,7 @@ import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
 import { createSettingsStore } from './settingsStore'
+import { applyTheme } from './theme'
 import { type AppTray, createTray } from './tray'
 import { createMainWindow, hideOnClose } from './window'
 
@@ -71,9 +72,12 @@ function start(): void {
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)
+    // Before the window, so its first frame already has the right colours.
+    applyTheme(store.get().theme)
     store.onChange((settings, previous) => {
       if (settings.startWithWindows !== previous.startWithWindows)
         applyStartWithWindows(settings.startWithWindows)
+      if (settings.theme !== previous.theme) applyTheme(settings.theme)
     })
 
     mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
