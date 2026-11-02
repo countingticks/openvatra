@@ -6,6 +6,7 @@ import { windowMinSize } from '../shared/settings'
 import { debounce } from './debounce'
 import { log } from './logger'
 import type { SettingsStore } from './settingsStore'
+import { followThemeBackground, windowBackground } from './theme'
 import { safeWindowBounds } from './windowBounds'
 
 /** How long the window must be still before its position is saved; a drag fires many move events. */
@@ -27,6 +28,7 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
     title: 'OpenVatra',
     show: false,
     autoHideMenuBar: true,
+    backgroundColor: windowBackground(),
     icon,
     // Security baseline (AGENTS.md): the UI runs like an untrusted web page. It has no Node.js access, lives in
     // its own isolated JavaScript world, and the preload that bridges to it is sandboxed too.
@@ -39,6 +41,12 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
   })
 
   rememberBounds(window, store)
+  followThemeBackground(window)
+  // The page can't write files, so its errors would only reach DevTools. Copy them into main.log, where a bug
+  // report can find them. Errors only: warnings and info would bury the log.
+  window.webContents.on('console-message', ({ level, message, sourceId, lineNumber }) => {
+    if (level === 'error') log.error(`Page: ${message} (${sourceId}:${lineNumber})`)
+  })
   // Hidden or not, the page loads now, so opening it from the tray later is instant.
   if (show) window.on('ready-to-show', () => window.show())
 
@@ -47,12 +55,13 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
 }
 
 /**
- * Closing the window hides it; the app keeps running in the tray. Only a real quit (tray menu, Windows shutdown)
- * lets the close go through, so `isQuitting` must turn true on Electron's 'before-quit'.
+ * Closing the window hides it to the tray while `shouldHide()` says so: false during a real quit (tray menu,
+ * Windows shutdown) and when the user chose "Quit OpenVatra" for closing. Then the close goes through, and with
+ * the last window gone Electron quits the app.
  */
-export function hideOnClose(window: BrowserWindow, isQuitting: () => boolean, onHidden: () => void): void {
+export function hideOnClose(window: BrowserWindow, shouldHide: () => boolean, onHidden: () => void): void {
   window.on('close', (event) => {
-    if (isQuitting()) return
+    if (!shouldHide()) return
     event.preventDefault()
     window.hide()
     onHidden()

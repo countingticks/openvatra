@@ -11,10 +11,14 @@ const api: Api = {
       node: process.versions.node
     })
   }),
-  // Thin wrappers: only these two channels can be reached, and main validates whatever arrives on them.
+  // Thin wrappers: only these channels can be reached, and main validates whatever arrives on them.
   settings: Object.freeze({
     get: () => ipcRenderer.invoke(ipcChannels.settingsGet),
     update: (patch) => ipcRenderer.invoke(ipcChannels.settingsUpdate, patch)
+  }),
+  files: Object.freeze({
+    locations: () => ipcRenderer.invoke(ipcChannels.filesLocations),
+    openFolder: (folder) => ipcRenderer.invoke(ipcChannels.filesOpenFolder, folder)
   })
 }
 

@@ -7,79 +7,110 @@
 
 /*
  * Design tokens. Components use roles (background, primary, muted...), never raw colors.
- * These are shadcn's neutral defaults: placeholders until the design session (task T21).
+ * Zinc neutrals with the ember accent, chosen in the design session (T21). Values are oklch
+ * (lightness, chroma, hue): equal L looks equally bright. The hex each one came from is in the comment.
  */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --background: oklch(1 0 0); /* #FFFFFF */
+  --foreground: oklch(0.21 0.006 285.9); /* #18181B */
+  --card: oklch(1 0 0); /* #FFFFFF */
+  --card-foreground: oklch(0.21 0.006 285.9); /* #18181B */
+  --popover: oklch(1 0 0); /* #FFFFFF */
+  --popover-foreground: oklch(0.21 0.006 285.9); /* #18181B */
+  --primary: oklch(0.538 0.159 32.6); /* #B8402A ember */
+  --primary-foreground: oklch(1 0 0); /* #FFFFFF, 5.5:1 on primary */
+  --secondary: oklch(0.967 0.001 286.4); /* #F4F4F5 */
+  --secondary-foreground: oklch(0.21 0.006 285.9); /* #18181B */
+  --muted: oklch(0.967 0.001 286.4); /* #F4F4F5 */
+  --muted-foreground: oklch(0.442 0.015 285.8); /* #52525B */
+  --accent: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --accent-foreground: oklch(0.21 0.006 285.9); /* #18181B */
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --border: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --input: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --ring: oklch(0.538 0.159 32.6); /* #B8402A */
+  /* Small ember highlights, e.g. the model status dot. Not for text on white. */
+  --brand: oklch(0.538 0.159 32.6); /* #B8402A */
+  /* Pixel backdrop steps: neutral (no hue), so the motion never pulls the eye. */
+  --backdrop-1: oklch(0.967 0.001 286.4); /* #F4F4F5 */
+  --backdrop-2: oklch(0.944 0.003 286.3); /* #ECECEE */
+  --backdrop-3: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --backdrop-4: oklch(0.89 0.005 286.3); /* #DADADE */
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.967 0.001 286.4); /* #F4F4F5 */
+  --sidebar-foreground: oklch(0.21 0.006 285.9); /* #18181B */
+  --sidebar-primary: oklch(0.538 0.159 32.6); /* #B8402A */
+  --sidebar-primary-foreground: oklch(1 0 0); /* #FFFFFF */
+  --sidebar-accent: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --sidebar-accent-foreground: oklch(0.21 0.006 285.9); /* #18181B */
+  --sidebar-border: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --sidebar-ring: oklch(0.538 0.159 32.6); /* #B8402A */
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: oklch(0.179 0.004 286); /* #111113 */
+  --foreground: oklch(0.985 0 0); /* #FAFAFA */
+  --card: oklch(0.241 0.008 285.8); /* #1F1F23 */
+  --card-foreground: oklch(0.985 0 0); /* #FAFAFA */
+  --popover: oklch(0.241 0.008 285.8); /* #1F1F23 */
+  --popover-foreground: oklch(0.985 0 0); /* #FAFAFA */
+  /* Same ember as light, so the primary button looks the same in both themes. */
+  --primary: oklch(0.538 0.159 32.6); /* #B8402A */
+  --primary-foreground: oklch(1 0 0); /* #FFFFFF */
+  --secondary: oklch(0.274 0.005 286); /* #27272A */
+  --secondary-foreground: oklch(0.985 0 0); /* #FAFAFA */
+  --muted: oklch(0.274 0.005 286); /* #27272A */
+  --muted-foreground: oklch(0.712 0.013 286.1); /* #A1A1AA */
+  --accent: oklch(0.274 0.005 286); /* #27272A */
+  --accent-foreground: oklch(0.985 0 0); /* #FAFAFA */
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0.303 0.009 285.9); /* #2E2E33 */
+  --input: oklch(0.303 0.009 285.9); /* #2E2E33 */
+  /* The deep ember is too faint on near-black; the brighter orange keeps focus and highlights visible. */
+  --ring: oklch(0.726 0.162 60.2); /* #EE8A1E */
+  --brand: oklch(0.726 0.162 60.2); /* #EE8A1E */
+  /* Smaller steps than light: eyes see differences between dark shades more easily. */
+  --backdrop-1: oklch(0.188 0.004 286); /* #131315 */
+  --backdrop-2: oklch(0.202 0.006 285.9); /* #161619 */
+  --backdrop-3: oklch(0.215 0.008 285.7); /* #19191D */
+  --backdrop-4: oklch(0.228 0.008 285.8); /* #1C1C20 */
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.21 0.006 285.9); /* #18181B */
+  --sidebar-foreground: oklch(0.985 0 0); /* #FAFAFA */
+  --sidebar-primary: oklch(0.538 0.159 32.6); /* #B8402A */
+  --sidebar-primary-foreground: oklch(1 0 0); /* #FFFFFF */
+  --sidebar-accent: oklch(0.274 0.005 286); /* #27272A */
+  --sidebar-accent-foreground: oklch(0.985 0 0); /* #FAFAFA */
+  --sidebar-border: oklch(0.303 0.009 285.9); /* #2E2E33 */
+  --sidebar-ring: oklch(0.726 0.162 60.2); /* #EE8A1E */
+}
+
+/*
+ * Fonts ship with the app (the CSP allows only our own files); main.tsx imports the Fontsource packages.
+ * font-sans is Tailwind's default, so Geist applies everywhere; font-serif is for the model's replies.
+ */
+@theme {
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  --font-serif: 'Source Serif 4 Variable', Georgia, serif;
 }
 
 /* Turns the tokens above into Tailwind classes: --color-background → bg-background, text-background... */
 @theme inline {
+  --color-brand: var(--brand);
+  --color-backdrop-1: var(--backdrop-1);
+  --color-backdrop-2: var(--backdrop-2);
+  --color-backdrop-3: var(--backdrop-3);
+  --color-backdrop-4: var(--backdrop-4);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -130,6 +161,48 @@
     height: 100%;
   }
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground text-sm antialiased;
+  }
+}
+
+/*
+ * Collapsible sidebar (design decision: 240ms, fast start, gentle stop). Only the width animates; the content
+ * keeps its own width, so nothing reflows mid-slide. `visibility` waits for the slide to finish before hiding,
+ * and flips back at once when opening. The opener by the content fades in just after the panel starts moving.
+ * The closed width and border are Tailwind utilities on the element (data-[state=closed]:w-0): this layer
+ * loses to utilities, so a width set here would be overridden by w-56.
+ */
+@layer components {
+  .sidebar-panel {
+    --panel-ease: cubic-bezier(0.2, 0, 0, 1);
+    transition:
+      width 240ms var(--panel-ease),
+      visibility 0s linear 0s;
+  }
+  .sidebar-panel[data-state='closed'] {
+    visibility: hidden;
+    transition:
+      width 240ms var(--panel-ease),
+      visibility 0s linear 240ms;
+  }
+  .sidebar-opener {
+    transition:
+      opacity 160ms ease 140ms,
+      visibility 0s linear 0s;
+  }
+  .sidebar-opener[data-state='hidden'] {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 100ms ease,
+      visibility 0s linear 100ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar-panel,
+    .sidebar-panel[data-state='closed'],
+    .sidebar-opener,
+    .sidebar-opener[data-state='hidden'] {
+      transition: none;
+    }
   }
 }

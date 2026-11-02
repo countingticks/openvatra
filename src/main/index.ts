@@ -5,10 +5,11 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { registerIpcHandlers } from './ipc'
-import { log, setUpLogging } from './logger'
+import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
 import { createSettingsStore } from './settingsStore'
+import { applyTheme } from './theme'
 import { type AppTray, createTray } from './tray'
 import { createMainWindow, hideOnClose } from './window'
 
@@ -67,13 +68,16 @@ function start(): void {
     const settingsPath = join(app.getPath('userData'), 'settings.json')
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(store, appUrl)
+    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() })
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)
+    // Before the window, so its first frame already has the right colours.
+    applyTheme(store.get().theme)
     store.onChange((settings, previous) => {
       if (settings.startWithWindows !== previous.startWithWindows)
         applyStartWithWindows(settings.startWithWindows)
+      if (settings.theme !== previous.theme) applyTheme(settings.theme)
     })
 
     mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
@@ -82,10 +86,13 @@ function start(): void {
     tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
     hideOnClose(
       mainWindow,
-      () => quitting,
+      () => !quitting && store.get().closeAction === 'tray',
       () => {
         if (store.get().closeToTrayNoticeShown) return
-        tray?.notify('OpenVatra is still running', 'Open it again or quit from the tray icon.')
+        tray?.notify(
+          'OpenVatra is still running',
+          'Open it again or quit from the tray icon. To quit when you close the window, see Settings → General.'
+        )
         void store
           .markCloseToTrayNoticeShown()
           .catch((error) => log.warn('Close-to-tray notice flag could not be saved', error))
