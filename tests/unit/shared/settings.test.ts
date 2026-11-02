@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { defaultSettings, settingsSchema, settingsSchemaVersion } from '../../../src/shared/settings'
+import {
+  defaultSettings,
+  settingsPatchSchema,
+  settingsSchema,
+  settingsSchemaVersion
+} from '../../../src/shared/settings'
 
 describe('defaultSettings', () => {
   it('uses the documented defaults', () => {
@@ -54,5 +59,26 @@ describe('settingsSchema', () => {
     ['a window without a position', { schemaVersion: 1, window: { width: 1280, height: 800 } }]
   ])('rejects %s', (_case, input) => {
     expect(settingsSchema.safeParse(input).success).toBe(false)
+  })
+})
+
+describe('settingsPatchSchema', () => {
+  it('accepts an empty patch without filling in defaults', () => {
+    expect(settingsPatchSchema.parse({})).toEqual({})
+  })
+
+  it('accepts any of the keys the UI may change', () => {
+    const patch = { theme: 'dark', startWithWindows: true, lastTab: 'automations' }
+    expect(settingsPatchSchema.parse(patch)).toEqual(patch)
+  })
+
+  it.each([
+    ['not an object', null],
+    ['schemaVersion', { schemaVersion: 1 }],
+    ['window bounds', { window: { x: 0, y: 0, width: 1280, height: 800 } }],
+    ['an unknown key', { theme: 'dark', admin: true }],
+    ['an invalid value', { theme: 'blue' }]
+  ])('rejects %s', (_case, input) => {
+    expect(settingsPatchSchema.safeParse(input).success).toBe(false)
   })
 })
