@@ -24,6 +24,7 @@ and the app can start with Windows (installed builds only). The window shows a p
 ## Stack
 
 Electron · React 19 · TypeScript (strict) · Redux Toolkit + RTK Query · Tailwind CSS + shadcn/ui ·
+Fontsource (Geist, Geist Mono, Source Serif 4; bundled, never loaded from the web) ·
 electron-vite · Vitest + React Testing Library · Playwright (Electron) · GitHub Actions.
 Do not add dependencies outside this list without asking.
 

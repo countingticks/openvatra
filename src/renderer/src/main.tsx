@@ -1,3 +1,6 @@
+import '@fontsource-variable/geist'
+import '@fontsource-variable/geist-mono'
+import '@fontsource-variable/source-serif-4/opsz.css'
 import './styles/globals.css'
 
 import { StrictMode } from 'react'
