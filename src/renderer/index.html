@@ -1,12 +1,24 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>OpenVatra</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!--
+      Content-Security-Policy: the page may only use the app's own files.
+      default-src 'self'        anything not listed below: own files only
+      script-src 'self'         no inline or remote scripts, no eval
+      style-src ... 'unsafe-inline'  components set inline style attributes (no code can run from CSS)
+      img-src 'self' data:      own images, plus small images Vite inlines as data: URLs
+      connect-src 'self'        no network requests elsewhere (local AI services are added when they're used)
+      object-src 'none'         no plugins
+      base-uri 'none'           a page can't redirect its relative links elsewhere
+      form-action 'none'        forms can't post anywhere
+      frame-src 'none'          no embedded pages
+      Background: https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
     />
   </head>
 
