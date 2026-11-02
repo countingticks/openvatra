@@ -17,6 +17,10 @@ const details: Record<TabId, { label: string; icon: LucideIcon }> = {
   settings: { label: 'Settings', icon: SlidersHorizontal }
 }
 
+/** The sidebar panel's element id, for aria-controls on the buttons that open and close it. */
+export const sidebarId = 'sidebar'
+export const sidebarShortcut = 'Control+B'
+
 export const tabs: readonly Tab[] = tabIds.map((id, index) => ({
   id,
   ...details[id],

@@ -40,6 +40,21 @@ test('shows exactly one window', async () => {
   expect(app.windows()).toHaveLength(1)
 })
 
+test('Ctrl+B slides the sidebar closed and open again', async () => {
+  // Real CSS only exists here (jsdom has none): check the panel's actual width, not just its data-state.
+  const panelWidth = (): Promise<number> =>
+    mainWindow.evaluate(() => document.getElementById('sidebar')?.getBoundingClientRect().width ?? -1)
+
+  await mainWindow.keyboard.press('Control+b')
+  await expect.poll(panelWidth).toBe(0)
+  await expect(mainWindow.getByRole('button', { name: 'Open sidebar' })).toBeVisible()
+  await expect(mainWindow.getByRole('navigation', { name: 'Main' })).toBeHidden()
+
+  await mainWindow.keyboard.press('Control+b')
+  await expect.poll(panelWidth).toBe(224)
+  await expect(mainWindow.getByRole('navigation', { name: 'Main' })).toBeVisible()
+})
+
 test('a second launch exits and hands over to the running app', async () => {
   await app.evaluate(({ app: electronApp }) => {
     const counter = globalThis as typeof globalThis & { secondLaunches: number }

@@ -164,3 +164,45 @@
     @apply bg-background text-foreground text-sm antialiased;
   }
 }
+
+/*
+ * Collapsible sidebar (design decision: 240ms, fast start, gentle stop). Only the width animates; the content
+ * keeps its own width, so nothing reflows mid-slide. `visibility` waits for the slide to finish before hiding,
+ * and flips back at once when opening. The opener by the content fades in just after the panel starts moving.
+ * The closed width and border are Tailwind utilities on the element (data-[state=closed]:w-0): this layer
+ * loses to utilities, so a width set here would be overridden by w-56.
+ */
+@layer components {
+  .sidebar-panel {
+    --panel-ease: cubic-bezier(0.2, 0, 0, 1);
+    transition:
+      width 240ms var(--panel-ease),
+      visibility 0s linear 0s;
+  }
+  .sidebar-panel[data-state='closed'] {
+    visibility: hidden;
+    transition:
+      width 240ms var(--panel-ease),
+      visibility 0s linear 240ms;
+  }
+  .sidebar-opener {
+    transition:
+      opacity 160ms ease 140ms,
+      visibility 0s linear 0s;
+  }
+  .sidebar-opener[data-state='hidden'] {
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 100ms ease,
+      visibility 0s linear 100ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar-panel,
+    .sidebar-panel[data-state='closed'],
+    .sidebar-opener,
+    .sidebar-opener[data-state='hidden'] {
+      transition: none;
+    }
+  }
+}
