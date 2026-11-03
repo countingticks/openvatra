@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
+	"github.com/countingticks/openvatra/core/internal/models"
 )
 
 const version = "0.1.0"
@@ -35,6 +36,8 @@ func main() {
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
+	// Temporary: main will send the folder through POST /api/config (later task).
+	modelsDir := fs.String("models-dir", "", "folder to search for .gguf models")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -62,7 +65,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	defer stop()
 	go watchStdin(stdin, stop)
 
-	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop)}
+	listModels := func() ([]models.Model, error) { return models.Discover(*modelsDir) }
+	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop, listModels)}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
