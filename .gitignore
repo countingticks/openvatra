@@ -34,3 +34,6 @@ test-results/
 *.log
 Thumbs.db
 .DS_Store
+
+# Go core build output
+core/*.exe
