@@ -78,9 +78,20 @@ func Discover(root string) ([]Model, error) {
 		return nil, err
 	}
 
+	byDir := map[string][]int{} // folder -> indexes into found
 	for i := range found {
-		found[i].SizeBytes = sizes[filepath.Join(filepath.Dir(found[i].Path), found[i].ID)]
-		found[i].MMProj = pickProjector(found[i].ID, projectors[filepath.Dir(found[i].Path)])
+		dir := filepath.Dir(found[i].Path)
+		found[i].SizeBytes = sizes[filepath.Join(dir, found[i].ID)]
+		byDir[dir] = append(byDir[dir], i)
+	}
+	for dir, idx := range byDir {
+		ids := make([]string, len(idx))
+		for j, i := range idx {
+			ids[j] = found[i].ID
+		}
+		for j, p := range pairProjectors(ids, projectors[dir]) {
+			found[idx[j]].MMProj = p
+		}
 	}
 
 	// WalkDir is lexical, so after a stable sort by ID the first of two
@@ -96,17 +107,30 @@ func Discover(root string) ([]Model, error) {
 	return unique, nil
 }
 
-// pickProjector returns the projector whose file name starts most like the model id (ignoring a
-// leading "mmproj-"); the first wins a tie.
-func pickProjector(id string, candidates []string) string {
-	best, bestLen := "", -1
-	for _, p := range candidates {
+// pairProjectors gives each model in one folder its projector, "" if none. Each projector goes to the model whose
+// id its file name starts most like (ignoring a leading "mmproj-"); of several projectors for one model, the closest
+// wins, the first on a tie. A projector that shares no start with any model (Hugging Face's "mmproj-F16.gguf") is
+// used only when the folder holds a single model: guessing among several would start a model with another's
+// projector, which llama-server can't load.
+func pairProjectors(ids, projectors []string) []string {
+	out := make([]string, len(ids))
+	best := make([]int, len(ids))
+	for _, p := range projectors {
 		name := strings.TrimPrefix(strings.ToLower(filepath.Base(p)), "mmproj-")
-		if n := commonPrefixLen(strings.ToLower(id), name); n > bestLen {
-			best, bestLen = p, n
+		owner, ownerLen := -1, 0
+		for i, id := range ids {
+			if n := commonPrefixLen(strings.ToLower(id), name); n > ownerLen {
+				owner, ownerLen = i, n
+			}
+		}
+		if owner == -1 && len(ids) == 1 {
+			owner = 0
+		}
+		if owner >= 0 && (out[owner] == "" || ownerLen > best[owner]) {
+			out[owner], best[owner] = p, ownerLen
 		}
 	}
-	return best
+	return out
 }
 
 func commonPrefixLen(a, b string) int {

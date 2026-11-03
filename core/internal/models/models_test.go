@@ -63,6 +63,32 @@ func TestDiscover(t *testing.T) {
 			},
 		},
 		{
+			"a model without its own projector gets none, not a neighbour's",
+			[]string{"v/gemma-12b.gguf", "v/gemma-12b-mmproj.gguf", "v/qwen3-8b-q4.gguf"},
+			[]Model{
+				{ID: "gemma-12b", Path: "v/gemma-12b.gguf", MMProj: "v/gemma-12b-mmproj.gguf"},
+				{ID: "qwen3-8b-q4", Path: "v/qwen3-8b-q4.gguf"},
+			},
+		},
+		{
+			"similar names: the projector goes to the closer model only",
+			[]string{"v/qwen3.6-35b.gguf", "v/qwen3.8-27b.gguf", "v/qwen3.8-27b-mmproj.gguf"},
+			[]Model{
+				{ID: "qwen3.6-35b", Path: "v/qwen3.6-35b.gguf"},
+				{ID: "qwen3.8-27b", Path: "v/qwen3.8-27b.gguf", MMProj: "v/qwen3.8-27b-mmproj.gguf"},
+			},
+		},
+		{
+			"a generic projector is used when the folder has one model",
+			[]string{"v/vision-q4.gguf", "v/mmproj-F16.gguf"},
+			[]Model{{ID: "vision-q4", Path: "v/vision-q4.gguf", MMProj: "v/mmproj-F16.gguf"}},
+		},
+		{
+			"a generic projector is not guessed among several models",
+			[]string{"v/a.gguf", "v/b.gguf", "v/mmproj-F16.gguf"},
+			[]Model{{ID: "a", Path: "v/a.gguf"}, {ID: "b", Path: "v/b.gguf"}},
+		},
+		{
 			"mmproj in another folder is not attached",
 			[]string{"a/m.gguf", "b/mmproj-x.gguf"},
 			[]Model{{ID: "m", Path: "a/m.gguf"}},
