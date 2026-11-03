@@ -38,3 +38,6 @@ Thumbs.db
 # Go core build output
 core/*.exe
 resources/core/
+
+# llama.cpp build fetched by scripts/fetch-llama.mjs
+resources/llama/bin/

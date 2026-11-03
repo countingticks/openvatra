@@ -39,6 +39,7 @@ npm test             # unit and component tests (Vitest)
 npm run check        # format check, typecheck, lint, unit tests, gofmt/go vet/go test; prints only failures
                      # (-- <paths> limits the JS tests)
 npm run inspect      # print element boxes in the built app as text: npm run inspect -- "<selector>" [--shot]
+npm run fetch:llama  # download the pinned llama.cpp build (resources/llama/llama.json) into resources/llama/bin
 npm run build:core   # go build -C core → resources/core/core.exe (dev and build run it; needs Go, see core/go.mod)
 npm run build        # build core, typecheck, production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
@@ -62,6 +63,7 @@ core/            Go module (`core.exe`): listens on 127.0.0.1 only, every reques
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
                  query by role or label, the way a user finds things — not by class names
 tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one
+resources/llama/ pinned llama.cpp release (llama.json, licence); the Vulkan build is fetched into bin/ (git-ignored)
 vendor/          git submodules (Open WebUI); never edit files here
 ```
 
