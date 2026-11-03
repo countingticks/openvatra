@@ -50,7 +50,7 @@ export function GeneralSection(): React.JSX.Element {
 
       <SettingRow
         label="Animations"
-        hint="Motion and effects across the app. System follows your Windows setting."
+        hint="Motion and effects in the app. System follows Windows."
         labelId={ids.motion}
       >
         <SegmentedControl

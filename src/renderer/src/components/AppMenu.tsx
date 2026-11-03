@@ -134,9 +134,7 @@ export function AppMenu(): React.JSX.Element {
             <DropdownMenuSubTrigger {...trigger}>
               <AccessKey label={name} />
             </DropdownMenuSubTrigger>
-            {/* Positioned against its row, which sits 4px inside the list (padding) plus 1px outline on each side:
-                6px puts the submenu exactly at the list's edge instead of overlapping it. */}
-            <DropdownMenuSubContent data-app-menu aria-label={name} sideOffset={6} className="min-w-56">
+            <DropdownMenuSubContent data-app-menu aria-label={name} className="min-w-56">
               {name === 'File' && (
                 <>
                   <DropdownMenuItem disabled>
