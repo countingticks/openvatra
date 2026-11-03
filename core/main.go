@@ -3,13 +3,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
 )
@@ -19,14 +22,17 @@ const version = "0.1.0"
 // tokenEnv is the environment variable Electron main passes the per-launch token in.
 const tokenEnv = "OPENVATRA_CORE_TOKEN"
 
+// shutdownGrace is how long in-flight requests get to finish before we give up.
+const shutdownGrace = 5 * time.Second
+
 func main() {
-	if err := run(os.Args[1:], os.Stdout); err != nil {
+	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "core:", err)
 		os.Exit(1)
 	}
 }
 
-func run(args []string, stdout io.Writer) error {
+func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	if err := fs.Parse(args); err != nil {
@@ -50,7 +56,40 @@ func run(args []string, stdout io.Writer) error {
 	if err := writeReady(stdout, actualPort); err != nil {
 		return err
 	}
-	return http.Serve(ln, api.NewHandler(token, actualPort))
+
+	// stop is the single "please exit" signal; both triggers below fire it.
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	go watchStdin(stdin, stop)
+
+	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop)}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(ln) }()
+
+	select {
+	case err := <-serveErr:
+		return err // the listener failed on its own
+	case <-ctx.Done():
+	}
+
+	// Shutdown stops accepting, lets running requests finish, then returns.
+	shutCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+	if err := srv.Shutdown(shutCtx); err != nil {
+		return err
+	}
+	if err := <-serveErr; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// watchStdin blocks until stdin is closed, then calls onClose. Electron never
+// writes to our stdin; the pipe only closes when it exits or crashes, so EOF
+// means "parent died" and we must not linger as an orphan.
+func watchStdin(stdin io.Reader, onClose func()) {
+	_, _ = io.Copy(io.Discard, stdin)
+	onClose()
 }
 
 // writeReady prints the one JSON line main waits for.

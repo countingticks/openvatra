@@ -15,7 +15,12 @@ const (
 // do sends a request through the full handler; host and auth override the defaults when non-empty.
 func do(t *testing.T, path, host, auth string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	return doMethod(t, http.MethodGet, path, host, auth, func() {})
+}
+
+func doMethod(t *testing.T, method, path, host, auth string, shutdown func()) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
 	req.Host = "127.0.0.1:53121"
 	if host != "" {
 		req.Host = host
@@ -24,7 +29,7 @@ func do(t *testing.T, path, host, auth string) *httptest.ResponseRecorder {
 		req.Header.Set("Authorization", auth)
 	}
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, shutdown).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -82,5 +87,32 @@ func TestRejectsWrongHost(t *testing.T) {
 				t.Fatalf("body = %s", rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestShutdownRepliesThenSignals(t *testing.T) {
+	called := 0
+	rec := doMethod(t, http.MethodPost, "/shutdown", "", "Bearer "+testToken, func() { called++ })
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", rec.Code)
+	}
+	if called != 1 {
+		t.Fatalf("shutdown called %d times, want 1", called)
+	}
+}
+
+func TestShutdownNeedsTokenAndPost(t *testing.T) {
+	called := false
+	stop := func() { called = true }
+
+	if rec := doMethod(t, http.MethodPost, "/shutdown", "", "", stop); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("no token: status = %d, want 401", rec.Code)
+	}
+	if rec := doMethod(t, http.MethodGet, "/shutdown", "", "Bearer "+testToken, stop); rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET: status = %d, want 405", rec.Code)
+	}
+	if called {
+		t.Fatal("shutdown must not run for rejected requests")
 	}
 }
