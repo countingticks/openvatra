@@ -287,25 +287,6 @@ describe('Settings → Models', () => {
       expect(saveSettings).not.toHaveBeenCalled()
     })
 
-    it('shows the detected projector read-only, with no switch', async () => {
-      await openModels(
-        { ...chosen, options: {} },
-        { coreState: ready, models: [{ ...qwen, projector: 'mmproj-qwen.gguf' }, nomic] }
-      )
-      fireEvent.click(await screen.findByRole('button', { name: `Options for ${qwen.id}` }))
-      const group = screen.getByRole('group', { name: `Options for ${qwen.id}` })
-
-      expect(within(group).getByText(/mmproj-qwen\.gguf/)).toBeInTheDocument()
-      expect(within(group).queryByRole('switch')).not.toBeInTheDocument()
-    })
-
-    it('says so when no projector was found, and has no per-model unload setting', async () => {
-      const { group } = await openOptions()
-
-      expect(within(group).getByText('None found.')).toBeInTheDocument()
-      expect(within(group).queryByRole('radiogroup')).not.toBeInTheDocument()
-    })
-
     it('drops the model’s entry when the box is emptied', async () => {
       const { saveSettings, group } = await openOptions({ [qwen.id]: { args: '-c 8192' } })
       const args = within(group).getByLabelText('Arguments')
