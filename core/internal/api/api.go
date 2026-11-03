@@ -15,8 +15,8 @@ import (
 // reply is sent) when a client asks core to stop; listModels reports the models
 // currently on disk (a function, because the folder will change at runtime); rt
 // picks the model server for the chat and embedding endpoints; cfg receives what
-// main sends to POST /api/config.
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store) http.Handler {
+// main sends to POST /api/config; hardware measures the PC; cat is the list of models to download.
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store, hardware Hardware, cat Catalog) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
@@ -27,6 +27,10 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /api/config", configHandler(cfg))
+	mux.HandleFunc("GET /api/hardware", hardwareHandler(hardware.Get))
+	mux.HandleFunc("POST /api/hardware/refresh", hardwareHandler(hardware.Refresh))
+	mux.HandleFunc("GET /api/catalog", catalogHandler(cat))
+	mux.HandleFunc("GET /api/catalog/{id}/folder", catalogFolderHandler(cat))
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

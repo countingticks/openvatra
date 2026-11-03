@@ -14,3 +14,6 @@
 *.gif binary
 *.woff2 binary
 *.gguf binary
+
+# Captured program output, kept byte for byte (CRLF included)
+core/internal/hw/testdata/** -text

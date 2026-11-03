@@ -18,7 +18,9 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
+	"github.com/countingticks/openvatra/core/internal/catalog"
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
@@ -35,6 +37,10 @@ const logDirEnv = "OPENVATRA_LOG_DIR"
 
 // shutdownGrace is how long in-flight requests get to finish before we give up.
 const shutdownGrace = 5 * time.Second
+
+// defaultContext is the chat context size in tokens: llama-server's own default is the model's full context, which
+// can need more memory than the model itself.
+const defaultContext = "16384"
 
 func main() {
 	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
@@ -104,11 +110,18 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		},
 	})
 	cfg.OnChange(rt.Notify)
+	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
+	hardware := hw.NewChecker(func() string { return cfg.Get().LlamaServerPath }, logger)
+	entries, err := catalog.Builtin()
+	if err != nil {
+		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
+	}
+	cat := catalog.New(entries, hardware.Get, func() string { return cfg.Get().ModelsDir })
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)
@@ -174,6 +187,9 @@ func serverArgs(c config.Config, m models.Model, port int, embedding bool) []str
 	args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
 	if embedding {
 		args = append(args, "--embeddings")
+	} else {
+		// The catalog's memory estimates assume this context; the user's own -c comes later and wins.
+		args = append(args, "-c", defaultContext)
 	}
 	// Embedding servers never take images, so a projector would only cost memory there.
 	if m.MMProj != "" && !embedding && c.UseMMProj(m.ID) {

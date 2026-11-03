@@ -1,0 +1,2 @@
+Available devices:
+  Vulkan0: NVIDIA GeForce RTX 4070 SUPER (12213 MiB, 11033 MiB free)
