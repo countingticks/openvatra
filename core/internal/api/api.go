@@ -20,6 +20,10 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
 	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
 	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
+	mux.HandleFunc("GET /api/state", stateHandler(rt, listModels))
+	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels))
+	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
+	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

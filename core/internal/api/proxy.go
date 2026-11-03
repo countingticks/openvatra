@@ -17,9 +17,13 @@ import (
 // inline images are large, but not this large.
 const maxRequestBody = 64 << 20
 
-// Router hands out a ready llama-server for a request. *router.Router satisfies it.
+// Router hands out ready llama-servers and reports on them. *router.Router satisfies it.
 type Router interface {
 	Acquire(ctx context.Context, kind router.Kind, model string) (baseURL string, release func(), err error)
+	Snapshot() []router.ModelState
+	Subscribe() (<-chan struct{}, func())
+	Load(ctx context.Context, id string) error
+	Unload(id string) bool
 }
 
 // proxy forwards a request to the llama-server the router picks. Chat requests

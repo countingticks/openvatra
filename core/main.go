@@ -43,6 +43,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	modelsDir := fs.String("models-dir", "", "folder to search for .gguf models")
 	llamaServer := fs.String("llama-server", "", "full path to llama-server.exe")
 	embeddingModel := fs.String("embedding-model", "", "id of the model that serves /v1/embeddings")
+	idleMinutes := fs.Int("idle-minutes", 15, "unload a model after this many idle minutes; 0 never unloads")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -80,6 +81,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	rt := router.New(router.Config{
 		NewBackend:     newBackendFunc(*llamaServer, *modelsDir),
 		EmbeddingModel: func() string { return *embeddingModel },
+		IdleTimeout:    func() time.Duration { return time.Duration(*idleMinutes) * time.Minute },
 	})
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop, listModels, rt)}

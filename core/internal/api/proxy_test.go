@@ -21,7 +21,20 @@ type stubRouter struct {
 	kind     router.Kind
 	model    string
 	released atomic.Bool
+
+	snapshot []router.ModelState
+	changes  chan struct{}
+	loaded   string
+	unloaded string
+	unloadOK bool
 }
+
+func (s *stubRouter) Snapshot() []router.ModelState { return s.snapshot }
+func (s *stubRouter) Subscribe() (<-chan struct{}, func()) {
+	return s.changes, func() {}
+}
+func (s *stubRouter) Load(_ context.Context, id string) error { s.loaded = id; return s.err }
+func (s *stubRouter) Unload(id string) bool                   { s.unloaded = id; return s.unloadOK }
 
 func (s *stubRouter) Acquire(_ context.Context, kind router.Kind, model string) (string, func(), error) {
 	s.kind, s.model = kind, model
