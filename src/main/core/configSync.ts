@@ -9,16 +9,8 @@ function argList(text: string | undefined): string[] {
   return result.ok ? result.args : []
 }
 
-/**
- * One model's options for core. A model's own idle time is left out when unset, because core tells "use the global
- * one" (missing) apart from "never" (0).
- */
 function toCoreOptions(options: ModelOptions): Record<string, unknown> {
-  return {
-    args: argList(options.args),
-    ...(options.idleUnloadMinutes !== undefined && { idleUnloadMinutes: options.idleUnloadMinutes ?? 0 }),
-    mmproj: options.mmproj ?? true
-  }
+  return { args: argList(options.args) }
 }
 
 /**
@@ -31,7 +23,6 @@ export function toCoreConfig(models: ModelsSettings): Record<string, unknown> {
     modelsDir: models.modelsDir ?? '',
     embeddingModel: models.embeddingModel ?? '',
     idleUnloadMinutes: models.idleUnloadMinutes ?? 0,
-    sharedArgs: argList(models.sharedArgs),
     options: Object.fromEntries(
       Object.entries(models.options).map(([id, options]) => [id, toCoreOptions(options)])
     )

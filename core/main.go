@@ -166,10 +166,9 @@ func serverArgs(c config.Config, m models.Model, port int, embedding bool) []str
 	return append(args, modelArgs(c, m.ID)...)
 }
 
-// modelArgs are the user's arguments for one model: the shared ones, then the model's own, so the model's win
-// (llama-server keeps the last value of a repeated flag).
+// modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.
 func modelArgs(c config.Config, id string) []string {
-	return append(slices.Clone(c.SharedArgs), c.Options[id].Args...)
+	return slices.Clone(c.Options[id].Args)
 }
 
 // watchStdin blocks until stdin is closed, then calls onClose. Electron never

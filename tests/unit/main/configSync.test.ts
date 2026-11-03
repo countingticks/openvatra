@@ -13,7 +13,6 @@ describe('toCoreConfig', () => {
     const models = {
       ...defaultSettings.models,
       idleUnloadMinutes: null,
-      sharedArgs: '-fa on --jinja',
       options: { qwen: { args: '-c 4096 --alias "my qwen"' }, gemma: {} }
     }
     expect(toCoreConfig(models)).toEqual({
@@ -21,27 +20,11 @@ describe('toCoreConfig', () => {
       modelsDir: '',
       embeddingModel: '',
       idleUnloadMinutes: 0,
-      sharedArgs: ['-fa', 'on', '--jinja'],
       options: {
-        qwen: { args: ['-c', '4096', '--alias', 'my qwen'], mmproj: true },
-        gemma: { args: [], mmproj: true }
+        qwen: { args: ['-c', '4096', '--alias', 'my qwen'] },
+        gemma: { args: [] }
       }
     })
-  })
-
-  it("sends a model's own idle time and projector switch, and leaves an unset idle time out", () => {
-    const models = {
-      ...defaultSettings.models,
-      options: {
-        own: { idleUnloadMinutes: 60 as const, mmproj: false },
-        never: { idleUnloadMinutes: null },
-        unset: {}
-      }
-    }
-    const { options } = toCoreConfig(models) as { options: Record<string, object> }
-    expect(options.own).toEqual({ args: [], idleUnloadMinutes: 60, mmproj: false })
-    expect(options.never).toEqual({ args: [], idleUnloadMinutes: 0, mmproj: true })
-    expect(options.unset).not.toHaveProperty('idleUnloadMinutes')
   })
 })
 

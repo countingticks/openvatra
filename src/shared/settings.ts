@@ -12,8 +12,9 @@ export type TabId = (typeof tabIds)[number]
  * Bump when the file's shape changes in a way old files can't satisfy, and add a migration for it
  * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'. 3: added `models`.
  * 4: model options became llama-swap style argument text (`sharedArgs`, `options[id].args`).
+ * 5: `sharedArgs` and the per-model unload time and projector switch were removed.
  */
-export const settingsSchemaVersion = 4
+export const settingsSchemaVersion = 5
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -46,14 +47,12 @@ const argsText = z
 const modelId = z.string().min(1)
 const idleUnloadMinutes = z.union(idleUnloadMinutesChoices.map((minutes) => z.literal(minutes))).nullable()
 
-/** One model's own settings; a missing field means "as for every model". */
+/**
+ * One model's own settings. Arguments are the only option: the projector is passed whenever one is found
+ * (`--no-mmproj` in the arguments turns that off), and models unload by the global time.
+ */
 export const modelOptionsSchema = z.strictObject({
-  /** Added after `sharedArgs`, so a model can override a shared flag (llama-server keeps the last). */
-  args: argsText.optional(),
-  /** Overrides the global `idleUnloadMinutes`; missing = use the global one, null = never. */
-  idleUnloadMinutes: idleUnloadMinutes.optional(),
-  /** Pass the detected vision projector (`--mmproj`); missing = on. Off saves VRAM on models used for text only. */
-  mmproj: z.boolean().optional()
+  args: argsText.optional()
 })
 const modelOptionsById = z.record(modelId, modelOptionsSchema)
 
@@ -65,8 +64,6 @@ export const modelsSettingsSchema = z.object({
   /** A model id (its file name without .gguf). */
   embeddingModel: modelId.nullable().default(null),
   idleUnloadMinutes: idleUnloadMinutes.default(15),
-  /** Arguments for every model, like a llama-swap macro. */
-  sharedArgs: argsText.default(''),
   options: modelOptionsById.default({})
 })
 
@@ -121,7 +118,6 @@ export const settingsPatchSchema = z.strictObject({
     .strictObject({
       embeddingModel: modelId.nullable().optional(),
       idleUnloadMinutes: idleUnloadMinutes.optional(),
-      sharedArgs: argsText.optional(),
       /** The whole map: the UI sends every model's options, not one model's. */
       options: modelOptionsById.optional()
     })

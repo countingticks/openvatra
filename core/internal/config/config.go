@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -12,13 +13,9 @@ import (
 
 // ModelOptions are one model's own settings.
 type ModelOptions struct {
-	// Args go after Config.SharedArgs, so a model can override a shared flag (llama-server keeps the last).
+	// Args is an argument list handed straight to the process, never a command string, so nothing is interpreted by
+	// a shell. "--no-mmproj" in it stops core from adding the detected projector.
 	Args []string `json:"args"`
-	// IdleUnloadMinutes overrides Config.IdleUnloadMinutes for this model. A pointer, because "not set" (nil: use
-	// the global value) and "never" (0) are different choices.
-	IdleUnloadMinutes *int `json:"idleUnloadMinutes"`
-	// MMProj switches the detected vision projector off when false; nil (main sent nothing) means on.
-	MMProj *bool `json:"mmproj"`
 }
 
 // Config is one complete snapshot. Empty strings mean "not chosen yet".
@@ -28,11 +25,8 @@ type Config struct {
 	// EmbeddingModel is a model id.
 	EmbeddingModel string `json:"embeddingModel"`
 	// IdleUnloadMinutes is 0 for "never unload" (main sends null).
-	IdleUnloadMinutes int `json:"idleUnloadMinutes"`
-	// SharedArgs go to every model's llama-server. Like Args, an argument list handed straight to the process,
-	// never a command string, so nothing is interpreted by a shell.
-	SharedArgs []string                `json:"sharedArgs"`
-	Options    map[string]ModelOptions `json:"options"`
+	IdleUnloadMinutes int                     `json:"idleUnloadMinutes"`
+	Options           map[string]ModelOptions `json:"options"`
 }
 
 // Flags core itself decides: main may not override them through arguments. src/shared/args.ts keeps the same list.
@@ -46,38 +40,28 @@ func (c Config) Validate() error {
 	if c.IdleUnloadMinutes < 0 {
 		return errors.New("idleUnloadMinutes must not be negative")
 	}
-	if err := validateArgs(c.SharedArgs); err != nil {
-		return fmt.Errorf("sharedArgs: %w", err)
-	}
 	for id, o := range c.Options {
 		if err := validateArgs(o.Args); err != nil {
 			return fmt.Errorf("options for %q: %w", id, err)
-		}
-		if o.IdleUnloadMinutes != nil && *o.IdleUnloadMinutes < 0 {
-			return fmt.Errorf("options for %q: idleUnloadMinutes must not be negative", id)
 		}
 	}
 	return nil
 }
 
-// IdleTimeout is how long model id may sit unused before core unloads it: its own setting if it has one, else the
-// global one. Zero means never. The embedding model defaults to never: it is small, and every RAG question needs it
-// first, so reloading it would delay answers by seconds to save little memory.
+// IdleTimeout is how long model id may sit unused before core unloads it. Zero means never. The embedding model never
+// unloads: it is small, and every RAG question needs it first, so reloading it would delay answers by seconds to
+// save little memory.
 func (c Config) IdleTimeout(id string) time.Duration {
-	minutes := c.IdleUnloadMinutes
 	if id == c.EmbeddingModel {
-		minutes = 0
+		return 0
 	}
-	if own := c.Options[id].IdleUnloadMinutes; own != nil {
-		minutes = *own
-	}
-	return time.Duration(minutes) * time.Minute
+	return time.Duration(c.IdleUnloadMinutes) * time.Minute
 }
 
-// UseMMProj reports whether model id should get its vision projector (when one was found). On unless switched off.
+// UseMMProj reports whether model id gets its vision projector (when one was found): always, unless its own
+// arguments contain --no-mmproj, which llama-server itself also understands.
 func (c Config) UseMMProj(id string) bool {
-	own := c.Options[id].MMProj
-	return own == nil || *own
+	return !slices.Contains(c.Options[id].Args, "--no-mmproj")
 }
 
 func validateArgs(args []string) error {

@@ -168,11 +168,11 @@ func TestConfigReplacesTheWholeConfig(t *testing.T) {
 		return rec.Code
 	}
 
-	if code := post(`{"modelsDir":"D:/models","idleUnloadMinutes":null,"sharedArgs":["-fa","on"],"options":{"a":{"args":["-c","4096"]}}}`); code != http.StatusNoContent {
+	if code := post(`{"modelsDir":"D:/models","idleUnloadMinutes":null,"options":{"a":{"args":["-c","4096"]}}}`); code != http.StatusNoContent {
 		t.Fatalf("valid config: status = %d, want 204", code)
 	}
 	got := store.Get()
-	if got.ModelsDir != `D:/models` || got.IdleUnloadMinutes != 0 || len(got.SharedArgs) != 2 || len(got.Options["a"].Args) != 2 {
+	if got.ModelsDir != `D:/models` || got.IdleUnloadMinutes != 0 || len(got.Options["a"].Args) != 2 {
 		t.Fatalf("stored = %+v", got)
 	}
 
@@ -180,6 +180,7 @@ func TestConfigReplacesTheWholeConfig(t *testing.T) {
 		"not json":      `{`,
 		"unknown field": `{"modelDir":"x"}`,
 		"invalid value": `{"idleUnloadMinutes":-5}`,
+		"removed field": `{"sharedArgs":["-fa","on"]}`,
 	} {
 		if code := post(body); code != http.StatusBadRequest {
 			t.Fatalf("%s: status = %d, want 400", name, code)

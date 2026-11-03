@@ -27,6 +27,23 @@ const migrations: Readonly<Record<number, Migration>> = {
       ])
     )
     return { ...old, models: { ...models, options } }
+  },
+  // 4 → 5: no arguments for every model, no per-model unload time or projector switch. An options entry left
+  // without `args` is removed, so the file doesn't keep empty objects.
+  4: (old) => {
+    const models = old['models']
+    if (!isRecord(models)) return old
+    const rest = { ...models }
+    delete rest['sharedArgs']
+    const options = isRecord(rest['options'])
+      ? Object.fromEntries(
+          Object.entries(rest['options']).flatMap(([id, value]) => {
+            if (!isRecord(value) || typeof value['args'] !== 'string' || value['args'] === '') return []
+            return [[id, { args: value['args'] }]]
+          })
+        )
+      : undefined
+    return { ...old, models: { ...rest, ...(options && { options }) } }
   }
 }
 
@@ -44,7 +61,7 @@ function argsFromV3(options: Record<string, unknown>): Record<string, unknown> {
 
 /** What happened while loading, so the caller can log it. */
 export type LoadOutcome =
-  | { kind: 'loaded' }
+  | { kind: 'loaded'; droppedSharedArgs?: true }
   | { kind: 'missing' }
   | { kind: 'recovered'; reason: 'corrupt' | 'invalid'; backupPath: string }
   | { kind: 'unreadable'; error: unknown }
@@ -56,6 +73,13 @@ export interface LoadResult {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** A v4 file whose shared arguments v5 throws away; worth one log line, because the user typed them. */
+function hadSharedArgs(raw: unknown): boolean {
+  if (!isRecord(raw) || raw['schemaVersion'] !== 4 || !isRecord(raw['models'])) return false
+  const text = raw['models']['sharedArgs']
+  return typeof text === 'string' && text.trim() !== ''
 }
 
 /** Upgrades an older file step by step. Anything it doesn't recognise is returned unchanged for zod to reject. */
@@ -95,7 +119,10 @@ export async function loadSettings(filePath: string): Promise<LoadResult> {
 
   const parsed = settingsSchema.safeParse(migrate(raw))
   if (!parsed.success) return setAside(filePath, 'invalid')
-  return { settings: parsed.data, outcome: { kind: 'loaded' } }
+  return {
+    settings: parsed.data,
+    outcome: { kind: 'loaded', ...(hadSharedArgs(raw) && { droppedSharedArgs: true }) }
+  }
 }
 
 /** Keeps the bad file as `.bak` (replacing an older backup) so the user's data is never silently lost. */
@@ -116,6 +143,8 @@ export function logLoadOutcome(logger: Logger, filePath: string, outcome: LoadOu
   switch (outcome.kind) {
     case 'loaded':
       logger.info(`Settings loaded from ${filePath}`)
+      if (outcome.droppedSharedArgs)
+        logger.info('Dropped the arguments for every model (removed in settings v5)')
       break
     case 'missing':
       logger.info(`No settings file at ${filePath} yet; using defaults`)
