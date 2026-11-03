@@ -34,7 +34,8 @@ export function SegmentedControl<T extends string>({
         <Radio.Root
           key={option.value}
           value={option.value}
-          className="h-7 rounded-md px-3 text-[13px] whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-card data-checked:font-medium data-checked:text-foreground data-checked:shadow-sm dark:data-checked:bg-accent"
+          // inline-flex + items-center: Base UI renders each option inline, so the label would sit on the baseline.
+          className="inline-flex h-7 items-center justify-center rounded-md px-3 text-[13px] whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-card data-checked:font-medium data-checked:text-foreground data-checked:shadow-sm dark:data-checked:bg-accent"
         >
           {option.label}
         </Radio.Root>
