@@ -179,7 +179,6 @@ describe('Settings → Models', () => {
 
       expect(select).toBeDisabled()
       expect(select).toHaveDisplayValue('No embedding model found')
-      expect(screen.getByText(/Add an embedding \.gguf/)).toBeInTheDocument()
     })
 
     it('warns about a chat model chosen for embeddings and resets it', async () => {

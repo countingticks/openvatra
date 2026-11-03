@@ -111,9 +111,7 @@ export function ModelList(): React.JSX.Element {
               <Label htmlFor={embeddingId} className="text-sm">
                 Embedding model
               </Label>
-              <p className="text-[12.5px] text-muted-foreground">
-                Powers document search.
-              </p>
+              <p className="text-[12.5px] text-muted-foreground">Powers document search.</p>
             </div>
             <select
               id={embeddingId}
