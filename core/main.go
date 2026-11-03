@@ -16,6 +16,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/models"
+	"github.com/countingticks/openvatra/core/internal/process"
 )
 
 const version = "0.1.0"
@@ -46,6 +47,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	token := os.Getenv(tokenEnv)
 	if token == "" {
 		return fmt.Errorf("%s is not set", tokenEnv)
+	}
+
+	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
+	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
+	if err := process.SetupTreeCleanup(); err != nil {
+		fmt.Fprintln(os.Stderr, "core: job object:", err)
 	}
 
 	// Loopback only: never reachable from other PCs.
