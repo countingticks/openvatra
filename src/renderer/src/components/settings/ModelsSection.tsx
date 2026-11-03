@@ -3,20 +3,13 @@ import { ModelList } from '@renderer/components/settings/ModelList'
 import { PathRow } from '@renderer/components/settings/PathRow'
 import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
+import { ArgsField } from '@renderer/components/settings/ArgsField'
+import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged, settingsReplaced } from '@renderer/store/settingsSlice'
 import type { PickTarget } from '../../../../shared/ipc'
 
-// The segmented control works with strings; each option carries the minutes it stands for.
-const idleOptions = [
-  { value: '5', label: '5 min', minutes: 5 },
-  { value: '15', label: '15 min', minutes: 15 },
-  { value: '30', label: '30 min', minutes: 30 },
-  { value: '60', label: '1 hour', minutes: 60 },
-  { value: 'never', label: 'Never', minutes: null }
-] as const
-
-/** Settings → Models: where llama.cpp and the models are, when idle models go, and the models themselves. */
+/** Settings → Models: where llama.cpp and the models are, arguments and idle time for all models, and the models. */
 export function ModelsSection(): React.JSX.Element {
   const { models } = useAppSelector(selectSettings)
   const dispatch = useAppDispatch()
@@ -71,6 +64,16 @@ export function ModelsSection(): React.JSX.Element {
           }}
         />
       </SettingRow>
+
+      <div className="border-b border-border py-4">
+        <ArgsField
+          label="Arguments for every model"
+          value={models.sharedArgs}
+          placeholder="-fa on -ctk q8_0 -ctv q8_0 --jinja"
+          hint='llama-server arguments, typed like in a llama-swap config. Use "…" around values with spaces.'
+          onCommit={(text) => dispatch(settingsChanged({ models: { sharedArgs: text } }))}
+        />
+      </div>
 
       <ModelList />
     </div>

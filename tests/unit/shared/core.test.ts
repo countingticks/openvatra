@@ -22,10 +22,12 @@ describe('isCoreState', () => {
 describe('isModelList', () => {
   const model = { id: 'qwen', state: 'ready', busy: false, sizeBytes: 5_000_000_000 }
 
-  it.each([[[]], [[model]], [[{ ...model, state: 'error', error: 'llama-server.exe not found' }]]])(
-    'accepts %j',
-    (list) => expect(isModelList(list)).toBe(true)
-  )
+  it.each([
+    [[]],
+    [[model]],
+    [[{ ...model, projector: 'mmproj-qwen.gguf' }]],
+    [[{ ...model, state: 'error', error: 'llama-server.exe not found' }]]
+  ])('accepts %j', (list) => expect(isModelList(list)).toBe(true))
 
   it.each([
     null,
@@ -34,6 +36,7 @@ describe('isModelList', () => {
     [{ ...model, sizeBytes: '5 GB' }],
     [{ ...model, busy: undefined }],
     [{ ...model, error: 42 }],
+    [{ ...model, projector: 7 }],
     [model, null]
   ])('rejects %j', (value) => expect(isModelList(value)).toBe(false))
 })

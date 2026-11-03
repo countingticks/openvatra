@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
@@ -16,6 +17,8 @@ const stateStopped = "stopped"
 type modelState struct {
 	router.ModelState
 	SizeBytes int64 `json:"sizeBytes"`
+	// Projector is the detected vision projector's file name (never its path); left out when there is none.
+	Projector string `json:"projector,omitempty"`
 }
 
 // stateBody is the JSON of GET /api/state and of every "state" event.
@@ -40,7 +43,11 @@ func currentState(rt Router, list func() ([]models.Model, error)) (stateBody, er
 		if !ok {
 			st = router.ModelState{ID: m.ID, State: stateStopped}
 		}
-		out = append(out, modelState{ModelState: st, SizeBytes: m.SizeBytes})
+		projector := ""
+		if m.MMProj != "" {
+			projector = filepath.Base(m.MMProj)
+		}
+		out = append(out, modelState{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector})
 	}
 	return stateBody{Models: out}, nil
 }

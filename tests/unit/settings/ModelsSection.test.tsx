@@ -81,6 +81,36 @@ describe('Settings → Models', () => {
     expect(within(group).getByRole('radio', { name: 'Never' })).toBeChecked()
   })
 
+  describe('arguments for every model', () => {
+    it('saves the text when the box loses focus', async () => {
+      const { saveSettings } = await openModels({ ...chosen, sharedArgs: '--jinja' })
+      const box = screen.getByLabelText('Arguments for every model')
+      expect(box).toHaveValue('--jinja')
+
+      fireEvent.change(box, { target: { value: ' -fa on --jinja ' } })
+      expect(saveSettings).not.toHaveBeenCalled()
+      fireEvent.blur(box)
+
+      await waitFor(() =>
+        expect(saveSettings).toHaveBeenCalledWith({ models: { sharedArgs: '-fa on --jinja' } })
+      )
+    })
+
+    it('explains a refused flag or an open quote, and saves nothing', async () => {
+      const { saveSettings } = await openModels()
+      const box = screen.getByLabelText('Arguments for every model')
+
+      fireEvent.change(box, { target: { value: '-m other.gguf' } })
+      fireEvent.blur(box)
+      expect(box).toHaveAccessibleDescription("-m is set by OpenVatra and can't be changed.")
+
+      fireEvent.change(box, { target: { value: '--alias "oops' } })
+      fireEvent.blur(box)
+      expect(box).toHaveAccessibleDescription('A quote " is not closed.')
+      expect(saveSettings).not.toHaveBeenCalled()
+    })
+  })
+
   describe('empty and problem states', () => {
     it('says the service is starting', async () => {
       await openModels()
@@ -208,6 +238,61 @@ describe('Settings → Models', () => {
       expect(args).toHaveAttribute('aria-invalid', 'true')
       expect(args).toHaveAccessibleDescription("--port is set by OpenVatra and can't be changed.")
       expect(saveSettings).not.toHaveBeenCalled()
+    })
+
+    it('shows the detected projector and saves the switch, off as false and on as no entry', async () => {
+      const rendered = await openModels(
+        { ...chosen, options: {} },
+        { coreState: ready, models: [{ ...qwen, projector: 'mmproj-qwen.gguf' }, nomic] }
+      )
+      fireEvent.click(await screen.findByRole('button', { name: `Options for ${qwen.id}` }))
+      const group = screen.getByRole('group', { name: `Options for ${qwen.id}` })
+      const projector = within(group).getByRole('switch', { name: 'Use vision projector' })
+      expect(within(group).getByText('mmproj-qwen.gguf')).toBeInTheDocument()
+      expect(projector).toBeChecked()
+
+      fireEvent.click(projector)
+      await waitFor(() =>
+        expect(rendered.saveSettings).toHaveBeenLastCalledWith({
+          models: { options: { [qwen.id]: { mmproj: false } } }
+        })
+      )
+
+      fireEvent.click(projector)
+      await waitFor(() => expect(rendered.saveSettings).toHaveBeenLastCalledWith({ models: { options: {} } }))
+    })
+
+    it('disables the projector switch when none was found', async () => {
+      const { group } = await openOptions()
+      expect(within(group).getByRole('switch', { name: 'Use vision projector' })).toHaveAttribute(
+        'aria-disabled',
+        'true'
+      )
+      expect(within(group).getByText('No projector found next to this model.')).toBeInTheDocument()
+    })
+
+    it('saves "Unload after": Default removes the key, Never is null', async () => {
+      const { saveSettings, group } = await openOptions()
+      const unload = within(group).getByRole('radiogroup', { name: 'Unload after' })
+      expect(within(unload).getByRole('radio', { name: 'Default' })).toBeChecked()
+
+      fireEvent.click(within(unload).getByRole('radio', { name: 'Never' }))
+      await waitFor(() =>
+        expect(saveSettings).toHaveBeenLastCalledWith({
+          models: { options: { [qwen.id]: { idleUnloadMinutes: null } } }
+        })
+      )
+      expect(within(unload).getByRole('radio', { name: 'Never' })).toBeChecked()
+
+      fireEvent.click(within(unload).getByRole('radio', { name: '30 min' }))
+      await waitFor(() =>
+        expect(saveSettings).toHaveBeenLastCalledWith({
+          models: { options: { [qwen.id]: { idleUnloadMinutes: 30 } } }
+        })
+      )
+
+      fireEvent.click(within(unload).getByRole('radio', { name: 'Default' }))
+      await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { options: {} } }))
     })
 
     it('drops the model’s entry when the box is emptied', async () => {

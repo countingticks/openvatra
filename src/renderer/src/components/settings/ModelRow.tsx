@@ -117,7 +117,13 @@ export function ModelRow({
         </p>
       )}
       {expanded && (
-        <ModelOptionsForm id={ids.options} modelId={model.id} options={options} onChange={onOptions} />
+        <ModelOptionsForm
+          id={ids.options}
+          modelId={model.id}
+          projector={model.projector}
+          options={options}
+          onChange={onOptions}
+        />
       )}
     </li>
   )

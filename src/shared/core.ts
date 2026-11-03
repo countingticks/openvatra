@@ -26,17 +26,20 @@ export interface ModelInfo {
   /** Why the last load failed; only with state 'error'. */
   error?: string
   sizeBytes: number
+  /** File name of the detected vision projector; missing when the model has none. */
+  projector?: string
 }
 
 function isModelInfo(value: unknown): value is ModelInfo {
   if (typeof value !== 'object' || value === null) return false
-  const { id, state, busy, error, sizeBytes } = value as Record<string, unknown>
+  const { id, state, busy, error, sizeBytes, projector } = value as Record<string, unknown>
   return (
     typeof id === 'string' &&
     modelStates.includes(state as ModelInfo['state']) &&
     typeof busy === 'boolean' &&
     (error === undefined || typeof error === 'string') &&
-    typeof sizeBytes === 'number'
+    typeof sizeBytes === 'number' &&
+    (projector === undefined || typeof projector === 'string')
   )
 }
 
