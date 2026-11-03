@@ -6,16 +6,20 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/models"
+	"github.com/countingticks/openvatra/core/internal/router"
 )
 
 // NewHandler returns the router for every core endpoint, behind the token and
 // Host checks. port is the one core listens on; shutdown is called (once the
 // reply is sent) when a client asks core to stop; listModels reports the models
-// currently on disk (a function, because the folder will change at runtime).
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error)) http.Handler {
+// currently on disk (a function, because the folder will change at runtime); rt
+// picks the model server for the chat and embedding endpoints.
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
+	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
+	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

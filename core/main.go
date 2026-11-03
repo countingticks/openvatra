@@ -12,11 +12,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
+	"github.com/countingticks/openvatra/core/internal/router"
 )
 
 const version = "0.1.0"
@@ -39,6 +41,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	// Temporary: main will send the folder through POST /api/config (later task).
 	modelsDir := fs.String("models-dir", "", "folder to search for .gguf models")
+	llamaServer := fs.String("llama-server", "", "full path to llama-server.exe")
+	embeddingModel := fs.String("embedding-model", "", "id of the model that serves /v1/embeddings")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -73,7 +77,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	go watchStdin(stdin, stop)
 
 	listModels := func() ([]models.Model, error) { return models.Discover(*modelsDir) }
-	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop, listModels)}
+	rt := router.New(router.Config{
+		NewBackend:     newBackendFunc(*llamaServer, *modelsDir),
+		EmbeddingModel: func() string { return *embeddingModel },
+	})
+	defer rt.Close() // after the server is down, so no request is mid-stream
+	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop, listModels, rt)}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -93,6 +102,32 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// newBackendFunc builds the router's server factory: look the model up on disk,
+// give its llama-server a free port, and add --embeddings when asked.
+func newBackendFunc(llamaServer, modelsDir string) func(id string, embedding bool) (router.Backend, error) {
+	return func(id string, embedding bool) (router.Backend, error) {
+		found, err := models.Discover(modelsDir)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range found {
+			if m.ID != id {
+				continue
+			}
+			port, err := process.FreePort()
+			if err != nil {
+				return nil, err
+			}
+			args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
+			if embedding {
+				args = append(args, "--embeddings")
+			}
+			return process.New(process.Config{Path: llamaServer, Args: args, Port: port}), nil
+		}
+		return nil, router.ErrUnknownModel
+	}
 }
 
 // watchStdin blocks until stdin is closed, then calls onClose. Electron never
