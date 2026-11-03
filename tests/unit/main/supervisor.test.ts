@@ -352,7 +352,7 @@ describe('core supervisor', () => {
   })
 })
 
-describe('core supervisor: onReady and post', () => {
+describe('core supervisor: onReady, post and request', () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
@@ -394,10 +394,12 @@ describe('core supervisor: onReady and post', () => {
     await supervisor.post('/api/config', { modelsDir: 'x' })
 
     const token = (spawn.mock.calls[0][1] as NodeJS.ProcessEnv)['OPENVATRA_CORE_TOKEN']
-    expect(fetchMock).toHaveBeenLastCalledWith('http://127.0.0.1:53121/api/config', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: '{"modelsDir":"x"}'
+    const [url, init] = fetchMock.mock.lastCall as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:53121/api/config')
+    expect(init).toMatchObject({ method: 'POST', body: '{"modelsDir":"x"}' })
+    expect(Object.fromEntries(new Headers(init.headers))).toEqual({
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json'
     })
 
     fetchMock.mockResolvedValueOnce({ ok: false, status: 400 })
@@ -407,5 +409,21 @@ describe('core supervisor: onReady and post', () => {
   it('rejects a post while core is not ready', async () => {
     const { supervisor } = start(vi.fn())
     await expect(supervisor.post('/api/config', {})).rejects.toThrow('not ready')
+  })
+
+  it('sends any request with the token and hands back the response, whatever its status', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    const { child, spawn, supervisor } = start(fetchMock)
+    child.stdout.write(readyLine(53121))
+    await vi.advanceTimersByTimeAsync(0)
+    const notFound = { ok: false, status: 404 }
+    fetchMock.mockResolvedValueOnce(notFound)
+
+    expect(await supervisor.request('/api/state')).toBe(notFound)
+
+    const token = (spawn.mock.calls[0][1] as NodeJS.ProcessEnv)['OPENVATRA_CORE_TOKEN']
+    const [url, init] = fetchMock.mock.lastCall as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:53121/api/state')
+    expect(new Headers(init.headers).get('Authorization')).toBe(`Bearer ${token}`)
   })
 })

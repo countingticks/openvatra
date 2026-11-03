@@ -1,7 +1,7 @@
 // The complete API the renderer may use, exposed by the preload as `window.api`.
 // This file is the trust boundary: the UI can do exactly what is listed here and nothing else.
 // Keep it small; every addition must be reviewed (see AGENTS.md, "Ask first").
-import type { CoreState } from './core'
+import type { CoreState, ModelInfo } from './core'
 import type { Settings, SettingsPatch } from './settings'
 
 /** Channel names shared by the preload (sends) and main (answers), so the two can't drift apart. */
@@ -10,6 +10,7 @@ export const ipcChannels = {
   settingsUpdate: 'settings:update',
   filesLocations: 'files:locations',
   filesOpenFolder: 'files:open-folder',
+  filesPick: 'files:pick',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
@@ -22,7 +23,12 @@ export const ipcChannels = {
   /** Main → UI: sent with the new CoreState on every change. */
   coreStateChanged: 'core:state-changed',
   coreRestart: 'core:restart',
-  coreOpenLog: 'core:open-log'
+  coreOpenLog: 'core:open-log',
+  coreGetModels: 'core:get-models',
+  /** Main → UI: sent with the new ModelInfo[] on every change. */
+  coreModelsChanged: 'core:models-changed',
+  coreLoad: 'core:load',
+  coreUnload: 'core:unload'
 } as const
 
 /** The Edit menu's commands, run by Chromium on whatever is focused in the page. */
@@ -59,11 +65,21 @@ export interface FileLocations {
   readonly logsFolder: string
 }
 
+/** The paths the user can choose in Settings → Models, by name. */
+export const pickTargets = ['llamaServer', 'modelsDir'] as const
+export type PickTarget = (typeof pickTargets)[number]
+
 export interface FilesApi {
   /** Where the app keeps its files, to show in Settings. */
   locations(): Promise<FileLocations>
   /** Opens that folder in File Explorer; rejects if it can't. */
   openFolder(folder: AppFolder): Promise<void>
+  /**
+   * Shows Windows' own Open dialog for that path and saves the choice. The UI never sends a path: core runs
+   * llama-server.exe, so only a file the user picked in the system dialog may become it. Resolves with the saved
+   * settings, or null if the user cancelled.
+   */
+  pick(target: PickTarget): Promise<Settings | null>
 }
 
 export interface RuntimeInfo {
@@ -91,6 +107,14 @@ export interface CoreApi {
   restart(): Promise<void>
   /** Opens main.log in the default app (or shows it in Explorer); rejects if it can't. */
   openLog(): Promise<void>
+  /** Every model in the models folder with its state; empty while core isn't ready. */
+  models(): Promise<ModelInfo[]>
+  /** Calls back with the whole list on every change; returns unsubscribe. */
+  onModels(callback: (models: ModelInfo[]) => void): () => void
+  /** Loads a model; resolves once it is ready (can take minutes), rejects with a short reason. */
+  load(id: string): Promise<void>
+  /** Asks for a model to be unloaded; it stops in the background (watch `onModels`). */
+  unload(id: string): Promise<void>
 }
 
 export interface Api {

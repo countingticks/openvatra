@@ -15,7 +15,7 @@ import (
 )
 
 func twoModels() ([]models.Model, error) {
-	return []models.Model{{ID: "a"}, {ID: "b"}}, nil
+	return []models.Model{{ID: "a", SizeBytes: 10}, {ID: "b", SizeBytes: 20}}, nil
 }
 
 func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
@@ -23,7 +23,7 @@ func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
 	rec := httptest.NewRecorder()
 	stateHandler(rt, twoModels)(rec, httptest.NewRequest(http.MethodGet, "/api/state", nil))
 
-	want := `{"models":[{"id":"a","state":"stopped","busy":false},{"id":"b","state":"ready","busy":true}]}`
+	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10},{"id":"b","state":"ready","busy":true,"sizeBytes":20}]}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Fatalf("body = %s\nwant   %s", got, want)
 	}

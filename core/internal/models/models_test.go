@@ -98,3 +98,27 @@ func TestDiscoverWithoutFolder(t *testing.T) {
 		})
 	}
 }
+
+func TestDiscoverSizes(t *testing.T) {
+	root := t.TempDir()
+	write := func(name string, size int) {
+		if err := os.WriteFile(filepath.Join(root, name), make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("small.gguf", 3)
+	write("big-00001-of-00002.gguf", 5)
+	write("big-00002-of-00002.gguf", 7)
+
+	got, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizes := map[string]int64{}
+	for _, m := range got {
+		sizes[m.ID] = m.SizeBytes
+	}
+	if want := map[string]int64{"big": 12, "small": 3}; !reflect.DeepEqual(sizes, want) {
+		t.Fatalf("sizes = %v, want %v (a split model counts all its parts)", sizes, want)
+	}
+}

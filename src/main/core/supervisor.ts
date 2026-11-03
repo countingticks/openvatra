@@ -43,6 +43,8 @@ export interface Supervisor {
   state: () => CoreState
   /** POSTs JSON to the running core. Rejects if core isn't ready, so callers can wait for `onReady` instead. */
   post: (path: string, body: unknown) => Promise<void>
+  /** Any request to the running core, with its token added. Rejects if core isn't ready; any HTTP status resolves. */
+  request: (path: string, init?: RequestInit) => Promise<Response>
   /** Stops the running core (if any) and starts a fresh one, forgetting earlier crashes. No-op once stop() ran. */
   restart: () => Promise<void>
 }
@@ -216,19 +218,25 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     }
   }
 
-  async function post(path: string, body: unknown): Promise<void> {
+  async function request(path: string, init: RequestInit = {}): Promise<Response> {
     const attempt = active
     if (current.status !== 'ready' || !attempt || attempt.port === undefined)
       throw new Error('core is not ready')
-    const response = await doFetch(`http://127.0.0.1:${attempt.port}${path}`, {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Bearer ${attempt.token}`)
+    return doFetch(`http://127.0.0.1:${attempt.port}${path}`, { ...init, headers })
+  }
+
+  async function post(path: string, body: unknown): Promise<void> {
+    const response = await request(path, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${attempt.token}`, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     })
     if (!response.ok) throw new Error(`core answered ${path} with HTTP ${response.status}`)
   }
 
-  return { start, stop, restart, post, state: () => current }
+  return { start, stop, restart, post, request, state: () => current }
 }
 
 function parseReadyLine(line: string): { port: number; version: string } | null {

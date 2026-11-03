@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isCoreState } from '../../../src/shared/core'
+import { isCoreState, isModelList } from '../../../src/shared/core'
 
 describe('isCoreState', () => {
   it.each([
@@ -17,4 +17,23 @@ describe('isCoreState', () => {
     { status: 'ready', port: 53121 },
     { status: 'problem' }
   ])('rejects %j', (value) => expect(isCoreState(value)).toBe(false))
+})
+
+describe('isModelList', () => {
+  const model = { id: 'qwen', state: 'ready', busy: false, sizeBytes: 5_000_000_000 }
+
+  it.each([[[]], [[model]], [[{ ...model, state: 'error', error: 'llama-server.exe not found' }]]])(
+    'accepts %j',
+    (list) => expect(isModelList(list)).toBe(true)
+  )
+
+  it.each([
+    null,
+    { models: [model] },
+    [{ ...model, state: 'running' }],
+    [{ ...model, sizeBytes: '5 GB' }],
+    [{ ...model, busy: undefined }],
+    [{ ...model, error: 42 }],
+    [model, null]
+  ])('rejects %j', (value) => expect(isModelList(value)).toBe(false))
 })

@@ -56,6 +56,29 @@ describe('createSettingsStore', () => {
     expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'code' })
   })
 
+  it('merges a models change into the saved models', async () => {
+    const { store } = setUp()
+    await store.setModelPath('modelsDir', 'D:/models')
+
+    await store.update({ models: { embeddingModel: 'nomic' } })
+
+    expect(store.get().models).toEqual({
+      ...defaultSettings.models,
+      modelsDir: 'D:/models',
+      embeddingModel: 'nomic'
+    })
+  })
+
+  it('sets a model path from main, which the UI patch cannot', async () => {
+    const { store, save } = setUp()
+
+    await store.setModelPath('llamaServerPath', 'C:/llama/llama-server.exe')
+
+    expect(store.get().models.llamaServerPath).toBe('C:/llama/llama-server.exe')
+    expect(save).toHaveBeenLastCalledWith(filePath, store.get())
+    await expect(store.update({ models: { llamaServerPath: 'C:/evil.exe' } })).rejects.toThrow()
+  })
+
   it('saves one change at a time, in the order they were made', async () => {
     let finishFirstSave = (): void => {}
     const saves: Settings[] = []

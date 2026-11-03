@@ -40,18 +40,20 @@ export const modelOptionsSchema = z.strictObject({
   extraArgs: z.array(z.string().max(1000)).max(50).optional()
 })
 
+// Bare field schemas, shared by the file schema (with defaults) and the UI patch (without).
+const modelId = z.string().min(1)
+const idleUnloadMinutes = z.union(idleUnloadMinutesChoices.map((minutes) => z.literal(minutes))).nullable()
+const modelOptionsById = z.record(modelId, modelOptionsSchema)
+
 /** What core needs to run models. main sends it to core.exe (POST /api/config) on start and on every change. */
 export const modelsSettingsSchema = z.object({
   /** Full path to llama-server.exe; null until chosen. */
   llamaServerPath: z.string().min(1).nullable().default(null),
   modelsDir: z.string().min(1).nullable().default(null),
   /** A model id (its file name without .gguf). */
-  embeddingModel: z.string().min(1).nullable().default(null),
-  idleUnloadMinutes: z
-    .union(idleUnloadMinutesChoices.map((minutes) => z.literal(minutes)))
-    .nullable()
-    .default(15),
-  options: z.record(z.string(), modelOptionsSchema).default({})
+  embeddingModel: modelId.nullable().default(null),
+  idleUnloadMinutes: idleUnloadMinutes.default(15),
+  options: modelOptionsById.default({})
 })
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
@@ -98,7 +100,34 @@ export const settingsPatchSchema = z.strictObject({
   lastTab: lastTab.optional(),
   closeAction: closeAction.optional(),
   sidebarOpen: sidebarOpen.optional(),
-  motion: motion.optional()
+  motion: motion.optional(),
+  // No paths: core runs llamaServerPath, so only main's own file dialog may set it (files.pick), never the UI.
+  models: z
+    .strictObject({
+      embeddingModel: modelId.nullable().optional(),
+      idleUnloadMinutes: idleUnloadMinutes.optional(),
+      /** The whole map: the UI sends every model's options, not one model's. */
+      options: modelOptionsById.optional()
+    })
+    .optional()
 })
 
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>
+
+/** Drops keys whose value is undefined: an optional key left out means "no change", not "store undefined". */
+function defined<T extends object>(patch: T): Partial<T> {
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as Partial<T>
+}
+
+/**
+ * The one merge rule, used by main (to save) and the UI (to show the change at once): top-level keys replace,
+ * `models` merges key by key, so changing the embedding model keeps the paths.
+ */
+export function applyPatch(settings: Settings, patch: SettingsPatch): Settings {
+  const { models, ...rest } = patch
+  return {
+    ...settings,
+    ...defined(rest),
+    ...(models && { models: { ...settings.models, ...defined(models) } })
+  }
+}

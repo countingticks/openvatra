@@ -11,9 +11,16 @@ import (
 
 const stateStopped = "stopped"
 
+// modelState is what the router knows about a model plus facts from disk.
+// The embedded struct's fields are flattened into the same JSON object.
+type modelState struct {
+	router.ModelState
+	SizeBytes int64 `json:"sizeBytes"`
+}
+
 // stateBody is the JSON of GET /api/state and of every "state" event.
 type stateBody struct {
-	Models []router.ModelState `json:"models"`
+	Models []modelState `json:"models"`
 }
 
 // currentState lists every model on disk: what the router knows about it, or
@@ -27,13 +34,13 @@ func currentState(rt Router, list func() ([]models.Model, error)) (stateBody, er
 	for _, m := range rt.Snapshot() {
 		known[m.ID] = m
 	}
-	out := make([]router.ModelState, 0, len(found)) // [] rather than null when empty
+	out := make([]modelState, 0, len(found)) // [] rather than null when empty
 	for _, m := range found {
 		st, ok := known[m.ID]
 		if !ok {
 			st = router.ModelState{ID: m.ID, State: stateStopped}
 		}
-		out = append(out, st)
+		out = append(out, modelState{ModelState: st, SizeBytes: m.SizeBytes})
 	}
 	return stateBody{Models: out}, nil
 }

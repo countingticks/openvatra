@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
 import {
+  applyPatch,
   defaultSettings,
   settingsPatchSchema,
   settingsSchema,
@@ -63,8 +64,21 @@ describe('models settings', () => {
     expect(settingsSchema.safeParse({ schemaVersion: 3, models }).success).toBe(false)
   })
 
-  it('cannot be changed by the UI patch (a later task adds that deliberately)', () => {
-    expect(settingsPatchSchema.safeParse({ models: {} }).success).toBe(false)
+  it('lets the UI change the embedding model, idle unload and options', () => {
+    const patch = {
+      models: { embeddingModel: 'nomic', idleUnloadMinutes: null, options: { qwen: { gpuLayers: 99 } } }
+    }
+    expect(settingsPatchSchema.parse(patch)).toEqual(patch)
+    expect(settingsPatchSchema.parse({ models: {} })).toEqual({ models: {} })
+  })
+
+  it.each([
+    ['llama-server.exe', { llamaServerPath: 'C:/evil.exe' }],
+    ['the models folder', { modelsDir: 'C:/' }],
+    ['an idle time not offered', { idleUnloadMinutes: 7 }],
+    ['an empty model id', { options: { '': {} } }]
+  ])("refuses %s from the UI (paths come only from main's file dialog)", (_case, models) => {
+    expect(settingsPatchSchema.safeParse({ models }).success).toBe(false)
   })
 })
 
@@ -159,5 +173,37 @@ describe('settingsPatchSchema', () => {
     ['an invalid value', { theme: 'blue' }]
   ])('rejects %s', (_case, input) => {
     expect(settingsPatchSchema.safeParse(input).success).toBe(false)
+  })
+})
+
+describe('applyPatch', () => {
+  const chosen: Settings = {
+    ...defaultSettings,
+    models: {
+      ...defaultSettings.models,
+      llamaServerPath: 'C:/llama/llama-server.exe',
+      modelsDir: 'D:/models'
+    }
+  }
+
+  it('replaces top-level keys and leaves the rest', () => {
+    expect(applyPatch(chosen, { theme: 'dark' })).toEqual({ ...chosen, theme: 'dark' })
+  })
+
+  it('merges models key by key, so the paths survive a change of embedding model', () => {
+    expect(applyPatch(chosen, { models: { embeddingModel: 'nomic' } }).models).toEqual({
+      ...chosen.models,
+      embeddingModel: 'nomic'
+    })
+  })
+
+  it('treats undefined as no change, at both levels', () => {
+    expect(applyPatch(chosen, { theme: undefined, models: { idleUnloadMinutes: undefined } })).toEqual(chosen)
+  })
+
+  it('does not change the settings it was given', () => {
+    const before = structuredClone(chosen)
+    applyPatch(chosen, { theme: 'dark', models: { embeddingModel: 'nomic' } })
+    expect(chosen).toEqual(before)
   })
 })
