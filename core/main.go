@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
+	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
 	"github.com/countingticks/openvatra/core/internal/router"
@@ -25,6 +27,9 @@ const version = "0.1.0"
 
 // tokenEnv is the environment variable Electron main passes the per-launch token in.
 const tokenEnv = "OPENVATRA_CORE_TOKEN"
+
+// logDirEnv is where Electron main says the logs folder is (core.log goes next to main.log).
+const logDirEnv = "OPENVATRA_LOG_DIR"
 
 // shutdownGrace is how long in-flight requests get to finish before we give up.
 const shutdownGrace = 5 * time.Second
@@ -54,10 +59,18 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return fmt.Errorf("%s is not set", tokenEnv)
 	}
 
+	logger, logOut, logCloser, err := logs.Setup(os.Getenv(logDirEnv))
+	if err != nil {
+		return fmt.Errorf("open log: %w", err)
+	}
+	defer logCloser.Close()
+	logger.Info("core starting", "version", version)
+	defer logger.Info("core stopped")
+
 	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
 	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
 	if err := process.SetupTreeCleanup(); err != nil {
-		fmt.Fprintln(os.Stderr, "core: job object:", err)
+		logger.Warn("job object setup failed", "err", err)
 	}
 
 	// Loopback only: never reachable from other PCs.
@@ -68,6 +81,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	// With port 0 the real port is only known after listening.
 	actualPort := ln.Addr().(*net.TCPAddr).Port
+	logger.Info("listening", "port", actualPort)
 	if err := writeReady(stdout, actualPort); err != nil {
 		return err
 	}
@@ -79,7 +93,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	listModels := func() ([]models.Model, error) { return models.Discover(*modelsDir) }
 	rt := router.New(router.Config{
-		NewBackend:     newBackendFunc(*llamaServer, *modelsDir),
+		NewBackend:     newBackendFunc(*llamaServer, *modelsDir, logger, logOut),
 		EmbeddingModel: func() string { return *embeddingModel },
 		IdleTimeout:    func() time.Duration { return time.Duration(*idleMinutes) * time.Minute },
 	})
@@ -107,8 +121,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 }
 
 // newBackendFunc builds the router's server factory: look the model up on disk,
-// give its llama-server a free port, and add --embeddings when asked.
-func newBackendFunc(llamaServer, modelsDir string) func(id string, embedding bool) (router.Backend, error) {
+// give its llama-server a free port, and add --embeddings when asked. Its output
+// goes to core.log, every line prefixed with the model id.
+func newBackendFunc(llamaServer, modelsDir string, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
 	return func(id string, embedding bool) (router.Backend, error) {
 		found, err := models.Discover(modelsDir)
 		if err != nil {
@@ -126,8 +141,10 @@ func newBackendFunc(llamaServer, modelsDir string) func(id string, embedding boo
 			if embedding {
 				args = append(args, "--embeddings")
 			}
-			return process.New(process.Config{Path: llamaServer, Args: args, Port: port}), nil
+			logger.Info("starting llama-server", "model", m.ID, "port", port, "embedding", embedding)
+			return process.New(process.Config{Path: llamaServer, Args: args, Port: port, Log: logs.Prefixed(logOut, m.ID)}), nil
 		}
+		logger.Warn("unknown model requested", "model", id)
 		return nil, router.ErrUnknownModel
 	}
 }

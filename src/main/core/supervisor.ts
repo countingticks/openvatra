@@ -10,6 +10,8 @@ export type { CoreState }
 
 /** Must match core/main.go: the per-launch token travels in the environment, never on the command line. */
 const tokenEnv = 'OPENVATRA_CORE_TOKEN'
+/** Must match core/main.go: where core writes core.log. */
+const logDirEnv = 'OPENVATRA_LOG_DIR'
 
 /** Wait before restart number 1, 2, ... after a crash. */
 const restartDelaysMs = [1_000, 5_000]
@@ -19,6 +21,8 @@ const maxCrashes = 3
 
 export interface SupervisorOptions {
   exePath: string
+  /** Folder for core.log, the same one main.log lives in. */
+  logsDir: string
   onState: (state: CoreState) => void
   log: { info: (message: string) => void; warn: (message: string) => void }
   // Injected so tests can use a fake child process and a fake network.
@@ -53,7 +57,7 @@ const defaultSpawn: NonNullable<SupervisorOptions['spawn']> = (exePath, env) =>
   nodeSpawn(exePath, ['--port', '0'], { env, windowsHide: true })
 
 export function createSupervisor(options: SupervisorOptions): Supervisor {
-  const { exePath, onState, log } = options
+  const { exePath, logsDir, onState, log } = options
   const spawn = options.spawn ?? defaultSpawn
   const doFetch = options.fetch ?? fetch
   const readyTimeoutMs = options.readyTimeoutMs ?? 15_000
@@ -99,7 +103,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     const token = randomBytes(32).toString('hex')
     let child: ChildProcessWithoutNullStreams
     try {
-      child = spawn(exePath, { ...process.env, [tokenEnv]: token })
+      child = spawn(exePath, { ...process.env, [tokenEnv]: token, [logDirEnv]: logsDir })
     } catch (error) {
       // Not worth retrying: the exe is missing or not runnable, and that does not fix itself.
       set({ status: 'problem', reason: `core could not be started: ${String(error)}` })
