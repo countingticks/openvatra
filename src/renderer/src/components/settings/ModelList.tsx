@@ -139,8 +139,7 @@ export function ModelList(): React.JSX.Element {
           </div>
           {embedding.length === 0 && (
             <p className="text-[12.5px] text-muted-foreground">
-              Add one (e.g. Qwen3-Embedding-0.6B .gguf) to your models folder; document search is off until
-              then.
+              Add an embedding .gguf (e.g. Qwen3-Embedding-0.6B) to enable document search.
             </p>
           )}
           {chosenProblem && (

@@ -179,7 +179,7 @@ describe('Settings → Models', () => {
 
       expect(select).toBeDisabled()
       expect(select).toHaveDisplayValue('No embedding model found')
-      expect(screen.getByText(/Add one \(e\.g\. Qwen3-Embedding-0\.6B \.gguf\)/)).toBeInTheDocument()
+      expect(screen.getByText(/Add an embedding \.gguf/)).toBeInTheDocument()
     })
 
     it('warns about a chat model chosen for embeddings and resets it', async () => {
@@ -261,7 +261,7 @@ describe('Settings → Models', () => {
     it('says so when no projector was found, and has no per-model unload setting', async () => {
       const { group } = await openOptions()
 
-      expect(within(group).getByText('No projector found next to this model.')).toBeInTheDocument()
+      expect(within(group).getByText('None found.')).toBeInTheDocument()
       expect(within(group).queryByRole('radiogroup')).not.toBeInTheDocument()
     })
 
