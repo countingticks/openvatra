@@ -97,7 +97,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		IdleTimeout:    func() time.Duration { return time.Duration(cfg.Get().IdleUnloadMinutes) * time.Minute },
 	})
 	defer rt.Close() // after the server is down, so no request is mid-stream
-	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop, listModels, rt, cfg)}
+	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
+	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
+	srv := &http.Server{
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg),
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
