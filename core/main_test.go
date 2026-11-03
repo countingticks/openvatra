@@ -126,7 +126,8 @@ func TestModelArgs(t *testing.T) {
 
 func TestServerArgsProjector(t *testing.T) {
 	m := models.Model{ID: "qwen", Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`}
-	base := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", "8000"}
+	core := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", "8000"}
+	base := append(slices.Clone(core), "-c", "16384")
 	withProjector := append(slices.Clone(base), "--mmproj", m.MMProj)
 	cases := map[string]struct {
 		c         config.Config
@@ -137,7 +138,7 @@ func TestServerArgsProjector(t *testing.T) {
 		"on by default":     {config.Config{}, m, false, withProjector},
 		"no-mmproj in args": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"--no-mmproj"}}}}, m, false, append(slices.Clone(base), "--no-mmproj")},
 		"none found":        {config.Config{}, models.Model{ID: "qwen", Path: m.Path}, false, base},
-		"embedding server":  {config.Config{}, m, true, append(slices.Clone(base), "--embeddings")},
+		"embedding server":  {config.Config{}, m, true, append(slices.Clone(core), "--embeddings")},
 		"before user's own": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "4096"}}}}, m, false, append(slices.Clone(withProjector), "-c", "4096")},
 	}
 	for name, tc := range cases {

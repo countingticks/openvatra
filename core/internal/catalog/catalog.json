@@ -1,0 +1,176 @@
+[
+  {
+    "id": "qwen3.5-4b",
+    "name": "Qwen3.5 4B",
+    "summary": "Small and quick; good for chat on most PCs, and it can read images.",
+    "tags": ["chat", "vision"],
+    "licence": "Apache-2.0",
+    "repo": "unsloth/Qwen3.5-4B-GGUF",
+    "revision": "e87f176479d0855a907a41277aca2f8ee7a09523",
+    "files": [
+      {
+        "name": "Qwen3.5-4B-Q4_K_M.gguf",
+        "sizeBytes": 2740937888,
+        "sha256": "00fe7986ff5f6b463e62455821146049db6f9313603938a70800d1fb69ef11a4"
+      },
+      {
+        "name": "mmproj-BF16.gguf",
+        "sizeBytes": 675569344,
+        "sha256": "302b92d565080b9cc0281186979ae75a7429ec23d14f6f7607a035539b21f3a6"
+      }
+    ],
+    "needsGB": 5,
+    "rank": 20
+  },
+  {
+    "id": "gemma-4-e4b",
+    "name": "Gemma 4 E4B",
+    "summary": "Light everyday assistant from Google that also reads images.",
+    "tags": ["chat", "vision"],
+    "licence": "Apache-2.0",
+    "repo": "google/gemma-4-E4B-it-qat-q4_0-gguf",
+    "revision": "4b4a2c1d584be7264f87aac328a1bc739ce81b6c",
+    "files": [
+      {
+        "name": "gemma-4-E4B_q4_0-it.gguf",
+        "sizeBytes": 5154941280,
+        "sha256": "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee"
+      },
+      {
+        "name": "gemma-4-E4B-it-mmproj.gguf",
+        "sizeBytes": 991552256,
+        "sha256": "7498a37cb619e55f2fcf87eb931f56e99389ed6d432e4c5c66110694c0d65578"
+      }
+    ],
+    "needsGB": 7,
+    "rank": 25
+  },
+  {
+    "id": "qwen3.5-9b",
+    "name": "Qwen3.5 9B",
+    "summary": "Good all-rounder for chat and writing; reads images too.",
+    "tags": ["chat", "vision"],
+    "licence": "Apache-2.0",
+    "repo": "unsloth/Qwen3.5-9B-GGUF",
+    "revision": "3885219b6810b007914f3a7950a8d1b469d598a5",
+    "files": [
+      {
+        "name": "Qwen3.5-9B-Q4_K_M.gguf",
+        "sizeBytes": 5680522464,
+        "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8"
+      },
+      {
+        "name": "mmproj-BF16.gguf",
+        "sizeBytes": 921705024,
+        "sha256": "853698ce7aa6c7ba732478bad280240969ddf7b0fcbf93900046f63903a83383"
+      }
+    ],
+    "needsGB": 8,
+    "rank": 40
+  },
+  {
+    "id": "gemma-4-12b",
+    "name": "Gemma 4 12B",
+    "summary": "Careful, well-written answers from Google; reads images too.",
+    "tags": ["chat", "vision"],
+    "licence": "Apache-2.0",
+    "repo": "google/gemma-4-12B-it-qat-q4_0-gguf",
+    "revision": "29d097773436b69ff9feafd636ab4cf873786537",
+    "files": [
+      {
+        "name": "gemma-4-12b-it-qat-q4_0.gguf",
+        "sizeBytes": 6975879296,
+        "sha256": "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b"
+      },
+      {
+        "name": "mmproj-gemma-4-12b-it-qat-q4_0.gguf",
+        "sizeBytes": 175115616,
+        "sha256": "cb018338a7538a9814d994bfe54644c71eb7ed54e31eae2f721e45fd3c260da7"
+      }
+    ],
+    "needsGB": 9,
+    "rank": 45
+  },
+  {
+    "id": "gpt-oss-20b",
+    "name": "gpt-oss 20B",
+    "summary": "OpenAI's open model; strong at reasoning and step-by-step answers.",
+    "tags": ["chat"],
+    "licence": "Apache-2.0",
+    "repo": "ggml-org/gpt-oss-20b-GGUF",
+    "revision": "15dcfc7e7c608c6161507211ed43c5b590801b4b",
+    "files": [
+      {
+        "name": "gpt-oss-20b-MXFP4.gguf",
+        "sizeBytes": 12109566624,
+        "sha256": "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901"
+      }
+    ],
+    "needsGB": 14,
+    "rank": 55
+  },
+  {
+    "id": "qwen3-coder-30b",
+    "name": "Qwen3 Coder 30B",
+    "summary": "Made for writing and fixing code.",
+    "tags": ["code"],
+    "licence": "Apache-2.0",
+    "repo": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+    "revision": "b17cb02dd882d5b6ab62fc777ad2995f19668350",
+    "files": [
+      {
+        "name": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+        "sizeBytes": 18556689568,
+        "sha256": "fadc3e5f8d42bf7e894a785b05082e47daee4df26680389817e2093056f088ad"
+      }
+    ],
+    "needsGB": 21,
+    "rank": 50
+  },
+  {
+    "id": "qwen3.8-27b",
+    "name": "Qwen3.8 27B",
+    "summary": "The best answers in this list, for PCs with plenty of graphics memory; reads images too.",
+    "tags": ["chat", "vision"],
+    "licence": "Apache-2.0",
+    "repo": "ggml-org/Qwen3.8-27B-GGUF",
+    "revision": "a316ea527fde32c12487be7574e2db5ac2ad2a7e",
+    "files": [
+      {
+        "name": "Qwen3.8-27B-Q4_K_M.gguf",
+        "sizeBytes": 18973870528,
+        "sha256": "c600de0300ae8a0eb3a6c0b8b5561b8b96f16bd2c863c2a66c42de29d391a747"
+      },
+      {
+        "name": "mmproj-Qwen3.8-27B-Q8_0.gguf",
+        "sizeBytes": 629247008,
+        "sha256": "2e968a6af97ce35d8971890b257b9b7edabf20ad91450501fa53162a19ee33eb"
+      }
+    ],
+    "needsGB": 22,
+    "rank": 80
+  },
+  {
+    "id": "qwen3.6-35b-a3b",
+    "name": "Qwen3.6 35B A3B",
+    "summary": "Large and fast for its size; still usable when part of it runs on the processor. Reads images too.",
+    "tags": ["chat", "vision"],
+    "licence": "Apache-2.0",
+    "repo": "ggml-org/Qwen3.6-35B-A3B-GGUF",
+    "revision": "7878dc9a905c7c9379e5e8d6a1aa9affdd6839c5",
+    "files": [
+      {
+        "name": "Qwen3.6-35B-A3B-Q4_K_M.gguf",
+        "sizeBytes": 20419565568,
+        "sha256": "671e47e0ec53c665d048b98c3ecbfd5236b5ca9c3e02ed19fc8f81f7b85140c7"
+      },
+      {
+        "name": "mmproj-Qwen3.6-35B-A3B-Q8_0.gguf",
+        "sizeBytes": 614194304,
+        "sha256": "904cbf8c8e876220066ab3bf676c7efa40f3da372276fdaf8b01d2fb2a37a51d"
+      }
+    ],
+    "needsGB": 23,
+    "rank": 70
+  }
+]

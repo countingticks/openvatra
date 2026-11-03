@@ -37,7 +37,7 @@ func doMethod(t *testing.T, method, path, host, auth string, shutdown func()) *h
 	if method == http.MethodGet && path == "/v1/models?fail" {
 		list = func() ([]models.Model, error) { return nil, errors.New("boom") }
 	}
-	NewHandler(testToken, testPort, shutdown, list, nil, config.NewStore(), stubHardware{}).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, shutdown, list, nil, config.NewStore(), stubHardware{}, stubCatalog{}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -59,7 +59,7 @@ func TestModelsListEmptyIsArrayAndErrorIs500(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil, config.NewStore(), stubHardware{}).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil, config.NewStore(), stubHardware{}, stubCatalog{}).ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"data":[]`) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
@@ -161,7 +161,7 @@ func TestConfigReplacesTheWholeConfig(t *testing.T) {
 		req.Host = "127.0.0.1:53121"
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rec := httptest.NewRecorder()
-		NewHandler(testToken, testPort, func() {}, nil, nil, store, stubHardware{}).ServeHTTP(rec, req)
+		NewHandler(testToken, testPort, func() {}, nil, nil, store, stubHardware{}, stubCatalog{}).ServeHTTP(rec, req)
 		if rec.Code != 204 {
 			t.Log(rec.Body.String())
 		}
