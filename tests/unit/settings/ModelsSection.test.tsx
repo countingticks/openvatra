@@ -207,7 +207,7 @@ describe('Settings → Models', () => {
       const select = await screen.findByRole('combobox', { name: 'Embedding model' })
 
       expect(select).toBeDisabled()
-      expect(select).toHaveDisplayValue('No embedding model found')
+      expect(select).toHaveDisplayValue('Not found')
     })
 
     it('warns about a chat model chosen for embeddings and resets it', async () => {

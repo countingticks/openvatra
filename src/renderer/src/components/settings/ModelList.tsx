@@ -134,7 +134,7 @@ export function ModelList(): React.JSX.Element {
               className="h-8 max-w-64 min-w-0 rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
             >
               {embedding.length === 0 ? (
-                <option value="">No embedding model found</option>
+                <option value="">Not found</option>
               ) : (
                 <>
                   <option value="">Automatic ({automatic})</option>

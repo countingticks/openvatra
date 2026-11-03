@@ -34,12 +34,12 @@ export function ModelOptionsForm({
         onCommit={(text) => onChange(text ? { args: text } : undefined)}
       />
 
-      <div className="flex flex-col gap-0.5">
+      {/* <div className="flex flex-col gap-0.5">
         <span className="text-xs font-medium">Vision projector</span>
         <p className="truncate text-xs text-muted-foreground" title={projector}>
           {projector ? `${projector} (--no-mmproj skips it)` : 'None found.'}
         </p>
-      </div>
+      </div> */}
     </div>
   )
 }
