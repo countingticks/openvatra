@@ -3,13 +3,12 @@ import { ModelList } from '@renderer/components/settings/ModelList'
 import { PathRow } from '@renderer/components/settings/PathRow'
 import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
-import { ArgsField } from '@renderer/components/settings/ArgsField'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged, settingsReplaced } from '@renderer/store/settingsSlice'
 import type { PickTarget } from '../../../../shared/ipc'
 
-/** Settings → Models: where llama.cpp and the models are, arguments and idle time for all models, and the models. */
+/** Settings → Models: where llama.cpp and the models are, how long models stay loaded, the embedding model, and each model's options. */
 export function ModelsSection(): React.JSX.Element {
   const { models } = useAppSelector(selectSettings)
   const dispatch = useAppDispatch()
@@ -64,16 +63,6 @@ export function ModelsSection(): React.JSX.Element {
           }}
         />
       </SettingRow>
-
-      <div className="border-b border-border py-4">
-        <ArgsField
-          label="Arguments for every model"
-          value={models.sharedArgs}
-          placeholder="-fa on -ctk q8_0 -ctv q8_0 --jinja"
-          hint='llama-server arguments, typed like in a llama-swap config. Use "…" around values with spaces.'
-          onCommit={(text) => dispatch(settingsChanged({ models: { sharedArgs: text } }))}
-        />
-      </div>
 
       <ModelList />
     </div>

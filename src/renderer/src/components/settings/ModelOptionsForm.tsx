@@ -1,9 +1,4 @@
-import { useId } from 'react'
 import { ArgsField } from '@renderer/components/settings/ArgsField'
-import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
-import { Label } from '@renderer/components/ui/label'
-import { Switch } from '@renderer/components/ui/switch'
-import { idleOptions } from '@renderer/lib/idleOptions'
 import type { ModelOptions } from '../../../../shared/settings'
 
 interface ModelOptionsFormProps {
@@ -11,41 +6,19 @@ interface ModelOptionsFormProps {
   modelId: string
   /** File name of the detected vision projector, if any. */
   projector: string | undefined
-  /** The chosen embedding model, whose default is never to unload. */
-  embedding: boolean
   options: ModelOptions | undefined
-  /** The model's new options, or undefined when every field is back to its default. */
+  /** The model's new options, or undefined when nothing is set. */
   onChange: (next: ModelOptions | undefined) => void
 }
 
-// "Default" means "use the global setting", which is stored as the key being absent.
-const unloadOptions = [{ value: 'default', label: 'Default' }, ...idleOptions]
-
-/** A model's own settings: arguments, vision projector on/off, and how long it may sit unused. */
+/** A model's own settings: its arguments, and the vision projector found next to it (read-only). */
 export function ModelOptionsForm({
   id,
   modelId,
   projector,
-  embedding,
   options,
   onChange
 }: ModelOptionsFormProps): React.JSX.Element {
-  const unloadId = useId()
-  const projectorId = useId()
-
-  /** Merges one change; a field set back to its default is removed, and no fields left means no entry. */
-  function update(patch: Partial<ModelOptions>): void {
-    const merged = Object.fromEntries(
-      Object.entries({ ...options, ...patch }).filter(([, value]) => value !== undefined)
-    ) as ModelOptions
-    onChange(Object.keys(merged).length > 0 ? merged : undefined)
-  }
-
-  const unload =
-    options?.idleUnloadMinutes === undefined
-      ? 'default'
-      : (idleOptions.find((option) => option.minutes === options.idleUnloadMinutes)?.value ?? 'default')
-
   return (
     <div
       id={id}
@@ -57,44 +30,17 @@ export function ModelOptionsForm({
         label="Arguments"
         value={options?.args ?? ''}
         placeholder="-c 131072"
-        hint='Added after the arguments for every model, e.g. -c 131072. Use "…" around values with spaces.'
-        onCommit={(text) => update({ args: text || undefined })}
+        hint='llama-server arguments for this model, e.g. -c 131072. Use "…" around values with spaces.'
+        onCommit={(text) => onChange(text ? { args: text } : undefined)}
       />
 
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <Label htmlFor={projectorId} className="text-xs">
-            Use vision projector
-          </Label>
-          <p className="truncate text-xs text-muted-foreground" title={projector}>
-            {projector ?? 'No projector found next to this model.'}
-          </p>
-        </div>
-        <Switch
-          id={projectorId}
-          disabled={!projector}
-          checked={projector ? options?.mmproj !== false : false}
-          onCheckedChange={(checked) => update({ mmproj: checked ? undefined : false })}
-        />
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span id={unloadId} className="text-xs font-medium">
-            Unload after
-          </span>
-          {embedding && <p className="text-xs text-muted-foreground">Default for embeddings: never.</p>}
-        </div>
-        <SegmentedControl
-          labelledBy={unloadId}
-          value={unload}
-          options={unloadOptions}
-          onChange={(value) => {
-            const option = idleOptions.find((candidate) => candidate.value === value)
-            // Missing key = Default; null (Never) is a real choice, so it must not be dropped.
-            update({ idleUnloadMinutes: option ? option.minutes : undefined })
-          }}
-        />
+      <div className="flex flex-col gap-0.5">
+        <span className="text-xs font-medium">Vision projector</span>
+        <p className="truncate text-xs text-muted-foreground" title={projector}>
+          {projector
+            ? `${projector} (add --no-mmproj to the arguments to skip it)`
+            : 'No projector found next to this model.'}
+        </p>
       </div>
     </div>
   )

@@ -30,9 +30,6 @@ async function openModels(
   return { ...rendered, section }
 }
 
-const row = (name: string): HTMLElement =>
-  screen.getByRole('button', { name: `Options for ${name}` }).closest('li') as HTMLElement
-
 describe('Settings → Models', () => {
   describe('paths', () => {
     it('shows both paths, or "Not chosen", and explains what to choose first', async () => {
@@ -81,36 +78,6 @@ describe('Settings → Models', () => {
     expect(within(group).getByRole('radio', { name: 'Never' })).toBeChecked()
   })
 
-  describe('arguments for every model', () => {
-    it('saves the text when the box loses focus', async () => {
-      const { saveSettings } = await openModels({ ...chosen, sharedArgs: '--jinja' })
-      const box = screen.getByLabelText('Arguments for every model')
-      expect(box).toHaveValue('--jinja')
-
-      fireEvent.change(box, { target: { value: ' -fa on --jinja ' } })
-      expect(saveSettings).not.toHaveBeenCalled()
-      fireEvent.blur(box)
-
-      await waitFor(() =>
-        expect(saveSettings).toHaveBeenCalledWith({ models: { sharedArgs: '-fa on --jinja' } })
-      )
-    })
-
-    it('explains a refused flag or an open quote, and saves nothing', async () => {
-      const { saveSettings } = await openModels()
-      const box = screen.getByLabelText('Arguments for every model')
-
-      fireEvent.change(box, { target: { value: '-m other.gguf' } })
-      fireEvent.blur(box)
-      expect(box).toHaveAccessibleDescription("-m is set by OpenVatra and can't be changed.")
-
-      fireEvent.change(box, { target: { value: '--alias "oops' } })
-      fireEvent.blur(box)
-      expect(box).toHaveAccessibleDescription('A quote " is not closed.')
-      expect(saveSettings).not.toHaveBeenCalled()
-    })
-  })
-
   describe('empty and problem states', () => {
     it('says the service is starting', async () => {
       await openModels()
@@ -141,44 +108,18 @@ describe('Settings → Models', () => {
   })
 
   describe('the model list', () => {
-    it('lists each model with its size and state, and follows changes', async () => {
+    it('lists each model with its size, and follows changes, with no state and no Load or Unload', async () => {
       const { core } = await openModels(chosen, { coreState: ready, models: [qwen, nomic] })
 
-      expect(await screen.findByText('5.0 GB · Not loaded')).toBeInTheDocument()
-      expect(screen.getByText('140 MB · Loaded')).toBeInTheDocument()
+      const list = await screen.findByRole('list', { name: 'Available models' })
+      expect(within(list).getByText('5.0 GB')).toBeInTheDocument()
+      expect(within(list).getByText('140 MB')).toBeInTheDocument()
+      expect(within(list).queryByText(/Loaded|Not loaded/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /^(Load|Unload) / })).not.toBeInTheDocument()
 
-      core.emitModels([{ ...qwen, state: 'error', error: 'llama-server.exe not found' }])
+      core.emitModels([qwen])
 
-      expect(screen.getByText('5.0 GB · Problem: llama-server.exe not found')).toBeInTheDocument()
       expect(screen.queryByText(/nomic-embed/)).not.toBeInTheDocument()
-    })
-
-    it('loads a stopped model and unloads a loaded one', async () => {
-      const { core } = await openModels(chosen, { coreState: ready, models: [qwen, nomic] })
-
-      fireEvent.click(await screen.findByRole('button', { name: `Load ${qwen.id}` }))
-      fireEvent.click(screen.getByRole('button', { name: 'Unload nomic-embed' }))
-
-      expect(core.load).toHaveBeenCalledWith(qwen.id)
-      expect(core.unload).toHaveBeenCalledWith('nomic-embed')
-    })
-
-    it('shows "Loading…" while a load runs, and the reason when it fails', async () => {
-      const { core } = await openModels(chosen, { coreState: ready, models: [qwen] })
-      let fail: (error: Error) => void = () => {}
-      core.load.mockReturnValueOnce(new Promise((_resolve, reject) => (fail = reject)))
-
-      fireEvent.click(await screen.findByRole('button', { name: `Load ${qwen.id}` }))
-
-      expect(within(row(qwen.id)).getByRole('button', { name: `Load ${qwen.id}` })).toHaveTextContent(
-        'Loading…'
-      )
-      expect(within(row(qwen.id)).getByRole('button', { name: `Load ${qwen.id}` })).toBeDisabled()
-      await act(async () =>
-        fail(new Error("Error invoking remote method 'core:load': Error: not enough memory"))
-      )
-      expect(within(row(qwen.id)).getByRole('alert')).toHaveTextContent(/^not enough memory$/)
-      expect(within(row(qwen.id)).getByRole('button', { name: `Load ${qwen.id}` })).toBeEnabled()
     })
 
     it('chooses the embedding model, or none', async () => {
@@ -186,15 +127,21 @@ describe('Settings → Models', () => {
         { ...chosen, embeddingModel: 'nomic-embed' },
         { coreState: ready, models: [qwen, nomic] }
       )
-      expect(await screen.findByRole('radio', { name: 'Use nomic-embed for embeddings' })).toBeChecked()
+      const select = await screen.findByRole('combobox', { name: 'Embedding model' })
+      expect(select).toHaveValue('nomic-embed')
+      expect(
+        within(select)
+          .getAllByRole('option')
+          .map((option) => option.textContent)
+      ).toEqual(['None', qwen.id, 'nomic-embed'])
 
-      fireEvent.click(screen.getByRole('radio', { name: `Use ${qwen.id} for embeddings` }))
+      fireEvent.change(select, { target: { value: qwen.id } })
       await waitFor(() =>
         expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: qwen.id } })
       )
-      expect(screen.getByRole('radio', { name: 'Use nomic-embed for embeddings' })).not.toBeChecked()
+      expect(select).toHaveValue(qwen.id)
 
-      fireEvent.click(screen.getByRole('radio', { name: 'No embedding model' }))
+      fireEvent.change(select, { target: { value: '' } })
       await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: null } }))
     })
   })
@@ -240,67 +187,23 @@ describe('Settings → Models', () => {
       expect(saveSettings).not.toHaveBeenCalled()
     })
 
-    it('shows the detected projector and saves the switch, off as false and on as no entry', async () => {
-      const rendered = await openModels(
+    it('shows the detected projector read-only, with no switch', async () => {
+      await openModels(
         { ...chosen, options: {} },
         { coreState: ready, models: [{ ...qwen, projector: 'mmproj-qwen.gguf' }, nomic] }
       )
       fireEvent.click(await screen.findByRole('button', { name: `Options for ${qwen.id}` }))
       const group = screen.getByRole('group', { name: `Options for ${qwen.id}` })
-      const projector = within(group).getByRole('switch', { name: 'Use vision projector' })
-      expect(within(group).getByText('mmproj-qwen.gguf')).toBeInTheDocument()
-      expect(projector).toBeChecked()
 
-      fireEvent.click(projector)
-      await waitFor(() =>
-        expect(rendered.saveSettings).toHaveBeenLastCalledWith({
-          models: { options: { [qwen.id]: { mmproj: false } } }
-        })
-      )
-
-      fireEvent.click(projector)
-      await waitFor(() => expect(rendered.saveSettings).toHaveBeenLastCalledWith({ models: { options: {} } }))
+      expect(within(group).getByText(/mmproj-qwen\.gguf/)).toBeInTheDocument()
+      expect(within(group).queryByRole('switch')).not.toBeInTheDocument()
     })
 
-    it('disables the projector switch when none was found', async () => {
+    it('says so when no projector was found, and has no per-model unload setting', async () => {
       const { group } = await openOptions()
-      expect(within(group).getByRole('switch', { name: 'Use vision projector' })).toHaveAttribute(
-        'aria-disabled',
-        'true'
-      )
+
       expect(within(group).getByText('No projector found next to this model.')).toBeInTheDocument()
-    })
-
-    it('saves "Unload after": Default removes the key, Never is null', async () => {
-      const { saveSettings, group } = await openOptions()
-      expect(within(group).queryByText('Default for embeddings: never.')).not.toBeInTheDocument()
-      const unload = within(group).getByRole('radiogroup', { name: 'Unload after' })
-      expect(within(unload).getByRole('radio', { name: 'Default' })).toBeChecked()
-
-      fireEvent.click(within(unload).getByRole('radio', { name: 'Never' }))
-      await waitFor(() =>
-        expect(saveSettings).toHaveBeenLastCalledWith({
-          models: { options: { [qwen.id]: { idleUnloadMinutes: null } } }
-        })
-      )
-      expect(within(unload).getByRole('radio', { name: 'Never' })).toBeChecked()
-
-      fireEvent.click(within(unload).getByRole('radio', { name: '30 min' }))
-      await waitFor(() =>
-        expect(saveSettings).toHaveBeenLastCalledWith({
-          models: { options: { [qwen.id]: { idleUnloadMinutes: 30 } } }
-        })
-      )
-
-      fireEvent.click(within(unload).getByRole('radio', { name: 'Default' }))
-      await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { options: {} } }))
-    })
-
-    it('says the embedding model never unloads by default', async () => {
-      await openModels({ ...chosen, embeddingModel: qwen.id }, { coreState: ready, models: [qwen, nomic] })
-      fireEvent.click(await screen.findByRole('button', { name: `Options for ${qwen.id}` }))
-      const embedding = screen.getByRole('group', { name: `Options for ${qwen.id}` })
-      expect(within(embedding).getByText('Default for embeddings: never.')).toBeInTheDocument()
+      expect(within(group).queryByRole('radiogroup')).not.toBeInTheDocument()
     })
 
     it('drops the model’s entry when the box is emptied', async () => {

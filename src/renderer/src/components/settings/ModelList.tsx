@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { ModelRow } from '@renderer/components/settings/ModelRow'
 import { Button } from '@renderer/components/ui/button'
+import { Label } from '@renderer/components/ui/label'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useModels } from '@renderer/hooks/useModels'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
@@ -13,7 +14,8 @@ function run(action: () => Promise<void>): void {
 }
 
 /**
- * The models core found, each with Load/Unload, the embedding choice and its options. When there's nothing to list,
+ * Setting the models up: the embedding model and each model's options. Loading and unloading is the model
+ * button's job. When there's nothing to list,
  * it says why and what to do: the service has a problem, the paths aren't chosen, it's starting, or the folder is empty.
  */
 export function ModelList(): React.JSX.Element {
@@ -22,7 +24,7 @@ export function ModelList(): React.JSX.Element {
   const core = useCoreState()
   const models = useModels()
   const headingId = useId()
-  const radioName = useId()
+  const embeddingId = useId()
 
   function setEmbedding(id: string | null): void {
     dispatch(settingsChanged({ models: { embeddingModel: id } }))
@@ -66,33 +68,42 @@ export function ModelList(): React.JSX.Element {
         </p>
       ) : (
         <>
-          <p className="text-[12.5px] text-muted-foreground">
-            Chat loads models by itself. The embedding model powers document search and runs beside the chat
-            model.
-          </p>
+          <div className="flex items-center justify-between gap-5">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <Label htmlFor={embeddingId} className="text-sm">
+                Embedding model
+              </Label>
+              <p className="text-[12.5px] text-muted-foreground">
+                Powers document search and stays loaded beside the chat model.
+              </p>
+            </div>
+            <select
+              id={embeddingId}
+              value={settings.embeddingModel ?? ''}
+              onChange={(event) => setEmbedding(event.target.value || null)}
+              className="h-8 max-w-64 min-w-0 rounded-md border border-input bg-background px-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">None</option>
+              {/* A chosen model whose file is gone stays listed, so the select never hides what is saved. */}
+              {settings.embeddingModel && !models.some((model) => model.id === settings.embeddingModel) && (
+                <option value={settings.embeddingModel}>{settings.embeddingModel}</option>
+              )}
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.id}
+                </option>
+              ))}
+            </select>
+          </div>
           <ul aria-labelledby={headingId} className="flex flex-col rounded-lg border border-border">
             {models.map((model) => (
               <ModelRow
                 key={model.id}
                 model={model}
-                radioName={radioName}
-                embedding={settings.embeddingModel === model.id}
-                onEmbedding={() => setEmbedding(model.id)}
                 options={settings.options[model.id]}
                 onOptions={(next) => setOptions(model.id, next)}
               />
             ))}
-            <li className="flex items-center gap-2 px-3 py-2.5 text-[13px] text-muted-foreground">
-              <input
-                id={`${radioName}-none`}
-                type="radio"
-                name={radioName}
-                checked={settings.embeddingModel === null}
-                onChange={() => setEmbedding(null)}
-                className="size-3.5 accent-primary"
-              />
-              <label htmlFor={`${radioName}-none`}>No embedding model</label>
-            </li>
           </ul>
         </>
       )}
