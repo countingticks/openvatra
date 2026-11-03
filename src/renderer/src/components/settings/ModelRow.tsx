@@ -45,15 +45,26 @@ export function ModelRow({
         </Button>
       </div>
 
-      {expanded && (
-        <ModelOptionsForm
-          id={optionsId}
-          modelId={model.id}
-          projector={model.projector}
-          options={options}
-          onChange={onOptions}
-        />
-      )}
+      {/* Always mounted so it can animate shut: grid rows go 0fr <-> 1fr. While closed it is hidden from assistive
+          technology and can't take focus (inert). */}
+      <div
+        aria-hidden={!expanded}
+        inert={!expanded}
+        className={cn(
+          'grid transition-[grid-template-rows,opacity] duration-200 ease-out in-data-[motion=reduce]:transition-none',
+          expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+        )}
+      >
+        <div className="overflow-hidden">
+          <ModelOptionsForm
+            id={optionsId}
+            modelId={model.id}
+            projector={model.projector}
+            options={options}
+            onChange={onOptions}
+          />
+        </div>
+      </div>
     </li>
   )
 }
