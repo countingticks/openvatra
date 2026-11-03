@@ -4,6 +4,7 @@ import { Button } from '@renderer/components/ui/button'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useModels } from '@renderer/hooks/useModels'
+import { stateDot } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import { useAppDispatch } from '@renderer/store/hooks'
 import { settingsOpened } from '@renderer/store/uiSlice'
@@ -17,15 +18,12 @@ function describe(
   switch (state?.status) {
     case 'ready':
       if (active?.state === 'loading')
-        return {
-          label: 'Loading',
-          detail: `Loading ${active.id}…`,
-          dot: 'animate-pulse bg-primary in-data-[motion=reduce]:animate-none'
-        }
+        return { label: 'Loading', detail: `Loading ${active.id}…`, dot: stateDot('loading') }
       return {
         label: 'Ready',
         detail: active ? `Ready — ${active.id} loaded` : 'Ready — no model loaded',
-        dot: 'bg-primary'
+        // Filled only while a model is loaded; the service being up with nothing loaded stays grey.
+        dot: stateDot(active ? 'ready' : 'stopped')
       }
     case 'problem':
       return { label: 'Problem', detail: `Problem: ${state.reason}`, dot: 'bg-destructive' }

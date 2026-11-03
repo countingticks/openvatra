@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { ModelOptionsForm } from '@renderer/components/settings/ModelOptionsForm'
 import { Button } from '@renderer/components/ui/button'
-import { describeModel, failureReason, formatSize } from '@renderer/lib/modelText'
+import { describeModel, failureReason, formatSize, stateDot } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import type { ModelInfo } from '../../../../shared/core'
 import type { ModelOptions } from '../../../../shared/settings'
@@ -54,8 +54,11 @@ export function ModelRow({
     <li className="flex flex-col border-b border-border px-3 py-2.5 last:border-b-0">
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-mono text-[13px]" title={model.id}>
-            {model.id}
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className={cn('size-2 shrink-0 rounded-full', stateDot(model.state))} />
+            <span className="truncate font-mono text-[13px]" title={model.id}>
+              {model.id}
+            </span>
           </span>
           <span
             className={cn('text-xs text-muted-foreground', model.state === 'error' && 'text-destructive')}

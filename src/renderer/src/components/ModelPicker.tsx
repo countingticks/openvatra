@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
-import { describeModel, failureReason } from '@renderer/lib/modelText'
+import { describeModel, failureReason, stateDot } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import type { ModelInfo } from '../../../shared/core'
 
@@ -29,8 +29,11 @@ function PickerRow({ model }: { model: ModelInfo }): React.JSX.Element {
     <li className="flex flex-col gap-1">
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-mono text-[13px]" title={model.id}>
-            {model.id}
+          <span className="flex items-center gap-1.5">
+            <span aria-hidden className={cn('size-2 shrink-0 rounded-full', stateDot(model.state))} />
+            <span className="truncate font-mono text-[13px]" title={model.id}>
+              {model.id}
+            </span>
           </span>
           <span
             className={cn('text-xs text-muted-foreground', model.state === 'error' && 'text-destructive')}
