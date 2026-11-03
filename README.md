@@ -19,12 +19,23 @@ models run on your own PC, and your conversations never leave it.
 - **Automate** recurring tasks with a local AI assistant (later)
 - **Set itself up**: choose where models live, detect your hardware, and download models that fit it
 
+## How it works
+
+Two parts, both on your PC: the desktop app (Electron, React, TypeScript) and **core**, a small Go program the app
+starts in the background. Core runs the models with [llama.cpp](https://github.com/ggml-org/llama.cpp) and, later,
+keeps your chats and searches your documents. It only listens on `127.0.0.1` and answers only the app.
+
 ## Works today
 
-The app shell: its own title bar (app menu, sidebar toggle, back/forward, window buttons), a collapsible sidebar
-(Chat, Code, Automations; Ctrl+1…3, Ctrl+B) and a Settings dialog (Ctrl+,) for theme, start with Windows, close
-action and file locations. The window remembers its position, can keep running in the tray, and the animated Ember
-mascot greets you on Chat. The Chat, Code and Automations tabs themselves are still placeholders.
+- **The app shell:** its own title bar (app menu, sidebar toggle, back/forward, window buttons), a collapsible
+  sidebar (Chat, Code, Automations; Ctrl+1…3, Ctrl+B) and a Settings dialog (Ctrl+,) for theme, animations, start
+  with Windows, close action and file locations. The window remembers its position and can keep running in the tray.
+- **Core in the background:** the app starts it, restarts it after a crash, and stops it when you quit. The model
+  button at the bottom of Chat shows its state, with Restart and Open log.
+- The animated Ember mascot greets you on Chat.
+
+Next: core running models (choose your llama.cpp and models folder, load and swap models), then chat itself.
+The Code and Automations tabs are still placeholders.
 
 ## Planned requirements
 
@@ -38,12 +49,10 @@ Everything runs locally. The only things that reach the internet are web searche
 
 ## Built on
 
-OpenVatra brings together excellent open-source projects:
-[llama.cpp](https://github.com/ggml-org/llama.cpp),
-[llama-swap](https://github.com/mostlygeek/llama-swap),
-[Ollama](https://github.com/ollama/ollama),
-[Open WebUI](https://github.com/open-webui/open-webui),
-[OpenCode](https://github.com/anomalyco/opencode).
+OpenVatra builds on excellent open-source projects:
+[llama.cpp](https://github.com/ggml-org/llama.cpp) runs the models,
+[llama-swap](https://github.com/mostlygeek/llama-swap) is the basis for core's model swapping,
+and [OpenCode](https://github.com/anomalyco/opencode) will power the Code tab.
 
 ## License
 
