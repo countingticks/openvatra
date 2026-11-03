@@ -112,7 +112,7 @@ export function ModelList(): React.JSX.Element {
                 Embedding model
               </Label>
               <p className="text-[12.5px] text-muted-foreground">
-                Powers document search and stays loaded beside the chat model.
+                Powers document search.
               </p>
             </div>
             <select
@@ -137,11 +137,11 @@ export function ModelList(): React.JSX.Element {
               )}
             </select>
           </div>
-          {embedding.length === 0 && (
+          {/* {embedding.length === 0 && (
             <p className="text-[12.5px] text-muted-foreground">
               Add an embedding .gguf (e.g. Qwen3-Embedding-0.6B) to enable document search.
             </p>
-          )}
+          )} */}
           {chosenProblem && (
             <div
               id={problemId}

@@ -48,11 +48,7 @@ export function ModelsSection(): React.JSX.Element {
         </p>
       )}
 
-      <SettingRow
-        label="Unload models after"
-        hint="A model nobody has used for this long gives its memory back."
-        labelId={idleId}
-      >
+      <SettingRow label="Unload models after" hint="Frees an idle model's memory." labelId={idleId}>
         <SegmentedControl
           labelledBy={idleId}
           value={idle.value}

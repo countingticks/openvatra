@@ -21,12 +21,10 @@ export function ModelRow({ model, options, onOptions }: ModelRowProps): React.JS
   return (
     <li className="flex flex-col border-b border-border px-3 py-2.5 last:border-b-0">
       <div className="flex items-center gap-3">
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-mono text-[13px]" title={model.id}>
-            {model.id}
-          </span>
-          <span className="text-xs text-muted-foreground">{formatSize(model.sizeBytes)}</span>
-        </div>
+        <span className="min-w-0 flex-1 truncate font-mono text-[13px]" title={model.id}>
+          {model.id}
+        </span>
+        <span className="shrink-0 text-xs text-muted-foreground">{formatSize(model.sizeBytes)}</span>
 
         <Button
           variant="ghost"
