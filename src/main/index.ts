@@ -4,6 +4,7 @@ import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
+import { createSupervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
@@ -18,6 +19,13 @@ const appUrl =
   is.dev && process.env['ELECTRON_RENDERER_URL']
     ? process.env['ELECTRON_RENDERER_URL']
     : pathToFileURL(join(__dirname, '../renderer/index.html')).href
+
+// Packaged: shipped beside app.asar (electron-builder extraResources). Development: built by `npm run build:core`.
+function coreExePath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'core', 'core.exe')
+    : join(app.getAppPath(), 'resources', 'core', 'core.exe')
+}
 
 let mainWindow: BrowserWindow | null = null
 let tray: AppTray | null = null
@@ -86,6 +94,9 @@ function start(): void {
 
     mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
     mainWindow.on('closed', () => (mainWindow = null))
+
+    // After the window, which never waits for core. The state is only logged for now; the UI gets it later.
+    createSupervisor({ exePath: coreExePath(), onState: () => undefined, log }).start()
 
     tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
     hideOnClose(
