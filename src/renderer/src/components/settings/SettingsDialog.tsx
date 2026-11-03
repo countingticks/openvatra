@@ -70,7 +70,7 @@ export function SettingsDialog(): React.JSX.Element {
 
         <section
           aria-labelledby={headingId}
-          className="flex min-w-0 flex-1 flex-col overflow-y-auto px-6 pt-3 pb-6"
+          className="flex min-w-0 flex-1 flex-col overflow-y-auto [scrollbar-width:none] px-6 pt-3 pb-6"
         >
           <div className="flex items-center justify-between pb-1">
             <h2 id={headingId} className="text-base font-semibold">

@@ -38,7 +38,7 @@ export function ModelsSection(): React.JSX.Element {
       />
       <PathRow
         label="Models folder"
-        hint="Searched for .gguf models, subfolders included."
+        hint="Searches subfolders too."
         path={models.modelsDir}
         onBrowse={() => void pick('modelsDir')}
       />
