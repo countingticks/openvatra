@@ -45,7 +45,7 @@ export function ArgsField({ label, value, placeholder, hint, onCommit }: ArgsFie
         placeholder={placeholder}
         aria-invalid={error ? true : undefined}
         aria-describedby={hintId}
-        className="min-h-9 resize-y rounded-md border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive"
+        className="min-h-7.5 resize-y rounded-md border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive"
       />
       <p id={hintId} className={error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
         {error ?? hint}
