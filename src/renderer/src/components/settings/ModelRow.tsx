@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { ModelOptionsForm } from '@renderer/components/settings/ModelOptionsForm'
 import { Button } from '@renderer/components/ui/button'
+import { describeModel, failureReason, formatSize } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import type { ModelInfo } from '../../../../shared/core'
 import type { ModelOptions } from '../../../../shared/settings'
@@ -14,31 +15,6 @@ interface ModelRowProps {
   onEmbedding: () => void
   options: ModelOptions | undefined
   onOptions: (next: ModelOptions | undefined) => void
-}
-
-function formatSize(bytes: number): string {
-  const gigabytes = bytes / 1024 ** 3
-  if (gigabytes >= 1) return `${gigabytes.toFixed(1)} GB`
-  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`
-}
-
-function describe(model: ModelInfo): string {
-  switch (model.state) {
-    case 'loading':
-      return 'Loading…'
-    case 'ready':
-      return model.busy ? 'Loaded, answering' : 'Loaded'
-    case 'error':
-      return `Problem: ${model.error ?? 'it could not be loaded'}`
-    default:
-      return 'Not loaded'
-  }
-}
-
-/** Electron puts "Error invoking remote method '…': Error: " in front of main's message; people need only the end. */
-function reason(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error)
-  return message.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '')
 }
 
 /** One model: name, size and state; Load or Unload; the embedding radio; its options, folded away by default. */
@@ -65,7 +41,7 @@ export function ModelRow({
     try {
       await window.api.core[action](model.id)
     } catch (error) {
-      setFailure(reason(error))
+      setFailure(failureReason(error))
     } finally {
       setPending(null)
     }
@@ -84,7 +60,7 @@ export function ModelRow({
           <span
             className={cn('text-xs text-muted-foreground', model.state === 'error' && 'text-destructive')}
           >
-            {formatSize(model.sizeBytes)} · {describe(model)}
+            {formatSize(model.sizeBytes)} · {describeModel(model)}
           </span>
         </div>
 

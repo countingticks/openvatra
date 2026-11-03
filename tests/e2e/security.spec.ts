@@ -113,7 +113,7 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     settings: ['get', 'update'],
     settingsFrozen: true,
     // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders.
-    files: ['locations', 'openFolder'],
+    files: ['locations', 'openFolder', 'pick'],
     filesFrozen: true,
     // Added in T27 (approved 2026-11-02): the window buttons, acting only on the sender's own window.
     // T28 adds edit: one of six named Edit commands, checked against an allow-list in main.
@@ -123,7 +123,7 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     app: ['quit'],
     appFrozen: true,
     // Added in T37: watch the models service, restart it, open its log. Never its token.
-    core: ['getState', 'onState', 'openLog', 'restart'],
+    core: ['getState', 'load', 'models', 'onModels', 'onState', 'openLog', 'restart', 'unload'],
     coreFrozen: true
   })
 })
