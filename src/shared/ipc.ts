@@ -11,6 +11,8 @@ export const ipcChannels = {
   filesLocations: 'files:locations',
   filesOpenFolder: 'files:open-folder',
   filesPick: 'files:pick',
+  filesBundledLlama: 'files:bundled-llama',
+  filesUseBundledLlama: 'files:use-bundled-llama',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
@@ -80,6 +82,10 @@ export interface FilesApi {
    * settings, or null if the user cancelled.
    */
   pick(target: PickTarget): Promise<Settings | null>
+  /** The llama.cpp build that ships with the app: its release tag (e.g. "b12078"), or null if it can't be read. */
+  bundledLlama(): Promise<{ tag: string | null }>
+  /** Goes back to the bundled llama-server (saves "none chosen"); resolves with the saved settings. */
+  useBundledLlama(): Promise<Settings>
 }
 
 export interface RuntimeInfo {

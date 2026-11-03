@@ -43,6 +43,16 @@ jobs:
       - name: Install exact dependencies
         run: npm ci
 
+      # The pinned llama.cpp build (scripts/fetch-llama.mjs); the key changes when llama.json does, so a bump refetches.
+      - name: Cache llama.cpp
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: resources/llama/bin
+          key: llama-${{ hashFiles('resources/llama/llama.json') }}
+
+      - name: Fetch llama.cpp
+        run: npm run fetch:llama
+
       - name: Type-check
         run: npm run typecheck
 

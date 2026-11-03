@@ -16,10 +16,11 @@
     "node": ">=26"
   },
   "scripts": {
+    "fetch:llama": "node scripts/fetch-llama.mjs",
     "build:core": "go build -C core -o ../resources/core/core.exe .",
-    "dev": "npm run build:core && electron-vite dev --watch",
+    "dev": "npm run build:core && npm run fetch:llama && electron-vite dev --watch",
     "start": "electron-vite preview",
-    "build": "npm run build:core && npm run typecheck && electron-vite build",
+    "build": "npm run build:core && npm run fetch:llama && npm run typecheck && electron-vite build",
     "build:win": "npm run build && electron-builder --win",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
@@ -29,7 +30,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "electron-vite build && playwright test",
+    "test:e2e": "npm run fetch:llama && electron-vite build && playwright test",
     "postinstall": "install-electron && electron-builder install-app-deps",
     "check": "node scripts/check.mjs",
     "inspect": "node scripts/inspect.mjs"

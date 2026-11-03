@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
+import { bundledLlamaDir, bundledLlamaExe } from './bundledLlama'
 import { createConfigSync } from './core/configSync'
 import { createModelsClient } from './core/modelsClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
@@ -85,10 +86,12 @@ function start(): void {
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
     // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
+    const llamaDir = bundledLlamaDir(app.isPackaged, process.resourcesPath, app.getAppPath())
     const configSync = createConfigSync(
       store.get,
       (path, body) => core?.post(path, body) ?? Promise.reject(),
-      log
+      log,
+      bundledLlamaExe(llamaDir)
     )
     store.onChange(configSync.onSettingsChange)
     const sendToWindow = (channel: string, value: unknown): void => {
@@ -115,18 +118,13 @@ function start(): void {
       log
     })
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(
-      store,
-      appUrl,
-      { settingsFile: settingsPath, logsFolder: logsFolder() },
-      {
-        state: core.state,
-        restart: core.restart,
-        list: models.list,
-        load: models.load,
-        unload: models.unload
-      }
-    )
+    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() }, llamaDir, {
+      state: core.state,
+      restart: core.restart,
+      list: models.list,
+      load: models.load,
+      unload: models.unload
+    })
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)

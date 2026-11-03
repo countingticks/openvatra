@@ -16,8 +16,11 @@ export interface SettingsStore {
   update(patch: unknown): Promise<Settings>
   /** Main process only; the UI can't reach this, so it can't move or resize the window through settings. */
   setWindowBounds(bounds: unknown): Promise<Settings>
-  /** Main process only: a path the user chose in main's file dialog. The UI can't set paths (core runs them). */
-  setModelPath(key: ModelPathKey, path: string): Promise<Settings>
+  /**
+   * Main process only: a path the user chose in main's file dialog, or null for the default (llama-server: the
+   * bundled one). The UI can't set paths (core runs them).
+   */
+  setModelPath(key: ModelPathKey, path: string | null): Promise<Settings>
   /** Main process only: the one-time close-to-tray notice has been shown. */
   markCloseToTrayNoticeShown(): Promise<Settings>
   /** Resolves once every save asked for so far has finished, so quitting doesn't cut one off. */
@@ -67,7 +70,7 @@ export function createSettingsStore(
     return enqueue((settings) => ({ ...settings, window: windowBoundsSchema.parse(bounds) }))
   }
 
-  function setModelPath(key: ModelPathKey, path: string): Promise<Settings> {
+  function setModelPath(key: ModelPathKey, path: string | null): Promise<Settings> {
     return enqueue((settings) => ({ ...settings, models: { ...settings.models, [key]: path } }))
   }
 

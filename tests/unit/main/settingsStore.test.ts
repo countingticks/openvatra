@@ -79,6 +79,15 @@ describe('createSettingsStore', () => {
     await expect(store.update({ models: { llamaServerPath: 'C:/evil.exe' } })).rejects.toThrow()
   })
 
+  it('goes back to the bundled llama-server when main clears the path', async () => {
+    const { store } = setUp()
+    await store.setModelPath('llamaServerPath', 'C:/llama/llama-server.exe')
+
+    await store.setModelPath('llamaServerPath', null)
+
+    expect(store.get().models.llamaServerPath).toBeNull()
+  })
+
   it('saves one change at a time, in the order they were made', async () => {
     let finishFirstSave = (): void => {}
     const saves: Settings[] = []

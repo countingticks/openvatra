@@ -14,12 +14,20 @@ files:
   - '!{.env,.env.*,.npmrc,.nvmrc}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!resources/core/**'
+  - '!resources/llama/**'
 asarUnpack:
   - resources/**
 # The Go core is a real executable, so it ships beside app.asar (outside it) as resources/core/core.exe.
 extraResources:
   - from: resources/core
     to: core
+  # llama-server.exe and its DLLs (fetched by scripts/fetch-llama.mjs), plus llama.cpp's MIT licence beside them.
+  - from: resources/llama/bin
+    to: llama
+  - from: resources/llama
+    to: llama
+    filter:
+      - LICENSE-llama.cpp.txt
 win:
   executableName: OpenVatra
 nsis:
