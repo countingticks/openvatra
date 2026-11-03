@@ -23,7 +23,8 @@ Settings: `%APPDATA%\OpenVatra\settings.json` (validated, typed IPC); log: `%APP
 
 Electron · React 19 · TypeScript (strict) · Redux Toolkit + RTK Query · Tailwind CSS + shadcn/ui ·
 Fontsource (Geist, Geist Mono, Source Serif 4; bundled, never loaded from the web) ·
-electron-vite · Vitest + React Testing Library · Playwright (Electron) · GitHub Actions.
+electron-vite · Vitest + React Testing Library · Playwright (Electron) · GitHub Actions ·
+Go (standard library only) for `core/`, the local program that will own the services.
 Do not add dependencies outside this list without asking.
 
 ## Commands
@@ -35,9 +36,11 @@ npm run typecheck    # TypeScript checks for main/preload (tsconfig.node) and re
 npm run lint         # ESLint incl. accessibility rules; zero warnings allowed
 npm run format       # format everything with Prettier (format:check only verifies)
 npm test             # unit and component tests (Vitest)
-npm run check        # format check, typecheck, lint, unit tests; prints only failures (-- <paths> limits tests)
+npm run check        # format check, typecheck, lint, unit tests, gofmt/go vet/go test; prints only failures
+                     # (-- <paths> limits the JS tests)
 npm run inspect      # print element boxes in the built app as text: npm run inspect -- "<selector>" [--shot]
-npm run build        # typecheck + production build to out/
+npm run build:core   # go build -C core → resources/core/core.exe (dev and build run it; needs Go, see core/go.mod)
+npm run build        # build core, typecheck, production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
 npm run test:e2e     # build, then launch the real app with Playwright (tests/e2e)
 ```
@@ -54,6 +57,8 @@ src/main/        Electron main process: windows, tray, settings, starting servic
 src/preload/     the only bridge between UI and main; exposes a typed window.api
 src/shared/      types shared by main and renderer (IPC contract, settings schema)
 src/renderer/    React UI
+core/            Go module (`core.exe`): listens on 127.0.0.1 only, every request needs a per-run token and a
+                 matching Host header; bundled into the app as an extra resource, built by `npm run build:core`
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
                  query by role or label, the way a user finds things — not by class names
 tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one
@@ -73,14 +78,14 @@ vendor/          git submodules (Open WebUI); never edit files here
 
 - Every window: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, strict CSP.
 - Never load remote web pages inside the app; open external links in the default browser (http/https only).
-- Services listen on `127.0.0.1` only.
+- Services listen on `127.0.0.1` only. `core` also requires its token on every request; never log the token.
 - Never commit secrets, tokens, keys, `.env` files or model files.
 
 ## Git workflow
 
 - `main` is protected: changes land through pull requests with passing checks.
 - Branch names: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, `ci/<topic>`.
-- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, unit tests, build and e2e tests on Windows for every
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, unit tests, the Go checks, build (incl. `core.exe`) and e2e tests on Windows for every
   pull request and push to `main`. Actions are pinned to commit SHAs with the release in a comment.
 - Dependency install scripts need approval (`allowScripts` in `package.json`); review any new prompt from
   `npm install-scripts ls` instead of approving everything.
