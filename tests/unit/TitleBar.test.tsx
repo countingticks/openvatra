@@ -7,13 +7,13 @@ const titleBar = (): HTMLElement => screen.getByRole('banner')
 const windowButton = (name: string): HTMLElement => within(titleBar()).getByRole('button', { name })
 
 describe('title bar', () => {
-  it('has the sidebar toggle and the three window buttons', () => {
+  it('has the menu, the sidebar toggle and the three window buttons', () => {
     renderWithStore(<App />)
 
     const names = within(titleBar())
       .getAllByRole('button')
       .map((button) => button.getAttribute('aria-label'))
-    expect(names).toEqual(['Sidebar', 'Minimize', 'Maximize', 'Close'])
+    expect(names).toEqual(['Menu', 'Sidebar', 'Minimize', 'Maximize', 'Close'])
   })
 
   it('sends each window button to main', () => {

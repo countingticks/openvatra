@@ -1,14 +1,15 @@
 // IPC handlers: main's side of the contract in src/shared/ipc.ts. Every request is treated as untrusted.
-import { BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { dirname } from 'path'
 import { z } from 'zod'
-import { appFolders, ipcChannels, type AppFolder, type FileLocations } from '../shared/ipc'
+import { appFolders, editCommands, ipcChannels, type AppFolder, type FileLocations } from '../shared/ipc'
 import type { Settings } from '../shared/settings'
 import { log } from './logger'
 import type { SettingsStore } from './settingsStore'
 import { isAppUrl } from './urlPolicy'
 
 const appFolderSchema = z.enum(appFolders)
+const editCommandSchema = z.enum(editCommands)
 
 export function registerIpcHandlers(store: SettingsStore, appUrl: string, locations: FileLocations): void {
   const folders: Record<AppFolder, string> = {
@@ -64,6 +65,22 @@ export function registerIpcHandlers(store: SettingsStore, appUrl: string, locati
   // close() goes through the window's 'close' handler, so the tray / quit choice still applies.
   ipcMain.handle(ipcChannels.windowClose, (event) => senderWindow(event).close())
   ipcMain.handle(ipcChannels.windowIsMaximized, (event): boolean => senderWindow(event).isMaximized())
+
+  // Only the six listed commands can be run: the name is looked up in an allow-list, never used as a raw method name.
+  ipcMain.handle(ipcChannels.windowEdit, (event, command: unknown) => {
+    const { webContents } = senderWindow(event)
+    const parsed = editCommandSchema.safeParse(command)
+    if (!parsed.success) {
+      log.warn('Refused an unknown edit command', command)
+      throw new Error('Unknown edit command')
+    }
+    webContents[parsed.data]()
+  })
+
+  ipcMain.handle(ipcChannels.appQuit, (event) => {
+    assertFromApp(event)
+    app.quit()
+  })
 
   // The UI names one of our folders; it can never make Explorer open (or run) a path of its choosing.
   ipcMain.handle(ipcChannels.filesOpenFolder, async (event, folder: unknown): Promise<void> => {

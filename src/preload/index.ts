@@ -34,7 +34,11 @@ const api: Api = {
       return () => {
         ipcRenderer.removeListener(ipcChannels.windowMaximizedChanged, listener)
       }
-    }
+    },
+    edit: (command) => ipcRenderer.invoke(ipcChannels.windowEdit, command)
+  }),
+  app: Object.freeze({
+    quit: () => ipcRenderer.invoke(ipcChannels.appQuit)
   })
 }
 

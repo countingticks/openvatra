@@ -6,7 +6,7 @@ import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@renderer/store/store'
-import type { Api, AppWindowApi, FileLocations, FilesApi, SettingsApi } from '../../src/shared/ipc'
+import type { Api, AppApi, AppWindowApi, FileLocations, FilesApi, SettingsApi } from '../../src/shared/ipc'
 import { defaultSettings, type Settings } from '../../src/shared/settings'
 
 export const exampleLocations: FileLocations = {
@@ -19,6 +19,7 @@ export interface FakeAppWindow {
   minimize: Mock<AppWindowApi['minimize']>
   toggleMaximize: Mock<AppWindowApi['toggleMaximize']>
   close: Mock<AppWindowApi['close']>
+  edit: Mock<AppWindowApi['edit']>
   /** Report a new maximized state, as main does on maximize / restore. */
   emitMaximized(maximized: boolean): void
   /** How many components are listening right now. */
@@ -30,6 +31,7 @@ interface Rendered extends RenderResult {
   saveSettings: Mock<SettingsApi['update']>
   openFolder: Mock<FilesApi['openFolder']>
   appWindow: FakeAppWindow
+  quit: Mock<AppApi['quit']>
 }
 
 interface Options {
@@ -43,6 +45,7 @@ function fakeAppWindow(startMaximized: boolean): { api: AppWindowApi; fake: Fake
     minimize: vi.fn<AppWindowApi['minimize']>().mockResolvedValue(undefined),
     toggleMaximize: vi.fn<AppWindowApi['toggleMaximize']>().mockResolvedValue(undefined),
     close: vi.fn<AppWindowApi['close']>().mockResolvedValue(undefined),
+    edit: vi.fn<AppWindowApi['edit']>().mockResolvedValue(undefined),
     emitMaximized: (maximized) => act(() => listeners.forEach((listener) => listener(maximized))),
     listeners: () => listeners.size
   }
@@ -50,6 +53,7 @@ function fakeAppWindow(startMaximized: boolean): { api: AppWindowApi; fake: Fake
     minimize: fake.minimize,
     toggleMaximize: fake.toggleMaximize,
     close: fake.close,
+    edit: fake.edit,
     isMaximized: vi.fn<AppWindowApi['isMaximized']>().mockResolvedValue(startMaximized),
     onMaximizedChange: (callback) => {
       listeners.add(callback)
@@ -68,7 +72,9 @@ export function renderWithStore(
   const saveSettings = vi.fn<SettingsApi['update']>(async (patch) => (current = { ...current, ...patch }))
   const openFolder = vi.fn<FilesApi['openFolder']>().mockResolvedValue(undefined)
   const appWindow = fakeAppWindow(options.maximized ?? false)
-  const api: Pick<Api, 'files' | 'appWindow'> = {
+  const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
+  const api: Pick<Api, 'files' | 'appWindow' | 'app'> = {
+    app: { quit },
     files: { locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations), openFolder },
     appWindow: appWindow.api
   }
@@ -80,6 +86,7 @@ export function renderWithStore(
     saveSettings,
     openFolder,
     appWindow: appWindow.fake,
+    quit,
     ...render(<Provider store={store}>{ui}</Provider>)
   }
 }

@@ -14,8 +14,19 @@ export const ipcChannels = {
   windowClose: 'window:close',
   windowIsMaximized: 'window:is-maximized',
   /** Main → UI: sent with a boolean whenever the window is maximized or restored. */
-  windowMaximizedChanged: 'window:maximized-changed'
+  windowMaximizedChanged: 'window:maximized-changed',
+  windowEdit: 'window:edit',
+  appQuit: 'app:quit'
 } as const
+
+/** The Edit menu's commands, run by Chromium on whatever is focused in the page. */
+export const editCommands = ['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll'] as const
+export type EditCommand = (typeof editCommands)[number]
+
+export interface AppApi {
+  /** Quits OpenVatra (File → Quit, Ctrl+Q), whatever "When I close the window" says. */
+  quit(): Promise<void>
+}
 
 /** The window's own buttons, drawn by the UI because the native title bar is hidden. */
 export interface AppWindowApi {
@@ -27,6 +38,8 @@ export interface AppWindowApi {
   isMaximized(): Promise<boolean>
   /** Calls back with the new state whenever it changes (double-click on the bar, Aero Snap…); returns unsubscribe. */
   onMaximizedChange(callback: (maximized: boolean) => void): () => void
+  /** Runs an Edit menu command on the page's focused element; rejects for anything not in `editCommands`. */
+  edit(command: EditCommand): Promise<void>
 }
 
 /** The folders the UI may ask to open, by name. The UI never sends a path; main decides where each one is. */
@@ -69,4 +82,5 @@ export interface Api {
   readonly settings: SettingsApi
   readonly files: FilesApi
   readonly appWindow: AppWindowApi
+  readonly app: AppApi
 }

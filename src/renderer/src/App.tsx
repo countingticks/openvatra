@@ -3,6 +3,7 @@ import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { Sidebar } from '@renderer/components/Sidebar'
 import { TabView } from '@renderer/components/TabView'
 import { TitleBar } from '@renderer/components/TitleBar'
+import { useAppShortcuts } from '@renderer/hooks/useAppShortcuts'
 import { useSidebarShortcut } from '@renderer/hooks/useSidebarShortcut'
 import { useTabShortcuts } from '@renderer/hooks/useTabShortcuts'
 import { useAppSelector } from '@renderer/store/hooks'
@@ -12,6 +13,7 @@ import { sidebarId } from '@renderer/tabs'
 export function App(): React.JSX.Element {
   useTabShortcuts()
   useSidebarShortcut()
+  useAppShortcuts()
   const sidebarOpen = useAppSelector(selectSidebarOpen)
   const activeTab = useAppSelector(selectActiveTab)
   const sidebarToggle = useRef<HTMLButtonElement>(null)

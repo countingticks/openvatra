@@ -1,4 +1,4 @@
-import { app, type BrowserWindow } from 'electron'
+import { app, Menu, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -58,6 +58,10 @@ function start(): void {
 
     // Before any window exists, so every window and web view is guarded from its first moment.
     applySecurityPolicy(appUrl)
+
+    // No Electron menu: the app draws its own (≡ in the title bar), and Alt must reach it instead of revealing a
+    // hidden native menu bar. Editing shortcuts (Ctrl+C/V/Z…) are handled by Chromium itself, menu or not.
+    Menu.setApplicationMenu(null)
 
     // Development: F12 toggles DevTools. Production: blocks Ctrl+R reloads.
     // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils

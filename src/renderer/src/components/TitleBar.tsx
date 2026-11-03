@@ -1,4 +1,5 @@
 import { PanelLeft } from 'lucide-react'
+import { AppMenu } from '@renderer/components/AppMenu'
 import { WindowControls } from '@renderer/components/WindowControls'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSidebarOpen, sidebarToggled } from '@renderer/store/uiSlice'
@@ -19,7 +20,8 @@ export function TitleBar({ toggleRef }: TitleBarProps): React.JSX.Element {
   const sidebarOpen = useAppSelector(selectSidebarOpen)
 
   return (
-    <header className="absolute inset-x-0 top-0 z-20 flex h-10 items-center pl-1.5 [-webkit-app-region:drag]">
+    <header className="absolute inset-x-0 top-0 z-20 flex h-10 items-center gap-0.5 pl-1.5 [-webkit-app-region:drag]">
+      <AppMenu />
       <button
         ref={toggleRef}
         type="button"

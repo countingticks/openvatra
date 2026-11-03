@@ -1,0 +1,23 @@
+// Shortcuts from the File menu that work anywhere: Ctrl+, (Settings), Ctrl+W (close window), Ctrl+Q (quit).
+import { useEffect } from 'react'
+import { useAppDispatch } from '@renderer/store/hooks'
+import { tabSelected } from '@renderer/store/uiSlice'
+
+export function useAppShortcuts(): void {
+  const dispatch = useAppDispatch()
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (!event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return
+      const key = event.key.toLowerCase()
+      if (key === ',') dispatch(tabSelected('settings'))
+      else if (key === 'w') void window.api.appWindow.close().catch((error) => console.error(error))
+      else if (key === 'q') void window.api.app.quit().catch((error) => console.error(error))
+      else return
+      event.preventDefault()
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [dispatch])
+}
