@@ -8,8 +8,26 @@ export const ipcChannels = {
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
   filesLocations: 'files:locations',
-  filesOpenFolder: 'files:open-folder'
+  filesOpenFolder: 'files:open-folder',
+  windowMinimize: 'window:minimize',
+  windowToggleMaximize: 'window:toggle-maximize',
+  windowClose: 'window:close',
+  windowIsMaximized: 'window:is-maximized',
+  /** Main → UI: sent with a boolean whenever the window is maximized or restored. */
+  windowMaximizedChanged: 'window:maximized-changed'
 } as const
+
+/** The window's own buttons, drawn by the UI because the native title bar is hidden. */
+export interface AppWindowApi {
+  minimize(): Promise<void>
+  /** Maximizes, or restores if already maximized. */
+  toggleMaximize(): Promise<void>
+  /** Same as closing the window: hides to the tray or quits, per Settings → When I close the window. */
+  close(): Promise<void>
+  isMaximized(): Promise<boolean>
+  /** Calls back with the new state whenever it changes (double-click on the bar, Aero Snap…); returns unsubscribe. */
+  onMaximizedChange(callback: (maximized: boolean) => void): () => void
+}
 
 /** The folders the UI may ask to open, by name. The UI never sends a path; main decides where each one is. */
 export const appFolders = ['settings', 'logs'] as const
@@ -50,4 +68,5 @@ export interface Api {
   readonly runtime: RuntimeInfo
   readonly settings: SettingsApi
   readonly files: FilesApi
+  readonly appWindow: AppWindowApi
 }

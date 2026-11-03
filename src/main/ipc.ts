@@ -1,5 +1,5 @@
 // IPC handlers: main's side of the contract in src/shared/ipc.ts. Every request is treated as untrusted.
-import { ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
 import { dirname } from 'path'
 import { z } from 'zod'
 import { appFolders, ipcChannels, type AppFolder, type FileLocations } from '../shared/ipc'
@@ -46,6 +46,24 @@ export function registerIpcHandlers(store: SettingsStore, appUrl: string, locati
     assertFromApp(event)
     return locations
   })
+
+  /** The window that sent the request: the buttons act on their own window, never another. */
+  function senderWindow(event: IpcMainInvokeEvent): BrowserWindow {
+    assertFromApp(event)
+    const window = BrowserWindow.fromWebContents(event.sender)
+    if (!window) throw new Error('No window for this request')
+    return window
+  }
+
+  ipcMain.handle(ipcChannels.windowMinimize, (event) => senderWindow(event).minimize())
+  ipcMain.handle(ipcChannels.windowToggleMaximize, (event) => {
+    const window = senderWindow(event)
+    if (window.isMaximized()) window.unmaximize()
+    else window.maximize()
+  })
+  // close() goes through the window's 'close' handler, so the tray / quit choice still applies.
+  ipcMain.handle(ipcChannels.windowClose, (event) => senderWindow(event).close())
+  ipcMain.handle(ipcChannels.windowIsMaximized, (event): boolean => senderWindow(event).isMaximized())
 
   // The UI names one of our folders; it can never make Explorer open (or run) a path of its choosing.
   ipcMain.handle(ipcChannels.filesOpenFolder, async (event, folder: unknown): Promise<void> => {

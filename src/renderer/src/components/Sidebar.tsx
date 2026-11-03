@@ -1,17 +1,11 @@
-import { PanelLeft } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectActiveTab, selectSidebarOpen, sidebarToggled, tabSelected } from '@renderer/store/uiSlice'
-import { sidebarId, sidebarShortcut, tabs, type Tab } from '@renderer/tabs'
+import { selectActiveTab, selectSidebarOpen, tabSelected } from '@renderer/store/uiSlice'
+import { sidebarId, tabs, type Tab } from '@renderer/tabs'
 
 const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring'
 
-interface SidebarProps {
-  /** Lets the app move focus here when the sidebar opens from the button by the content. */
-  closeButtonRef?: React.Ref<HTMLButtonElement>
-}
-
-export function Sidebar({ closeButtonRef }: SidebarProps): React.JSX.Element {
+export function Sidebar(): React.JSX.Element {
   const open = useAppSelector(selectSidebarOpen)
   const activeTab = useAppSelector(selectActiveTab)
   const dispatch = useAppDispatch()
@@ -39,24 +33,8 @@ export function Sidebar({ closeButtonRef }: SidebarProps): React.JSX.Element {
       inert={!open}
       className="sidebar-panel w-56 shrink-0 overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground data-[state=closed]:w-0 data-[state=closed]:border-r-0"
     >
-      <div className="flex h-full w-56 flex-col gap-0.5 px-2.5 py-3">
-        <button
-          ref={closeButtonRef}
-          type="button"
-          aria-label="Close sidebar"
-          aria-expanded={open}
-          aria-controls={sidebarId}
-          aria-keyshortcuts={sidebarShortcut}
-          title="Close sidebar (Ctrl+B)"
-          onClick={() => dispatch(sidebarToggled())}
-          className={cn(
-            'mb-2 grid size-8 place-items-center rounded-sm text-muted-foreground hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
-            focusRing
-          )}
-        >
-          <PanelLeft aria-hidden className="size-[18px]" />
-        </button>
-
+      {/* Starts 52px down: the title bar (40px) lies over the top of the sidebar. */}
+      <div className="flex h-full w-56 flex-col gap-0.5 px-2.5 pt-[52px] pb-3">
         <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5">
           {modules.map((tab) => (
             <button

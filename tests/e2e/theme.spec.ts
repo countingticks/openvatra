@@ -63,7 +63,7 @@ test('the last tab, the theme and the sidebar survive a restart', async () => {
   // Still on Settings from the tests above: pick Dark there, then leave the app on Automations.
   await chooseTheme('Dark')
   await mainWindow.keyboard.press('Control+3')
-  await mainWindow.getByRole('button', { name: 'Close sidebar' }).click()
+  await mainWindow.getByRole('button', { name: 'Sidebar' }).click()
   await expect
     .poll(settingsOnDisk)
     .toMatchObject({ lastTab: 'automations', theme: 'dark', sidebarOpen: false })

@@ -1,5 +1,5 @@
 // Runs in a sandbox before the UI loads. Its only job: hand the UI the API defined in src/shared/ipc.ts.
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { type Api, ipcChannels } from '../shared/ipc'
 
 const api: Api = {
@@ -19,6 +19,22 @@ const api: Api = {
   files: Object.freeze({
     locations: () => ipcRenderer.invoke(ipcChannels.filesLocations),
     openFolder: (folder) => ipcRenderer.invoke(ipcChannels.filesOpenFolder, folder)
+  }),
+  appWindow: Object.freeze({
+    minimize: () => ipcRenderer.invoke(ipcChannels.windowMinimize),
+    toggleMaximize: () => ipcRenderer.invoke(ipcChannels.windowToggleMaximize),
+    close: () => ipcRenderer.invoke(ipcChannels.windowClose),
+    isMaximized: () => ipcRenderer.invoke(ipcChannels.windowIsMaximized),
+    onMaximizedChange: (callback) => {
+      // The UI gets only the boolean: handing it the IPC event would give it access to ipcRenderer's sender.
+      const listener = (_event: IpcRendererEvent, maximized: unknown): void => {
+        if (typeof maximized === 'boolean') callback(maximized)
+      }
+      ipcRenderer.on(ipcChannels.windowMaximizedChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(ipcChannels.windowMaximizedChanged, listener)
+      }
+    }
   })
 }
 

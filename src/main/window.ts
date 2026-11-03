@@ -2,6 +2,7 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import icon from '../../resources/icon.png?asset'
+import { ipcChannels } from '../shared/ipc'
 import { windowMinSize } from '../shared/settings'
 import { debounce } from './debounce'
 import { log } from './logger'
@@ -28,6 +29,9 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
     title: 'OpenVatra',
     show: false,
     autoHideMenuBar: true,
+    // No Windows caption: the UI draws its own title bar and window buttons. Resize borders, the shadow and
+    // Aero Snap (drag to a screen edge) stay.
+    titleBarStyle: 'hidden',
     backgroundColor: windowBackground(),
     icon,
     // Security baseline (AGENTS.md): the UI runs like an untrusted web page. It has no Node.js access, lives in
@@ -42,6 +46,12 @@ export function createMainWindow(appUrl: string, store: SettingsStore, show: boo
 
   rememberBounds(window, store)
   followThemeBackground(window)
+  // The UI's maximize button shows Maximize or Restore. Maximizing can also happen without it (double-click on
+  // the title bar, dragging to the top edge), so main tells the UI whenever the state changes.
+  const sendMaximized = (): void =>
+    window.webContents.send(ipcChannels.windowMaximizedChanged, window.isMaximized())
+  window.on('maximize', sendMaximized)
+  window.on('unmaximize', sendMaximized)
   // The page can't write files, so its errors would only reach DevTools. Copy them into main.log, where a bug
   // report can find them. Errors only: warnings and info would bury the log.
   window.webContents.on('console-message', ({ level, message, sourceId, lineNumber }) => {
