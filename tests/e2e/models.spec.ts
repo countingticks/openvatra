@@ -68,7 +68,10 @@ test('loads a model from the popover, and quitting leaves no core.exe behind', a
 
   await expect(modelButton).toHaveAccessibleName('Model: tiny, Ready')
   await expect(modelButton).toHaveText('tiny')
-  await expect(mainWindow.getByRole('button', { name: 'Unload tiny' })).toBeVisible()
+  // The loaded row is the unload button and carries the highlight state; no "Ready — …" sentence any more.
+  const row = mainWindow.getByRole('button', { name: 'Unload tiny' })
+  await expect(row).toHaveAttribute('aria-current', 'true')
+  await expect(mainWindow.getByText(/Ready —/)).toHaveCount(0)
 
   const corePid = await coreExePid(await app.evaluate(() => process.pid))
   expect(corePid).toBeGreaterThan(0)

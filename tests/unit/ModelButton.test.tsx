@@ -74,30 +74,68 @@ describe('model button', () => {
     expect(core.load).toHaveBeenCalledWith('Qwen3-8B')
   })
 
-  it('names the loaded model on the button and offers Unload', async () => {
-    const { core } = renderWithStore(<App />, {}, { coreState: ready, models: [{ ...qwen, state: 'ready' }] })
+  it('names the loaded model on the button, highlights its row and unloads it on click', async () => {
+    const { core } = renderWithStore(
+      <App />,
+      {},
+      {
+        coreState: ready,
+        models: [
+          { ...qwen, state: 'ready' },
+          { ...qwen, id: 'Gemma' }
+        ]
+      }
+    )
 
     await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Ready'))
     expect(button()).toHaveTextContent('Qwen3-8B')
     const popover = await openPopover()
-    expect(popover).toHaveTextContent('Ready — Qwen3-8B loaded')
+    expect(popover).not.toHaveTextContent('Ready —')
 
-    fireEvent.click(within(popover).getByRole('button', { name: 'Unload Qwen3-8B' }))
+    const loaded = within(popover).getByRole('button', { name: 'Unload Qwen3-8B' })
+    expect(loaded).toHaveAttribute('aria-current', 'true')
+    expect(loaded).toHaveClass('bg-success/10')
+    expect(within(popover).getByRole('button', { name: 'Load Gemma' })).not.toHaveAttribute('aria-current')
+
+    fireEvent.click(loaded)
     expect(core.unload).toHaveBeenCalledWith('Qwen3-8B')
   })
 
-  it('says Loading while a model loads, and shows a failed request', async () => {
-    const { core } = renderWithStore(
+  it('shows a disabled spinner row while a model loads, and no state words', async () => {
+    renderWithStore(<App />, {}, { coreState: ready, models: [{ ...qwen, state: 'loading' }] })
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Loading'))
+    const popover = await openPopover()
+
+    expect(within(popover).getByRole('button', { name: 'Loading Qwen3-8B' })).toBeDisabled()
+    expect(popover).not.toHaveTextContent(/Loaded|Not loaded|Loading…/)
+  })
+
+  it('says what is happening when there is no list: starting, or a problem', async () => {
+    const { core } = renderWithStore(<App />)
+    const popover = await openPopover()
+    expect(popover).toHaveTextContent('Starting the models service…')
+
+    core.emitState({ status: 'problem', reason: 'boom' })
+    await waitFor(() => expect(popover).toHaveTextContent('Problem: boom'))
+  })
+
+  it("shows core's error under the model's name", async () => {
+    renderWithStore(
       <App />,
       {},
-      { coreState: ready, models: [{ ...qwen, state: 'loading' }] }
+      { coreState: ready, models: [{ ...qwen, state: 'error', error: 'not enough memory' }] }
     )
-    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Loading'))
+    const popover = await openPopover()
 
-    core.emitModels([qwen])
+    expect(await within(popover).findByRole('alert')).toHaveTextContent('not enough memory')
+    expect(within(popover).getByRole('button', { name: 'Load Qwen3-8B' })).toBeEnabled()
+  })
+
+  it('says Loading while a model loads, and shows a failed request', async () => {
+    const { core } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
     core.load.mockRejectedValueOnce(new Error("Error invoking remote method 'x': Error: out of memory"))
     const popover = await openPopover()
-    fireEvent.click(within(popover).getByRole('button', { name: 'Load Qwen3-8B' }))
+    fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
 
     expect(await within(popover).findByRole('alert')).toHaveTextContent('out of memory')
   })

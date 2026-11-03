@@ -14,15 +14,14 @@ import type { CoreState, ModelInfo } from '../../../shared/core'
 function describe(
   state: CoreState | null,
   active: ModelInfo | undefined
-): { label: string; detail: string; dot: string } {
+): { label: string; detail: string | null; dot: string } {
   switch (state?.status) {
     case 'ready':
-      if (active?.state === 'loading')
-        return { label: 'Loading', detail: `Loading ${active.id}…`, dot: stateDot('loading') }
+      if (active?.state === 'loading') return { label: 'Loading', detail: null, dot: stateDot('loading') }
       return {
         label: 'Ready',
-        detail: active ? `Ready — ${active.id} loaded` : 'Ready — no model loaded',
-        // Filled only while a model is loaded; the service being up with nothing loaded stays grey.
+        detail: null,
+        // Green only while a model is loaded; the service being up with nothing loaded stays grey.
         dot: stateDot(active ? 'ready' : 'stopped')
       }
     case 'problem':
@@ -43,7 +42,8 @@ function run(action: () => Promise<void>): void {
 }
 
 /**
- * Status dot + model name under the message box; click for the state in words and the service's actions.
+ * Status dot + model name under the message box; click for the models (a click loads or unloads one) and the
+ * service's actions. A sentence appears only when there is no list to look at: starting, or a problem.
  * The name is the model that is loaded or loading (the first, if several), else "No model".
  */
 export function ModelButton(): React.JSX.Element {
@@ -66,7 +66,7 @@ export function ModelButton(): React.JSX.Element {
         {name}
       </PopoverTrigger>
       <PopoverContent side="top" align="end" aria-label="Models service">
-        <p>{detail}</p>
+        {detail && <p>{detail}</p>}
         {state?.status === 'ready' && <ModelPicker models={models} />}
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => run(window.api.core.restart)}>

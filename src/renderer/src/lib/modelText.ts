@@ -1,4 +1,4 @@
-// Words and status dots for models, shared by the Settings model list and the model button's popover.
+// Words and the status dot for models, used by the model button and its popover.
 import type { ModelInfo } from '../../../shared/core'
 
 export function formatSize(bytes: number): string {
@@ -14,24 +14,11 @@ export function stateDot(state: ModelInfo['state']): string {
       // The app's motion setting (data-motion on <html>) turns the pulse off.
       return 'animate-pulse bg-primary in-data-[motion=reduce]:animate-none'
     case 'ready':
-      return 'bg-primary'
+      return 'bg-success'
     case 'error':
       return 'bg-destructive'
     default:
       return 'bg-muted-foreground/40'
-  }
-}
-
-export function describeModel(model: ModelInfo): string {
-  switch (model.state) {
-    case 'loading':
-      return 'Loading…'
-    case 'ready':
-      return model.busy ? 'Loaded, answering' : 'Loaded'
-    case 'error':
-      return `Problem: ${model.error ?? 'it could not be loaded'}`
-    default:
-      return 'Not loaded'
   }
 }
 
