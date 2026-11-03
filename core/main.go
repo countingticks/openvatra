@@ -19,6 +19,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
@@ -104,11 +105,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		},
 	})
 	cfg.OnChange(rt.Notify)
+	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
+	hardware := hw.NewChecker(func() string { return cfg.Get().LlamaServerPath }, logger)
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)
