@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./package-lock.json)",
+      "Read(./out/**)",
+      "Read(./dist/**)",
+      "Read(./release/**)",
+      "Read(./coverage/**)",
+      "Read(./test-results/**)",
+      "Read(./playwright-report/**)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format.mjs\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
