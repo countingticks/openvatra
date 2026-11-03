@@ -38,7 +38,7 @@ export function ModelsSection(): React.JSX.Element {
       />
       <PathRow
         label="Models folder"
-        hint="Searches subfolders too."
+        hint="Scans this folder and its subfolders."
         path={models.modelsDir}
         onBrowse={() => void pick('modelsDir')}
       />
