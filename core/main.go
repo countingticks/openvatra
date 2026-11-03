@@ -96,6 +96,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		EmbeddingModel: func() string { return cfg.Get().EmbeddingModel },
 		IdleTimeout:    func() time.Duration { return time.Duration(cfg.Get().IdleUnloadMinutes) * time.Minute },
 	})
+	cfg.OnChange(rt.Notify)
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.

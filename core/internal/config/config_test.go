@@ -40,3 +40,20 @@ func TestValidateOptions(t *testing.T) {
 }
 
 func intp(n int) *int { return &n }
+
+func TestStoreCallsOnChangeOnlyForAcceptedConfigs(t *testing.T) {
+	s := NewStore()
+	calls := 0
+	s.OnChange(func() { calls++ })
+
+	if err := s.Set(Config{ModelsDir: "D:/Models"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Set(Config{IdleUnloadMinutes: -1}); err == nil {
+		t.Fatal("a negative idle time was accepted")
+	}
+
+	if calls != 1 {
+		t.Fatalf("onChange called %d times, want 1", calls)
+	}
+}

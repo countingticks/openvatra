@@ -56,8 +56,9 @@ func (c Config) Validate() error {
 
 // Store is the live config, safe for the handler and the router to use at the same time.
 type Store struct {
-	mu  sync.RWMutex
-	cur Config
+	mu       sync.RWMutex
+	cur      Config
+	onChange func()
 }
 
 func NewStore() *Store { return &Store{} }
@@ -76,6 +77,18 @@ func (s *Store) Set(c Config) error {
 	}
 	s.mu.Lock()
 	s.cur = c
+	notify := s.onChange
 	s.mu.Unlock()
+	if notify != nil {
+		notify() // outside the lock: it may call Get
+	}
 	return nil
+}
+
+// OnChange sets the function Set calls after every accepted config. core uses it to push a fresh model list to
+// the UI: a new models folder changes what is listed although no model changed state.
+func (s *Store) OnChange(f func()) {
+	s.mu.Lock()
+	s.onChange = f
+	s.mu.Unlock()
 }
