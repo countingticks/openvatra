@@ -103,11 +103,13 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     appWindow: Object.keys(window.api.appWindow).sort(),
     appWindowFrozen: Object.isFrozen(window.api.appWindow),
     app: Object.keys(window.api.app).sort(),
-    appFrozen: Object.isFrozen(window.api.app)
+    appFrozen: Object.isFrozen(window.api.app),
+    core: Object.keys(window.api.core).sort(),
+    coreFrozen: Object.isFrozen(window.api.core)
   }))
 
   expect(shape).toEqual({
-    api: ['app', 'appWindow', 'files', 'runtime', 'settings'],
+    api: ['app', 'appWindow', 'core', 'files', 'runtime', 'settings'],
     settings: ['get', 'update'],
     settingsFrozen: true,
     // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders.
@@ -119,7 +121,10 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     appWindowFrozen: true,
     // Added in T28 (approved 2026-11-02): File → Quit and Ctrl+Q.
     app: ['quit'],
-    appFrozen: true
+    appFrozen: true,
+    // Added in T37: watch the models service, restart it, open its log. Never its token.
+    core: ['getState', 'onState', 'openLog', 'restart'],
+    coreFrozen: true
   })
 })
 

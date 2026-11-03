@@ -1,5 +1,6 @@
 // Runs in a sandbox before the UI loads. Its only job: hand the UI the API defined in src/shared/ipc.ts.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
+import { isCoreState } from '../shared/core'
 import { type Api, ipcChannels } from '../shared/ipc'
 
 const api: Api = {
@@ -39,6 +40,21 @@ const api: Api = {
   }),
   app: Object.freeze({
     quit: () => ipcRenderer.invoke(ipcChannels.appQuit)
+  }),
+  core: Object.freeze({
+    getState: () => ipcRenderer.invoke(ipcChannels.coreGetState),
+    onState: (callback) => {
+      // Same pattern as onMaximizedChange: no IPC event reaches the UI, and a malformed value is dropped.
+      const listener = (_event: IpcRendererEvent, state: unknown): void => {
+        if (isCoreState(state)) callback(state)
+      }
+      ipcRenderer.on(ipcChannels.coreStateChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(ipcChannels.coreStateChanged, listener)
+      }
+    },
+    restart: () => ipcRenderer.invoke(ipcChannels.coreRestart),
+    openLog: () => ipcRenderer.invoke(ipcChannels.coreOpenLog)
   })
 }
 

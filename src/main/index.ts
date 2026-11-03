@@ -2,8 +2,10 @@ import { app, Menu, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
+import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
@@ -19,8 +21,16 @@ const appUrl =
     ? process.env['ELECTRON_RENDERER_URL']
     : pathToFileURL(join(__dirname, '../renderer/index.html')).href
 
+// Packaged: shipped beside app.asar (electron-builder extraResources). Development: built by `npm run build:core`.
+function coreExePath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'core', 'core.exe')
+    : join(app.getAppPath(), 'resources', 'core', 'core.exe')
+}
+
 let mainWindow: BrowserWindow | null = null
 let tray: AppTray | null = null
+let core: Supervisor | null = null
 
 // Set by 'before-quit'. Until then, closing the window only hides it to the tray.
 let quitting = false
@@ -71,8 +81,18 @@ function start(): void {
 
     const settingsPath = join(app.getPath('userData'), 'settings.json')
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
+    // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
+    // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
+    core = createSupervisor({
+      exePath: coreExePath(),
+      onState: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send(ipcChannels.coreStateChanged, state)
+      },
+      log
+    })
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() })
+    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() }, core)
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)
@@ -86,6 +106,8 @@ function start(): void {
 
     mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
     mainWindow.on('closed', () => (mainWindow = null))
+
+    core.start()
 
     tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
     hideOnClose(
@@ -108,7 +130,8 @@ function start(): void {
     // quit() from inside it is ignored, which left the process running.
     app.once('will-quit', (event) => {
       event.preventDefault()
-      void store.whenIdle().finally(() => app.exit())
+      // core gets up to 8 s to shut down; the pending saves finish in the meantime.
+      void Promise.all([store.whenIdle(), core?.stop()]).finally(() => app.exit())
     })
   })
 }

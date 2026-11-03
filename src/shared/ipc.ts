@@ -1,6 +1,7 @@
 // The complete API the renderer may use, exposed by the preload as `window.api`.
 // This file is the trust boundary: the UI can do exactly what is listed here and nothing else.
 // Keep it small; every addition must be reviewed (see AGENTS.md, "Ask first").
+import type { CoreState } from './core'
 import type { Settings, SettingsPatch } from './settings'
 
 /** Channel names shared by the preload (sends) and main (answers), so the two can't drift apart. */
@@ -16,7 +17,12 @@ export const ipcChannels = {
   /** Main → UI: sent with a boolean whenever the window is maximized or restored. */
   windowMaximizedChanged: 'window:maximized-changed',
   windowEdit: 'window:edit',
-  appQuit: 'app:quit'
+  appQuit: 'app:quit',
+  coreGetState: 'core:get-state',
+  /** Main → UI: sent with the new CoreState on every change. */
+  coreStateChanged: 'core:state-changed',
+  coreRestart: 'core:restart',
+  coreOpenLog: 'core:open-log'
 } as const
 
 /** The Edit menu's commands, run by Chromium on whatever is focused in the page. */
@@ -76,6 +82,17 @@ export interface SettingsApi {
   update(patch: SettingsPatch): Promise<Settings>
 }
 
+/** The models service (core.exe). The UI can watch it and ask for a restart; it never learns its token. */
+export interface CoreApi {
+  getState(): Promise<CoreState>
+  /** Calls back with every new state; returns unsubscribe. */
+  onState(callback: (state: CoreState) => void): () => void
+  /** Stops core and starts a fresh one; resolves once the new one is launching (watch `onState` for the result). */
+  restart(): Promise<void>
+  /** Opens main.log in the default app (or shows it in Explorer); rejects if it can't. */
+  openLog(): Promise<void>
+}
+
 export interface Api {
   /** Static facts about the running app; safe to read, nothing to change. */
   readonly runtime: RuntimeInfo
@@ -83,4 +100,5 @@ export interface Api {
   readonly files: FilesApi
   readonly appWindow: AppWindowApi
   readonly app: AppApi
+  readonly core: CoreApi
 }
