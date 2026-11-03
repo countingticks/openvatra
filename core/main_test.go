@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/config"
 )
 
 func TestWriteReadyIsOneJSONLine(t *testing.T) {
@@ -101,4 +104,16 @@ func TestRunStopsWhenStdinCloses(t *testing.T) {
 
 	stdinW.Close()
 	waitExit(t, done)
+}
+
+func TestOptionArgs(t *testing.T) {
+	ctx, cpu := 8192, 0
+	got := optionArgs(config.ModelOptions{ContextSize: &ctx, GPULayers: &cpu, ExtraArgs: []string{"--flash-attn", "on"}})
+	want := []string{"--ctx-size", "8192", "--n-gpu-layers", "0", "--flash-attn", "on"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	if got := optionArgs(config.ModelOptions{}); len(got) != 0 {
+		t.Fatalf("no options gave %v", got)
+	}
 }

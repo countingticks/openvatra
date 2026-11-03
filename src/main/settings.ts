@@ -11,7 +11,10 @@ type Migration = (old: Record<string, unknown>) => Record<string, unknown>
 const migrations: Readonly<Record<number, Migration>> = {
   // 1 → 2: Settings became a dialog, so a file left on the Settings tab reopens on Chat instead of failing
   // validation (which would set the whole file aside and lose every other setting).
-  1: (old) => (old['lastTab'] === 'settings' ? { ...old, lastTab: 'chat' } : old)
+  1: (old) => (old['lastTab'] === 'settings' ? { ...old, lastTab: 'chat' } : old),
+  // 2 → 3: `models` is new. Nothing to move; the schema fills in its defaults. Listed anyway so the chain has no
+  // gap, and so a future change to the defaults has an obvious place to go.
+  2: (old) => old
 }
 
 /** What happened while loading, so the caller can log it. */

@@ -93,7 +93,7 @@ describe('migrate', () => {
   describe('1 → 2: Settings became a dialog', () => {
     it('reopens a file left on the Settings tab on Chat', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings', theme: 'dark' })).toEqual({
-        schemaVersion: 2,
+        schemaVersion: 3,
         lastTab: 'chat',
         theme: 'dark'
       })
@@ -101,7 +101,7 @@ describe('migrate', () => {
 
     it('keeps every other tab and setting as it was', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'code', closeAction: 'quit' })).toEqual({
-        schemaVersion: 2,
+        schemaVersion: 3,
         lastTab: 'code',
         closeAction: 'quit'
       })
@@ -113,12 +113,45 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 2, theme: 'dark', lastTab: 'chat' })
+      expect(settings).toMatchObject({ schemaVersion: 3, theme: 'dark', lastTab: 'chat' })
+    })
+  })
+
+  describe('2 → 3: models settings', () => {
+    it('keeps every existing setting and adds only the version', () => {
+      expect(migrate({ schemaVersion: 2, theme: 'dark', lastTab: 'code' })).toEqual({
+        schemaVersion: 3,
+        theme: 'dark',
+        lastTab: 'code'
+      })
+    })
+
+    it('loads a real version-2 file with default models and nothing else changed', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 2, theme: 'dark', closeAction: 'quit' }))
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings).toMatchObject({ schemaVersion: 3, theme: 'dark', closeAction: 'quit' })
+      expect(settings.models).toEqual({
+        llamaServerPath: null,
+        modelsDir: null,
+        embeddingModel: null,
+        idleUnloadMinutes: 15,
+        options: {}
+      })
+    })
+
+    it('upgrades a version-1 file through both steps', () => {
+      expect(migrate({ schemaVersion: 1, lastTab: 'settings' })).toEqual({
+        schemaVersion: 3,
+        lastTab: 'chat'
+      })
     })
   })
 
   it.each([
-    ['current files', { schemaVersion: 2, theme: 'dark' }],
+    ['current files', { schemaVersion: 3, theme: 'dark' }],
     ['newer files', { schemaVersion: 3 }],
     ['files with no migration path', { schemaVersion: 0 }],
     ['non-objects', [1, 2]]

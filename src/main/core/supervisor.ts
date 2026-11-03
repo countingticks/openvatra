@@ -24,6 +24,8 @@ export interface SupervisorOptions {
   /** Folder for core.log, the same one main.log lives in. */
   logsDir: string
   onState: (state: CoreState) => void
+  /** Called each time a core becomes ready (also after a restart), e.g. to send it the config. */
+  onReady?: () => void
   log: { info: (message: string) => void; warn: (message: string) => void }
   // Injected so tests can use a fake child process and a fake network.
   spawn?: (exePath: string, env: NodeJS.ProcessEnv) => ChildProcessWithoutNullStreams
@@ -39,6 +41,8 @@ export interface Supervisor {
   /** Asks core to shut down, kills it after the timeout. Resolves once it is gone; no restarts afterwards. */
   stop: () => Promise<void>
   state: () => CoreState
+  /** POSTs JSON to the running core. Rejects if core isn't ready, so callers can wait for `onReady` instead. */
+  post: (path: string, body: unknown) => Promise<void>
   /** Stops the running core (if any) and starts a fresh one, forgetting earlier crashes. No-op once stop() ran. */
   restart: () => Promise<void>
 }
@@ -155,6 +159,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
       if (attempt.failed || stopping) return
       attempt.port = port
       set({ status: 'ready', port, version })
+      options.onReady?.()
     } catch (error) {
       fail(attempt, `core did not answer /health: ${String(error)}`)
       attempt.child.kill() // it is running but useless; the restart must not leave it behind
@@ -211,7 +216,19 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     }
   }
 
-  return { start, stop, restart, state: () => current }
+  async function post(path: string, body: unknown): Promise<void> {
+    const attempt = active
+    if (current.status !== 'ready' || !attempt || attempt.port === undefined)
+      throw new Error('core is not ready')
+    const response = await doFetch(`http://127.0.0.1:${attempt.port}${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${attempt.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+    if (!response.ok) throw new Error(`core answered ${path} with HTTP ${response.status}`)
+  }
+
+  return { start, stop, restart, post, state: () => current }
 }
 
 function parseReadyLine(line: string): { port: number; version: string } | null {

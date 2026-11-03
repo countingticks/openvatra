@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
+import { createConfigSync } from './core/configSync'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -83,6 +84,12 @@ function start(): void {
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
     // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
+    const configSync = createConfigSync(
+      store.get,
+      (path, body) => core?.post(path, body) ?? Promise.reject(),
+      log
+    )
+    store.onChange(configSync.onSettingsChange)
     core = createSupervisor({
       exePath: coreExePath(),
       logsDir: logsFolder(),
@@ -90,6 +97,8 @@ function start(): void {
         if (mainWindow && !mainWindow.isDestroyed())
           mainWindow.webContents.send(ipcChannels.coreStateChanged, state)
       },
+      // A fresh core knows nothing: it gets the config as soon as it is ready, and again after every restart.
+      onReady: () => void configSync.sync(),
       log
     })
     // Before the window, so the UI's first request always finds a handler.

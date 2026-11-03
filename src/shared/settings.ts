@@ -9,9 +9,9 @@ export type TabId = (typeof tabIds)[number]
 
 /**
  * Bump when the file's shape changes in a way old files can't satisfy, and add a migration for it
- * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'.
+ * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'. 3: added `models`.
  */
-export const settingsSchemaVersion = 2
+export const settingsSchemaVersion = 3
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -28,6 +28,31 @@ const lastTab = z.enum(tabIds)
 const closeAction = z.enum(closeActions)
 const sidebarOpen = z.boolean()
 const motion = z.enum(motions)
+
+/** Minutes a model may sit unused before core unloads it; null means never. */
+export const idleUnloadMinutesChoices = [5, 15, 60] as const
+
+/** Per-model llama-server tweaks; a missing field means llama-server's own default (0 gpuLayers = CPU only). */
+export const modelOptionsSchema = z.strictObject({
+  contextSize: z.number().int().positive().optional(),
+  gpuLayers: z.number().int().min(0).optional(),
+  // An argument list passed straight to the process, never a command string: no shell ever sees it.
+  extraArgs: z.array(z.string().max(1000)).max(50).optional()
+})
+
+/** What core needs to run models. main sends it to core.exe (POST /api/config) on start and on every change. */
+export const modelsSettingsSchema = z.object({
+  /** Full path to llama-server.exe; null until chosen. */
+  llamaServerPath: z.string().min(1).nullable().default(null),
+  modelsDir: z.string().min(1).nullable().default(null),
+  /** A model id (its file name without .gguf). */
+  embeddingModel: z.string().min(1).nullable().default(null),
+  idleUnloadMinutes: z
+    .union(idleUnloadMinutesChoices.map((minutes) => z.literal(minutes)))
+    .nullable()
+    .default(15),
+  options: z.record(z.string(), modelOptionsSchema).default({})
+})
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
 export const windowBoundsSchema = z.object({
@@ -46,11 +71,14 @@ export const settingsSchema = z.object({
   sidebarOpen: sidebarOpen.default(true),
   motion: motion.default('system'),
   window: windowBoundsSchema.optional(),
+  // prefault, not default: the empty object still runs through the field defaults above.
+  models: modelsSettingsSchema.prefault({}),
   /** The "still running in the tray" notice is shown once, the first time the window is closed. */
   closeToTrayNoticeShown: z.boolean().default(false)
 })
 
 export type Settings = z.infer<typeof settingsSchema>
+export type ModelsSettings = z.infer<typeof modelsSettingsSchema>
 export type WindowBounds = z.infer<typeof windowBoundsSchema>
 
 // Frozen so no caller can change the defaults everyone else gets.
