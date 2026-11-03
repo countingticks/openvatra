@@ -19,6 +19,13 @@ models run on your own PC, and your conversations never leave it.
 - **Automate** recurring tasks with a local AI assistant (later)
 - **Set itself up**: choose where models live, detect your hardware, and download models that fit it
 
+## Works today
+
+The app shell: its own title bar (app menu, sidebar toggle, back/forward, window buttons), a collapsible sidebar
+(Chat, Code, Automations; Ctrl+1…3, Ctrl+B) and a Settings dialog (Ctrl+,) for theme, start with Windows, close
+action and file locations. The window remembers its position, can keep running in the tray, and the animated Ember
+mascot greets you on Chat. The Chat, Code and Automations tabs themselves are still placeholders.
+
 ## Planned requirements
 
 - Windows 10 or 11 (64-bit)

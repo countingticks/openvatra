@@ -16,14 +16,8 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 | Open WebUI backend     | Chats, web search and RAG through its API (git submodule, API only, no frontend) |
 | OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
-**Status:** early development. The scaffold, tests, CI, security baseline, a validated settings file
-(`%APPDATA%\OpenVatra\settings.json`, read and changed over typed IPC) and a log file
-(`%APPDATA%\OpenVatra\logs\main.log`) exist. The window remembers its position; closing it hides it to the tray
-(or quits, if chosen in Settings), and the app can start with Windows (installed builds only). The window draws its
-own title bar (≡ app menu, sidebar toggle, back/forward, window buttons), has a collapsible sidebar (Chat, Code,
-Automations; Ctrl+1…3, Ctrl+B), the animated Ember mascot and pixel backdrop on Chat, and a Settings dialog
-(gear or Ctrl+,; theme, start with Windows, close action, file locations). Chat, Code and Automations are
-placeholders until their modules arrive.
+**Status:** early development; the app shell works (see README), Chat, Code and Automations are placeholders.
+Settings: `%APPDATA%\OpenVatra\settings.json` (validated, typed IPC); log: `%APPDATA%\OpenVatra\logs\main.log`.
 
 ## Stack
 
@@ -41,6 +35,8 @@ npm run typecheck    # TypeScript checks for main/preload (tsconfig.node) and re
 npm run lint         # ESLint incl. accessibility rules; zero warnings allowed
 npm run format       # format everything with Prettier (format:check only verifies)
 npm test             # unit and component tests (Vitest)
+npm run check        # format check, typecheck, lint, unit tests; prints only failures (-- <paths> limits tests)
+npm run inspect      # print element boxes in the built app as text: npm run inspect -- "<selector>" [--shot]
 npm run build        # typecheck + production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
 npm run test:e2e     # build, then launch the real app with Playwright (tests/e2e)

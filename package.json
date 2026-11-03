@@ -29,7 +29,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "electron-vite build && playwright test",
-    "postinstall": "install-electron && electron-builder install-app-deps"
+    "postinstall": "install-electron && electron-builder install-app-deps",
+    "check": "node scripts/check.mjs",
+    "inspect": "node scripts/inspect.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",
