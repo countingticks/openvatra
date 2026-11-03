@@ -8,6 +8,7 @@ import {
   selectSidebarOpen,
   settingsClosed,
   settingsOpened,
+  settingsSectionSelected,
   sidebarToggled,
   tabSelected,
   uiSlice,
@@ -31,7 +32,8 @@ describe('ui slice', () => {
       sidebarOpen: true,
       back: [],
       forward: [],
-      settingsOpen: false
+      settingsOpen: false,
+      settingsSection: 'general'
     })
   })
 
@@ -39,6 +41,13 @@ describe('ui slice', () => {
     const open = reduce(visit('code'), settingsOpened())
     expect(open).toMatchObject({ settingsOpen: true, activeTab: 'code' })
     expect(reduce(open, settingsClosed()).settingsOpen).toBe(false)
+  })
+
+  it('opens Settings on General unless a section is named, and switches sections', () => {
+    const onModels = reduce(initialUiState, settingsOpened('models'))
+    expect(onModels.settingsSection).toBe('models')
+    expect(reduce(onModels, settingsSectionSelected('general')).settingsSection).toBe('general')
+    expect(reduce(onModels, settingsOpened()).settingsSection).toBe('general')
   })
 
   it('switches to the selected tab', () => {

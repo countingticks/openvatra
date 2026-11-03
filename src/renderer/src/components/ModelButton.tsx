@@ -62,7 +62,7 @@ export function ModelButton(): React.JSX.Element {
             size="sm"
             onClick={() => {
               setOpen(false)
-              dispatch(settingsOpened())
+              dispatch(settingsOpened('models'))
             }}
           >
             Model settings…

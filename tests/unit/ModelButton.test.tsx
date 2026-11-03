@@ -40,13 +40,13 @@ describe('model button', () => {
     expect(core.openLog).toHaveBeenCalledOnce()
   })
 
-  it('opens Settings from "Model settings…" and closes the popover', async () => {
+  it('opens Settings on Models from "Model settings…" and closes the popover', async () => {
     renderWithStore(<App />)
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Model settings…' }))
 
-    expect(await screen.findByRole('heading', { name: 'General' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: 'Models' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
   })
 

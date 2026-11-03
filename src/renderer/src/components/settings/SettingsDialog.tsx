@@ -1,13 +1,25 @@
 import { useId } from 'react'
 import { X } from 'lucide-react'
 import { GeneralSection } from '@renderer/components/settings/GeneralSection'
+import { ModelsSection } from '@renderer/components/settings/ModelsSection'
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
 import { cn } from '@renderer/lib/utils'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSettingsOpen, settingsClosed } from '@renderer/store/uiSlice'
+import {
+  selectSettingsOpen,
+  selectSettingsSection,
+  settingsClosed,
+  settingsSectionSelected,
+  type SettingsSection
+} from '@renderer/store/uiSlice'
+
+const sections: { id: SettingsSection; title: string; content: () => React.JSX.Element }[] = [
+  { id: 'general', title: 'General', content: GeneralSection },
+  { id: 'models', title: 'Models', content: ModelsSection }
+]
 
 /** Sections to come, shown dimmed so it's clear where future settings will live. */
-const laterSections = ['Models', 'Services', 'About']
+const laterSections = ['About']
 
 const navItem = 'flex h-8 items-center justify-between rounded-sm px-2.5 text-left text-sm'
 
@@ -17,8 +29,11 @@ const navItem = 'flex h-8 items-center justify-between rounded-sm px-2.5 text-le
  */
 export function SettingsDialog(): React.JSX.Element {
   const open = useAppSelector(selectSettingsOpen)
+  const current = useAppSelector(selectSettingsSection)
   const dispatch = useAppDispatch()
   const headingId = useId()
+  const section = sections.find((candidate) => candidate.id === current) ?? sections[0]
+  const Content = section.content
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && dispatch(settingsClosed())}>
@@ -29,17 +44,25 @@ export function SettingsDialog(): React.JSX.Element {
         <div className="flex w-46 shrink-0 flex-col gap-0.5 border-r border-border bg-sidebar px-2.5 py-4">
           <DialogTitle className="px-2.5 pb-3.5 text-[15px] font-semibold">Settings</DialogTitle>
           <nav aria-label="Settings sections" className="flex flex-col gap-0.5">
-            <button type="button" aria-current="page" className={cn(navItem, 'bg-accent font-medium')}>
-              General
-            </button>
-            {laterSections.map((section) => (
+            {sections.map(({ id, title }) => (
               <button
-                key={section}
+                key={id}
+                type="button"
+                aria-current={id === section.id ? 'page' : undefined}
+                onClick={() => dispatch(settingsSectionSelected(id))}
+                className={cn(navItem, id === section.id ? 'bg-accent font-medium' : 'hover:bg-accent/60')}
+              >
+                {title}
+              </button>
+            ))}
+            {laterSections.map((later) => (
+              <button
+                key={later}
                 type="button"
                 disabled
                 className={cn(navItem, 'text-muted-foreground opacity-60')}
               >
-                {section} <span className="text-[11px]">Later</span>
+                {later} <span className="text-[11px]">Later</span>
               </button>
             ))}
           </nav>
@@ -51,7 +74,7 @@ export function SettingsDialog(): React.JSX.Element {
         >
           <div className="flex items-center justify-between pb-1">
             <h2 id={headingId} className="text-base font-semibold">
-              General
+              {section.title}
             </h2>
             <DialogClose
               aria-label="Close settings"
@@ -61,7 +84,7 @@ export function SettingsDialog(): React.JSX.Element {
               <X aria-hidden className="size-4" />
             </DialogClose>
           </div>
-          <GeneralSection />
+          <Content />
         </section>
       </DialogContent>
     </Dialog>

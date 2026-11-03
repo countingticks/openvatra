@@ -81,6 +81,7 @@ export const settingsSchema = z.object({
 
 export type Settings = z.infer<typeof settingsSchema>
 export type ModelsSettings = z.infer<typeof modelsSettingsSchema>
+export type ModelOptions = z.infer<typeof modelOptionsSchema>
 export type WindowBounds = z.infer<typeof windowBoundsSchema>
 
 // Frozen so no caller can change the defaults everyone else gets.
