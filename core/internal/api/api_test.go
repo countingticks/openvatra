@@ -1,10 +1,13 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/countingticks/openvatra/core/internal/models"
 )
 
 const (
@@ -29,8 +32,41 @@ func doMethod(t *testing.T, method, path, host, auth string, shutdown func()) *h
 		req.Header.Set("Authorization", auth)
 	}
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, shutdown).ServeHTTP(rec, req)
+	list := func() ([]models.Model, error) { return []models.Model{{ID: "qwen"}, {ID: "gemma"}}, nil }
+	if method == http.MethodGet && path == "/v1/models?fail" {
+		list = func() ([]models.Model, error) { return nil, errors.New("boom") }
+	}
+	NewHandler(testToken, testPort, shutdown, list, nil).ServeHTTP(rec, req)
 	return rec
+}
+
+func TestModelsList(t *testing.T) {
+	rec := do(t, "/v1/models", "", "Bearer "+testToken)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	want := `{"data":[{"id":"qwen","object":"model","owned_by":"openvatra"},` +
+		`{"id":"gemma","object":"model","owned_by":"openvatra"}],"object":"list"}`
+	if got := strings.TrimSpace(rec.Body.String()); got != want {
+		t.Fatalf("body = %s", got)
+	}
+}
+
+func TestModelsListEmptyIsArrayAndErrorIs500(t *testing.T) {
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Host = "127.0.0.1:53121"
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil).ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), `"data":[]`) {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+
+	rec = do(t, "/v1/models?fail", "", "Bearer "+testToken)
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), `"error":"models_unreadable"`) {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestHealth(t *testing.T) {

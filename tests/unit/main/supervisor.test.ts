@@ -34,6 +34,7 @@ function setUp(fetchImpl: typeof fetch = vi.fn().mockResolvedValue({ ok: true, s
   const spawn = vi.fn().mockReturnValue(fake.process)
   const supervisor = createSupervisor({
     exePath: 'core.exe',
+    logsDir: 'logs',
     onState: (state) => states.push(state),
     log: { info: vi.fn(), warn: vi.fn() },
     spawn,
@@ -52,6 +53,7 @@ describe('core supervisor', () => {
     expect(states).toEqual([{ status: 'starting' }])
     const env = spawn.mock.calls[0][1] as NodeJS.ProcessEnv
     expect(env['OPENVATRA_CORE_TOKEN']).toMatch(/^[0-9a-f]{64}$/)
+    expect(env['OPENVATRA_LOG_DIR']).toBe('logs')
   })
 
   it('becomes ready after the ready line and an authorized /health call', async () => {
@@ -108,6 +110,7 @@ describe('core supervisor', () => {
     const states: CoreState[] = []
     createSupervisor({
       exePath: 'missing.exe',
+      logsDir: 'logs',
       onState: (state) => states.push(state),
       log: { info: vi.fn(), warn: vi.fn() },
       spawn: () => {
@@ -130,6 +133,7 @@ describe('core supervisor', () => {
       })
       const supervisor = createSupervisor({
         exePath: 'core.exe',
+        logsDir: 'logs',
         onState: (state) => states.push(state),
         log: { info: vi.fn(), warn: vi.fn() },
         spawn,
@@ -199,6 +203,7 @@ describe('core supervisor', () => {
       })
       createSupervisor({
         exePath: 'core.exe',
+        logsDir: 'logs',
         onState: () => undefined,
         log: { info: vi.fn(), warn: vi.fn() },
         spawn,
@@ -280,6 +285,7 @@ describe('core supervisor', () => {
       const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
       const supervisor = createSupervisor({
         exePath: 'core.exe',
+        logsDir: 'logs',
         onState: (state) => states.push(state),
         log: { info: vi.fn(), warn: vi.fn() },
         spawn,

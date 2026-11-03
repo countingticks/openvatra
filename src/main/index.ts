@@ -85,6 +85,7 @@ function start(): void {
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
     core = createSupervisor({
       exePath: coreExePath(),
+      logsDir: logsFolder(),
       onState: (state) => {
         if (mainWindow && !mainWindow.isDestroyed())
           mainWindow.webContents.send(ipcChannels.coreStateChanged, state)
