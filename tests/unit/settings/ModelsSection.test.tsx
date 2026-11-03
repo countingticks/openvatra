@@ -216,6 +216,19 @@ describe('Settings → Models', () => {
       return { ...rendered, group: screen.getByRole('group', { name: `Options for ${qwen.id}` }) }
     }
 
+    it('keeps one model's options open at a time, across groups', async () => {
+      await openModels(chosen, { coreState: ready, models: [qwen, nomic] })
+      const first = await screen.findByRole('button', { name: `Options for ${qwen.id}` })
+      const second = screen.getByRole('button', { name: `Options for ${nomic.id}` })
+
+      fireEvent.click(first)
+      fireEvent.click(second)
+
+      expect(first).toHaveAttribute('aria-expanded', 'false')
+      expect(second).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getAllByRole('group')).toHaveLength(1)
+    })
+
     it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
       const { saveSettings, group } = await openOptions({ 'nomic-embed': { args: '-ngl 0' } })
       const args = within(group).getByLabelText('Arguments')

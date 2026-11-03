@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { ModelOptionsForm } from '@renderer/components/settings/ModelOptionsForm'
 import { Button } from '@renderer/components/ui/button'
@@ -11,11 +11,18 @@ interface ModelRowProps {
   model: ModelInfo
   options: ModelOptions | undefined
   onOptions: (next: ModelOptions | undefined) => void
+  expanded: boolean
+  onToggle: () => void
 }
 
 /** One model: name, size and its options, folded away by default. Running models is the popover's job. */
-export function ModelRow({ model, options, onOptions }: ModelRowProps): React.JSX.Element {
-  const [expanded, setExpanded] = useState(false)
+export function ModelRow({
+  model,
+  options,
+  onOptions,
+  expanded,
+  onToggle
+}: ModelRowProps): React.JSX.Element {
   const optionsId = useId()
 
   return (
@@ -32,7 +39,7 @@ export function ModelRow({ model, options, onOptions }: ModelRowProps): React.JS
           aria-label={`Options for ${model.id}`}
           aria-expanded={expanded}
           aria-controls={optionsId}
-          onClick={() => setExpanded((open) => !open)}
+          onClick={onToggle}
         >
           <ChevronDown aria-hidden className={cn('transition-transform', expanded && 'rotate-180')} />
         </Button>

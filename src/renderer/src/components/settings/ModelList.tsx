@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { useId, useState } from 'react'
 import { ModelRow } from '@renderer/components/settings/ModelRow'
 import { Button } from '@renderer/components/ui/button'
 import { Label } from '@renderer/components/ui/label'
@@ -19,10 +19,20 @@ interface ModelGroupProps {
   models: ModelInfo[]
   options: Record<string, ModelOptions>
   onOptions: (id: string, next: ModelOptions | undefined) => void
+  /** The one model whose options are open, across all groups. */
+  openId: string | null
+  onOpen: (id: string | null) => void
 }
 
 /** One kind of model under its heading; nothing at all when there are none. */
-function ModelGroup({ title, models, options, onOptions }: ModelGroupProps): React.JSX.Element | null {
+function ModelGroup({
+  title,
+  models,
+  options,
+  onOptions,
+  openId,
+  onOpen
+}: ModelGroupProps): React.JSX.Element | null {
   if (models.length === 0) return null
   return (
     <section aria-label={title} className="flex flex-col gap-1.5">
@@ -34,6 +44,8 @@ function ModelGroup({ title, models, options, onOptions }: ModelGroupProps): Rea
             model={model}
             options={options[model.id]}
             onOptions={(next) => onOptions(model.id, next)}
+            expanded={openId === model.id}
+            onToggle={() => onOpen(openId === model.id ? null : model.id)}
           />
         ))}
       </ul>
@@ -55,6 +67,7 @@ export function ModelList(): React.JSX.Element {
   const embeddingId = useId()
   const problemId = useId()
 
+  const [openId, setOpenId] = useState<string | null>(null)
   const chat = models.filter((model) => model.kind === 'chat')
   const embedding = models.filter((model) => model.kind === 'embedding')
   const unreadable = models.filter((model) => model.kind === 'unreadable')
@@ -156,12 +169,21 @@ export function ModelList(): React.JSX.Element {
               </Button>
             </div>
           )}
-          <ModelGroup title="Chat models" models={chat} options={settings.options} onOptions={setOptions} />
+          <ModelGroup
+            title="Chat models"
+            models={chat}
+            options={settings.options}
+            onOptions={setOptions}
+            openId={openId}
+            onOpen={setOpenId}
+          />
           <ModelGroup
             title="Embedding models"
             models={embedding}
             options={settings.options}
             onOptions={setOptions}
+            openId={openId}
+            onOpen={setOpenId}
           />
           {unreadable.length > 0 && (
             <section aria-label="Files that can't be used" className="flex flex-col gap-1.5">
