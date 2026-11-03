@@ -61,13 +61,10 @@ func TestStoreCallsOnChangeOnlyForAcceptedConfigs(t *testing.T) {
 }
 
 func TestIdleTimeout(t *testing.T) {
-	c := Config{IdleUnloadMinutes: 15, EmbeddingModel: "embed"}
-	for id, want := range map[string]time.Duration{"chat": 15 * time.Minute, "embed": 0} {
-		if got := c.IdleTimeout(id); got != want {
-			t.Errorf("IdleTimeout(%q) = %v, want %v", id, got, want)
-		}
+	if got := (Config{IdleUnloadMinutes: 15}).IdleTimeout(); got != 15*time.Minute {
+		t.Errorf("IdleTimeout = %v, want 15m", got)
 	}
-	if got := (Config{}).IdleTimeout("chat"); got != 0 {
+	if got := (Config{}).IdleTimeout(); got != 0 {
 		t.Errorf("with no global time IdleTimeout = %v, want never", got)
 	}
 }

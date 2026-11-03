@@ -16,8 +16,9 @@ import (
 
 func twoModels() ([]models.Model, error) {
 	return []models.Model{
-		{ID: "a", SizeBytes: 10},
-		{ID: "b", SizeBytes: 20, MMProj: `D:\m\mmproj-b.gguf`},
+		{ID: "a", SizeBytes: 10, Kind: models.KindEmbedding},
+		{ID: "b", SizeBytes: 20, MMProj: `D:\m\mmproj-b.gguf`, Kind: models.KindChat},
+		{ID: "c", SizeBytes: 5, Kind: models.KindUnreadable, Error: "not a GGUF file"},
 	}, nil
 }
 
@@ -26,7 +27,7 @@ func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
 	rec := httptest.NewRecorder()
 	stateHandler(rt, twoModels)(rec, httptest.NewRequest(http.MethodGet, "/api/state", nil))
 
-	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf"}]}`
+	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding"},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat"},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file"}]}`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Fatalf("body = %s\nwant   %s", got, want)
 	}

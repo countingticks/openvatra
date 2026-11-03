@@ -22,6 +22,27 @@ type Model struct {
 	MMProj string
 	// SizeBytes is the size on disk; for split models, all parts together.
 	SizeBytes int64
+	// Kind comes from the GGUF header (chat, embedding or unreadable); Error says why when it is unreadable.
+	Kind  Kind
+	Error string
+}
+
+// ResolveEmbedding returns the id of the embedding model that serves: the chosen one if it exists and is an
+// embedding model, else the first embedding model by id ("Automatic"), else "". A chosen chat model is ignored.
+func ResolveEmbedding(list []Model, chosen string) string {
+	first := ""
+	for _, m := range list {
+		if m.Kind != KindEmbedding {
+			continue
+		}
+		if m.ID == chosen {
+			return chosen
+		}
+		if first == "" {
+			first = m.ID
+		}
+	}
+	return first
 }
 
 // splitPart matches "name-00002-of-00003" (the file name without ".gguf").
@@ -100,6 +121,11 @@ func Discover(root string) ([]Model, error) {
 	unique := found[:0]
 	for _, m := range found {
 		if len(unique) > 0 && unique[len(unique)-1].ID == m.ID {
+			continue
+		}
+		// Read the header only for models that stay listed. Rerankers are hidden until a RAG step can use one.
+		m.Kind, m.Error = kindOf(m.Path)
+		if m.Kind == KindReranker {
 			continue
 		}
 		unique = append(unique, m)
