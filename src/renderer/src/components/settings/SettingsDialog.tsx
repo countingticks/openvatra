@@ -79,7 +79,7 @@ export function SettingsDialog(): React.JSX.Element {
             <DialogClose
               aria-label="Close settings"
               title="Close (Esc)"
-              className="grid size-8 place-items-center rounded-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="-mr-3 grid size-8 place-items-center rounded-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X aria-hidden className="size-4" />
             </DialogClose>
