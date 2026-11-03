@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { usePrefersReducedMotion } from '@renderer/hooks/usePrefersReducedMotion'
+import { useReducedMotion } from '@renderer/hooks/useReducedMotion'
 import { backdropPixelSize, drawBackdrop, driftPerSecond, type Rgb } from '@renderer/backdrop/pattern'
 
 /** About 12 frames a second: plenty for a drift this slow, and light on the CPU. */
@@ -31,7 +31,7 @@ function readTones(element: Element): Rgb[] | undefined {
  */
 export function PixelBackdrop(): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const reducedMotion = usePrefersReducedMotion()
+  const reducedMotion = useReducedMotion()
 
   useEffect(() => {
     const canvas = canvasRef.current

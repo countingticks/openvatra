@@ -99,16 +99,27 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     settings: Object.keys(window.api.settings).sort(),
     settingsFrozen: Object.isFrozen(window.api.settings),
     files: Object.keys(window.api.files).sort(),
-    filesFrozen: Object.isFrozen(window.api.files)
+    filesFrozen: Object.isFrozen(window.api.files),
+    appWindow: Object.keys(window.api.appWindow).sort(),
+    appWindowFrozen: Object.isFrozen(window.api.appWindow),
+    app: Object.keys(window.api.app).sort(),
+    appFrozen: Object.isFrozen(window.api.app)
   }))
 
   expect(shape).toEqual({
-    api: ['files', 'runtime', 'settings'],
+    api: ['app', 'appWindow', 'files', 'runtime', 'settings'],
     settings: ['get', 'update'],
     settingsFrozen: true,
     // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders.
     files: ['locations', 'openFolder'],
-    filesFrozen: true
+    filesFrozen: true,
+    // Added in T27 (approved 2026-11-02): the window buttons, acting only on the sender's own window.
+    // T28 adds edit: one of six named Edit commands, checked against an allow-list in main.
+    appWindow: ['close', 'edit', 'isMaximized', 'minimize', 'onMaximizedChange', 'toggleMaximize'],
+    appWindowFrozen: true,
+    // Added in T28 (approved 2026-11-02): File → Quit and Ctrl+Q.
+    app: ['quit'],
+    appFrozen: true
   })
 })
 

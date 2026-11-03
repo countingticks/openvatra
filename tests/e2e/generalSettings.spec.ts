@@ -47,8 +47,8 @@ test('main refuses to open anything but its own folders', async () => {
   await expect(attempt).rejects.toThrow(/unknown folder/i)
 })
 
-test('with "Quit OpenVatra" chosen, closing the window quits the app', async () => {
-  await mainWindow.getByRole('radio', { name: 'Quit OpenVatra' }).click()
+test('with "Quit" chosen, closing the window quits the app', async () => {
+  await mainWindow.getByRole('radio', { name: 'Quit', exact: true }).click()
   await expect.poll(settingsOnDisk).toMatchObject({ closeAction: 'quit' })
 
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())

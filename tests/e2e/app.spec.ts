@@ -47,7 +47,7 @@ test('Ctrl+B slides the sidebar closed and open again', async () => {
 
   await mainWindow.keyboard.press('Control+b')
   await expect.poll(panelWidth).toBe(0)
-  await expect(mainWindow.getByRole('button', { name: 'Open sidebar' })).toBeVisible()
+  await expect(mainWindow.getByRole('button', { name: 'Sidebar' })).toHaveAttribute('aria-expanded', 'false')
   await expect(mainWindow.getByRole('navigation', { name: 'Main' })).toBeHidden()
 
   await mainWindow.keyboard.press('Control+b')

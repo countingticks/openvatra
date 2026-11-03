@@ -16,6 +16,7 @@ describe('defaultSettings', () => {
       lastTab: 'chat',
       closeAction: 'tray',
       sidebarOpen: true,
+      motion: 'system',
       closeToTrayNoticeShown: false
     })
   })
@@ -27,7 +28,7 @@ describe('defaultSettings', () => {
 
 describe('settingsSchema', () => {
   it('fills in defaults for missing fields', () => {
-    expect(settingsSchema.parse({ schemaVersion: 1, theme: 'dark' })).toEqual({
+    expect(settingsSchema.parse({ schemaVersion: 2, theme: 'dark' })).toEqual({
       ...defaultSettings,
       theme: 'dark'
     })
@@ -35,12 +36,13 @@ describe('settingsSchema', () => {
 
   it('accepts a complete, valid file', () => {
     const settings = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       theme: 'light',
       startWithWindows: true,
       lastTab: 'code',
       closeAction: 'quit',
       sidebarOpen: false,
+      motion: 'off',
       window: { x: -1200, y: 40, width: 1280, height: 800 },
       closeToTrayNoticeShown: true
     }
@@ -48,29 +50,35 @@ describe('settingsSchema', () => {
   })
 
   it('reads a file written before closeAction and sidebarOpen existed, with their defaults', () => {
-    const older = { schemaVersion: 1, theme: 'dark', startWithWindows: true, lastTab: 'code' }
+    const older = { schemaVersion: 2, theme: 'dark', startWithWindows: true, lastTab: 'code' }
 
-    expect(settingsSchema.parse(older)).toMatchObject({ closeAction: 'tray', sidebarOpen: true })
+    expect(settingsSchema.parse(older)).toMatchObject({
+      closeAction: 'tray',
+      sidebarOpen: true,
+      motion: 'system'
+    })
   })
 
   it('drops keys it does not know', () => {
-    expect(settingsSchema.parse({ schemaVersion: 1, extra: 'ignored' })).toEqual(defaultSettings)
+    expect(settingsSchema.parse({ schemaVersion: 2, extra: 'ignored' })).toEqual(defaultSettings)
   })
 
   it.each([
     ['not an object', 'settings'],
     ['no schemaVersion', { theme: 'dark' }],
-    ['a different schemaVersion', { schemaVersion: 2 }],
-    ['an unknown theme', { schemaVersion: 1, theme: 'blue' }],
-    ['a non-boolean startWithWindows', { schemaVersion: 1, startWithWindows: 'yes' }],
-    ['an unknown tab', { schemaVersion: 1, lastTab: 'mail' }],
-    ['an unknown close action', { schemaVersion: 1, closeAction: 'minimize' }],
-    ['a non-boolean sidebarOpen', { schemaVersion: 1, sidebarOpen: 'open' }],
+    ['a different schemaVersion', { schemaVersion: 3 }],
+    ['an unknown theme', { schemaVersion: 2, theme: 'blue' }],
+    ['a non-boolean startWithWindows', { schemaVersion: 2, startWithWindows: 'yes' }],
+    ['an unknown tab', { schemaVersion: 2, lastTab: 'mail' }],
+    ['Settings as the last tab (a dialog since version 2)', { schemaVersion: 2, lastTab: 'settings' }],
+    ['an unknown close action', { schemaVersion: 2, closeAction: 'minimize' }],
+    ['a non-boolean sidebarOpen', { schemaVersion: 2, sidebarOpen: 'open' }],
+    ['an unknown motion setting', { schemaVersion: 2, motion: 'slow' }],
     [
       'a window smaller than the minimum',
-      { schemaVersion: 1, window: { x: 0, y: 0, width: 400, height: 300 } }
+      { schemaVersion: 2, window: { x: 0, y: 0, width: 400, height: 300 } }
     ],
-    ['a window without a position', { schemaVersion: 1, window: { width: 1280, height: 800 } }]
+    ['a window without a position', { schemaVersion: 2, window: { width: 1280, height: 800 } }]
   ])('rejects %s', (_case, input) => {
     expect(settingsSchema.safeParse(input).success).toBe(false)
   })
@@ -87,14 +95,15 @@ describe('settingsPatchSchema', () => {
       startWithWindows: true,
       lastTab: 'automations',
       closeAction: 'quit',
-      sidebarOpen: false
+      sidebarOpen: false,
+      motion: 'on'
     }
     expect(settingsPatchSchema.parse(patch)).toEqual(patch)
   })
 
   it.each([
     ['not an object', null],
-    ['schemaVersion', { schemaVersion: 1 }],
+    ['schemaVersion', { schemaVersion: 2 }],
     ['window bounds', { window: { x: 0, y: 0, width: 1280, height: 800 } }],
     ['the close-to-tray notice flag', { closeToTrayNoticeShown: true }],
     ['an unknown key', { theme: 'dark', admin: true }],

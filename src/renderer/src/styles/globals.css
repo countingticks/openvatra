@@ -154,6 +154,16 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* Thin scrollbars in the theme's colours, instead of Windows' classic ones with arrow buttons. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  /* Tells Chromium which scheme the page uses, so native parts (scrollbars, form controls) match the theme. */
+  :root {
+    color-scheme: light;
+  }
+  :root.dark {
+    color-scheme: dark;
   }
   html,
   body,
@@ -168,8 +178,7 @@
 /*
  * Collapsible sidebar (design decision: 240ms, fast start, gentle stop). Only the width animates; the content
  * keeps its own width, so nothing reflows mid-slide. `visibility` waits for the slide to finish before hiding,
- * and flips back at once when opening. The opener by the content fades in just after the panel starts moving.
- * The closed width and border are Tailwind utilities on the element (data-[state=closed]:w-0): this layer
+ * and flips back at once when opening. The closed width and border are Tailwind utilities on the element (data-[state=closed]:w-0): this layer
  * loses to utilities, so a width set here would be overridden by w-56.
  */
 @layer components {
@@ -185,24 +194,9 @@
       width 240ms var(--panel-ease),
       visibility 0s linear 240ms;
   }
-  .sidebar-opener {
-    transition:
-      opacity 160ms ease 140ms,
-      visibility 0s linear 0s;
-  }
-  .sidebar-opener[data-state='hidden'] {
-    opacity: 0;
-    visibility: hidden;
-    transition:
-      opacity 100ms ease,
-      visibility 0s linear 100ms;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .sidebar-panel,
-    .sidebar-panel[data-state='closed'],
-    .sidebar-opener,
-    .sidebar-opener[data-state='hidden'] {
-      transition: none;
-    }
+  /* Animations off (Settings, or Windows via System): data-motion on <html> is the app's one decision. */
+  :root[data-motion='reduce'] .sidebar-panel,
+  :root[data-motion='reduce'] .sidebar-panel[data-state='closed'] {
+    transition: none;
   }
 }

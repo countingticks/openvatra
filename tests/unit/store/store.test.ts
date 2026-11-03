@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { createAppStore } from '@renderer/store/store'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
-import { selectActiveTab, selectSidebarOpen, sidebarToggled, tabSelected } from '@renderer/store/uiSlice'
+import {
+  selectActiveTab,
+  selectSidebarOpen,
+  sidebarToggled,
+  tabSelected,
+  wentBack
+} from '@renderer/store/uiSlice'
 import type { SettingsApi } from '../../../src/shared/ipc'
 import { defaultSettings } from '../../../src/shared/settings'
 
@@ -60,10 +66,10 @@ describe('app store', () => {
     const settings = { update: vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')) }
     const store = createAppStore({ settings })
 
-    store.dispatch(tabSelected('settings'))
+    store.dispatch(tabSelected('automations'))
     await settle()
 
-    expect(selectActiveTab(store.getState())).toBe('settings')
+    expect(selectActiveTab(store.getState())).toBe('automations')
     expect(error).toHaveBeenCalledWith('Could not save the last open tab', expect.any(Error))
   })
 })
@@ -124,5 +130,38 @@ describe('changing settings', () => {
     await settle()
 
     expect(selectSettings(store.getState()).startWithWindows).toBe(false)
+  })
+})
+
+describe('back and forward', () => {
+  it('remembers the tab Back lands on as the last tab, so the app reopens there', async () => {
+    const settings = fakeSettings()
+    const store = createAppStore({ settings })
+    store.dispatch(tabSelected('code'))
+    await settle()
+
+    store.dispatch(wentBack())
+    await settle()
+
+    expect(settings.update.mock.calls).toEqual([[{ lastTab: 'code' }], [{ lastTab: 'chat' }]])
+  })
+
+  it('saves nothing when there is nowhere to go back to', async () => {
+    const settings = fakeSettings()
+    const store = createAppStore({ settings })
+
+    store.dispatch(wentBack())
+    await settle()
+
+    expect(settings.update).not.toHaveBeenCalled()
+  })
+
+  it('starts each launch with an empty history', () => {
+    const store = createAppStore({
+      settings: fakeSettings(),
+      initialSettings: { ...defaultSettings, lastTab: 'code' }
+    })
+
+    expect(store.getState().ui).toMatchObject({ activeTab: 'code', back: [], forward: [] })
   })
 })

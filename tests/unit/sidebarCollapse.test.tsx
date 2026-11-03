@@ -4,8 +4,8 @@ import { App } from '@renderer/App'
 import { renderWithStore } from './renderWithStore'
 
 const panel = (): HTMLElement => document.getElementById('sidebar') as HTMLElement
-const closeButton = (): HTMLElement => screen.getByRole('button', { name: 'Close sidebar' })
-const openButton = (): HTMLElement => screen.getByRole('button', { name: 'Open sidebar' })
+// One toggle in the title bar, always visible; aria-expanded says whether the sidebar is open.
+const toggle = (): HTMLElement => screen.getByRole('button', { name: 'Sidebar' })
 const pressCtrlB = (): void => {
   fireEvent.keyDown(window, { key: 'b', ctrlKey: true })
 }
@@ -13,31 +13,36 @@ const pressCtrlB = (): void => {
 // jsdom has no layout or CSS, so the slide itself can't be seen here; these tests check the states the CSS keys
 // off (data-state) and what keyboard and screen-reader users get (inert, aria-expanded, focus).
 describe('collapsible sidebar', () => {
-  it('starts open, with the opener out of the way', () => {
+  it('starts open', () => {
     renderWithStore(<App />)
 
     expect(panel()).toHaveAttribute('data-state', 'open')
     expect(panel()).not.toHaveAttribute('inert')
-    expect(closeButton()).toHaveAttribute('aria-expanded', 'true')
-    expect(openButton()).toHaveAttribute('inert')
+    expect(toggle()).toHaveAttribute('aria-expanded', 'true')
   })
 
-  it('closes with its button: hidden from the keyboard and screen readers, not just from view', () => {
+  it('opens the way it was left', () => {
+    renderWithStore(<App />, { sidebarOpen: false })
+
+    expect(panel()).toHaveAttribute('data-state', 'closed')
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('closes with the toggle: hidden from the keyboard and screen readers, not just from view', () => {
     renderWithStore(<App />)
 
-    fireEvent.click(closeButton())
+    fireEvent.click(toggle())
 
     expect(panel()).toHaveAttribute('data-state', 'closed')
     expect(panel()).toHaveAttribute('inert')
-    expect(openButton()).not.toHaveAttribute('inert')
-    expect(openButton()).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle()).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('opens again with the button by the content', () => {
+  it('opens again with the same toggle, which stays where it is', () => {
     renderWithStore(<App />)
-    fireEvent.click(closeButton())
+    fireEvent.click(toggle())
 
-    fireEvent.click(openButton())
+    fireEvent.click(toggle())
 
     expect(panel()).toHaveAttribute('data-state', 'open')
     expect(panel()).not.toHaveAttribute('inert')
@@ -66,25 +71,23 @@ describe('collapsible sidebar', () => {
   })
 
   describe('focus', () => {
-    it('moves to the opener when the close button hides itself, and back when reopened', () => {
+    it('stays on the toggle when the toggle is used', () => {
       renderWithStore(<App />)
 
-      closeButton().focus()
-      fireEvent.click(closeButton())
-      expect(openButton()).toHaveFocus()
+      toggle().focus()
+      fireEvent.click(toggle())
 
-      fireEvent.click(openButton())
-      expect(closeButton()).toHaveFocus()
+      expect(toggle()).toHaveFocus()
     })
 
-    it('moves to the opener when Ctrl+B hides the tab that had it', () => {
+    it('moves to the toggle when Ctrl+B hides the tab that had it', () => {
       renderWithStore(<App />)
       const nav = screen.getByRole('navigation', { name: 'Main' })
       within(nav).getByRole('button', { name: 'Code' }).focus()
 
       pressCtrlB()
 
-      expect(openButton()).toHaveFocus()
+      expect(toggle()).toHaveFocus()
     })
 
     it('stays put when it was somewhere else', () => {

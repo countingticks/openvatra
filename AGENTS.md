@@ -19,10 +19,11 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 **Status:** early development. The scaffold, tests, CI, security baseline, a validated settings file
 (`%APPDATA%\OpenVatra\settings.json`, read and changed over typed IPC) and a log file
 (`%APPDATA%\OpenVatra\logs\main.log`) exist. The window remembers its position; closing it hides it to the tray
-(or quits, if chosen in Settings), and the app can start with Windows (installed builds only). The window has a
-collapsible sidebar (Chat, Code, Automations, Settings; Ctrl+1…4, Ctrl+B), the animated Ember mascot and pixel
-backdrop on Chat, and Settings → General (theme, start with Windows, close action, file locations). Chat, Code and
-Automations are placeholders until their modules arrive.
+(or quits, if chosen in Settings), and the app can start with Windows (installed builds only). The window draws its
+own title bar (≡ app menu, sidebar toggle, back/forward, window buttons), has a collapsible sidebar (Chat, Code,
+Automations; Ctrl+1…3, Ctrl+B), the animated Ember mascot and pixel backdrop on Chat, and a Settings dialog
+(gear or Ctrl+,; theme, start with Windows, close action, file locations). Chat, Code and Automations are
+placeholders until their modules arrive.
 
 ## Stack
 

@@ -1,96 +1,94 @@
 import { useId } from 'react'
 import { FileLocations } from '@renderer/components/settings/FileLocations'
-import { Label } from '@renderer/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@renderer/components/ui/radio-group'
+import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
+import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
-import { closeActions, themes, type SettingsPatch } from '../../../../shared/settings'
+import type { SettingsPatch } from '../../../../shared/settings'
 
-const themeLabels: Record<(typeof themes)[number], string> = {
-  system: 'System',
-  light: 'Light',
-  dark: 'Dark'
-}
+const themeOptions = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' }
+] as const
 
-const closeActionLabels: Record<(typeof closeActions)[number], string> = {
-  tray: 'Keep running in the tray',
-  quit: 'Quit OpenVatra'
-}
+const motionOptions = [
+  { value: 'system', label: 'System' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' }
+] as const
 
-/** Radio groups report the chosen value as `unknown`; only accept one of ours. */
-function isOneOf<T extends string>(options: readonly T[], value: unknown): value is T {
-  return options.includes(value as T)
-}
+const closeOptions = [
+  { value: 'tray', label: 'Keep in tray' },
+  { value: 'quit', label: 'Quit' }
+] as const
 
+/** The General settings: one row per setting, saved as soon as it changes. */
 export function GeneralSection(): React.JSX.Element {
   const settings = useAppSelector(selectSettings)
   const dispatch = useAppDispatch()
   const change = (patch: SettingsPatch): void => {
     dispatch(settingsChanged(patch))
   }
-  const ids = { theme: useId(), startup: useId(), startupHint: useId(), close: useId() }
+  const ids = { theme: useId(), motion: useId(), startup: useId(), startupHint: useId(), close: useId() }
 
   return (
-    <section aria-labelledby={`${ids.theme}-section`} className="flex flex-col gap-6">
-      <h2 id={`${ids.theme}-section`} className="text-base font-semibold">
-        General
-      </h2>
-
-      <div className="flex flex-col gap-3">
-        <span id={ids.theme} className="font-medium">
-          Theme
-        </span>
-        <RadioGroup
-          aria-labelledby={ids.theme}
+    <div className="flex flex-col">
+      <SettingRow
+        label="Theme"
+        hint="System follows the light or dark mode set in Windows."
+        labelId={ids.theme}
+      >
+        <SegmentedControl
+          labelledBy={ids.theme}
           value={settings.theme}
-          onValueChange={(value) => isOneOf(themes, value) && change({ theme: value })}
-          className="flex gap-6"
-        >
-          {themes.map((theme) => (
-            <Label key={theme} className="font-normal">
-              <RadioGroupItem value={theme} />
-              {themeLabels[theme]}
-            </Label>
-          ))}
-        </RadioGroup>
-        <p className="text-muted-foreground">System follows the light or dark mode set in Windows.</p>
-      </div>
+          options={themeOptions}
+          onChange={(theme) => change({ theme })}
+        />
+      </SettingRow>
 
-      <div className="flex items-start justify-between gap-6">
-        <div className="flex flex-col gap-1">
-          <Label htmlFor={ids.startup}>Start with Windows</Label>
-          <p id={ids.startupHint} className="text-muted-foreground">
-            OpenVatra starts in the tray when you sign in. Works in the installed app.
-          </p>
-        </div>
+      <SettingRow
+        label="Animations"
+        hint="Motion and effects in the app. System follows Windows."
+        labelId={ids.motion}
+      >
+        <SegmentedControl
+          labelledBy={ids.motion}
+          value={settings.motion}
+          options={motionOptions}
+          onChange={(motion) => change({ motion })}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label="Start with Windows"
+        hint="Starts in the tray when you sign in. Works in the installed app."
+        controlId={ids.startup}
+        hintId={ids.startupHint}
+      >
         <Switch
           id={ids.startup}
           aria-describedby={ids.startupHint}
           checked={settings.startWithWindows}
           onCheckedChange={(checked) => change({ startWithWindows: checked })}
         />
-      </div>
+      </SettingRow>
 
-      <div className="flex flex-col gap-3">
-        <span id={ids.close} className="font-medium">
-          When I close the window
-        </span>
-        <RadioGroup
-          aria-labelledby={ids.close}
+      <SettingRow
+        label="When I close the window"
+        hint="Keep running in the tray, or quit OpenVatra."
+        labelId={ids.close}
+      >
+        <SegmentedControl
+          labelledBy={ids.close}
           value={settings.closeAction}
-          onValueChange={(value) => isOneOf(closeActions, value) && change({ closeAction: value })}
-        >
-          {closeActions.map((action) => (
-            <Label key={action} className="font-normal">
-              <RadioGroupItem value={action} />
-              {closeActionLabels[action]}
-            </Label>
-          ))}
-        </RadioGroup>
-      </div>
+          options={closeOptions}
+          onChange={(closeAction) => change({ closeAction })}
+        />
+      </SettingRow>
 
       <FileLocations />
-    </section>
+    </div>
   )
 }

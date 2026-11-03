@@ -161,6 +161,39 @@ describe('Ember', () => {
     })
   })
 
+  describe('Settings → Animations (the app decision on <html data-motion>)', () => {
+    it('Off holds Ember still even when Windows allows motion', () => {
+      document.documentElement.setAttribute('data-motion', 'reduce')
+      render(<Ember state="idle" />)
+      const first = pixels()
+
+      advance(5000)
+
+      expect(pixels()).toBe(first)
+    })
+
+    it('On animates even when Windows asks for less motion', () => {
+      preferReducedMotion()
+      document.documentElement.setAttribute('data-motion', 'full')
+      render(<Ember state="idle" />)
+      const first = pixels()
+
+      advance(200)
+
+      expect(pixels()).not.toBe(first)
+    })
+
+    it('reacts at once when the setting changes', () => {
+      render(<Ember state="idle" />)
+      const first = pixels()
+
+      act(() => document.documentElement.setAttribute('data-motion', 'reduce'))
+      advance(5000)
+
+      expect(pixels()).toBe(first)
+    })
+  })
+
   describe('with reduced motion', () => {
     beforeEach(preferReducedMotion)
 
