@@ -11,6 +11,8 @@ interface ModelOptionsFormProps {
   modelId: string
   /** File name of the detected vision projector, if any. */
   projector: string | undefined
+  /** The chosen embedding model, whose default is never to unload. */
+  embedding: boolean
   options: ModelOptions | undefined
   /** The model's new options, or undefined when every field is back to its default. */
   onChange: (next: ModelOptions | undefined) => void
@@ -24,6 +26,7 @@ export function ModelOptionsForm({
   id,
   modelId,
   projector,
+  embedding,
   options,
   onChange
 }: ModelOptionsFormProps): React.JSX.Element {
@@ -76,9 +79,12 @@ export function ModelOptionsForm({
       </div>
 
       <div className="flex items-center justify-between gap-4">
-        <span id={unloadId} className="text-xs font-medium">
-          Unload after
-        </span>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span id={unloadId} className="text-xs font-medium">
+            Unload after
+          </span>
+          {embedding && <p className="text-xs text-muted-foreground">Default for embeddings: never.</p>}
+        </div>
         <SegmentedControl
           labelledBy={unloadId}
           value={unload}

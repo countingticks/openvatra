@@ -121,6 +121,7 @@ export function ModelRow({
           id={ids.options}
           modelId={model.id}
           projector={model.projector}
+          embedding={embedding}
           options={options}
           onChange={onOptions}
         />

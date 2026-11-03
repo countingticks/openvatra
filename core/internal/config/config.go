@@ -61,9 +61,13 @@ func (c Config) Validate() error {
 }
 
 // IdleTimeout is how long model id may sit unused before core unloads it: its own setting if it has one, else the
-// global one. Zero means never.
+// global one. Zero means never. The embedding model defaults to never: it is small, and every RAG question needs it
+// first, so reloading it would delay answers by seconds to save little memory.
 func (c Config) IdleTimeout(id string) time.Duration {
 	minutes := c.IdleUnloadMinutes
+	if id == c.EmbeddingModel {
+		minutes = 0
+	}
 	if own := c.Options[id].IdleUnloadMinutes; own != nil {
 		minutes = *own
 	}

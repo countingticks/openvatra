@@ -273,6 +273,7 @@ describe('Settings → Models', () => {
 
     it('saves "Unload after": Default removes the key, Never is null', async () => {
       const { saveSettings, group } = await openOptions()
+      expect(within(group).queryByText('Default for embeddings: never.')).not.toBeInTheDocument()
       const unload = within(group).getByRole('radiogroup', { name: 'Unload after' })
       expect(within(unload).getByRole('radio', { name: 'Default' })).toBeChecked()
 
@@ -293,6 +294,13 @@ describe('Settings → Models', () => {
 
       fireEvent.click(within(unload).getByRole('radio', { name: 'Default' }))
       await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { options: {} } }))
+    })
+
+    it('says the embedding model never unloads by default', async () => {
+      await openModels({ ...chosen, embeddingModel: qwen.id }, { coreState: ready, models: [qwen, nomic] })
+      fireEvent.click(await screen.findByRole('button', { name: `Options for ${qwen.id}` }))
+      const embedding = screen.getByRole('group', { name: `Options for ${qwen.id}` })
+      expect(within(embedding).getByText('Default for embeddings: never.')).toBeInTheDocument()
     })
 
     it('drops the model’s entry when the box is emptied', async () => {

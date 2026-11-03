@@ -68,13 +68,14 @@ func ptr[T any](v T) *T { return &v }
 func TestPerModelOverrides(t *testing.T) {
 	c := Config{
 		IdleUnloadMinutes: 15,
+		EmbeddingModel:    "embed",
 		Options: map[string]ModelOptions{
 			"own":   {IdleUnloadMinutes: ptr(60)},
 			"never": {IdleUnloadMinutes: ptr(0), MMProj: ptr(false)},
 			"empty": {},
 		},
 	}
-	for id, want := range map[string]time.Duration{"own": time.Hour, "never": 0, "empty": 15 * time.Minute, "unknown": 15 * time.Minute} {
+	for id, want := range map[string]time.Duration{"own": time.Hour, "never": 0, "empty": 15 * time.Minute, "unknown": 15 * time.Minute, "embed": 0} {
 		if got := c.IdleTimeout(id); got != want {
 			t.Errorf("IdleTimeout(%q) = %v, want %v", id, got, want)
 		}
@@ -83,5 +84,12 @@ func TestPerModelOverrides(t *testing.T) {
 		if got := c.UseMMProj(id); got != want {
 			t.Errorf("UseMMProj(%q) = %v, want %v", id, got, want)
 		}
+	}
+}
+
+func TestEmbeddingModelOwnIdleSettingWins(t *testing.T) {
+	c := Config{IdleUnloadMinutes: 15, EmbeddingModel: "embed", Options: map[string]ModelOptions{"embed": {IdleUnloadMinutes: ptr(5)}}}
+	if got := c.IdleTimeout("embed"); got != 5*time.Minute {
+		t.Errorf("IdleTimeout(embed) = %v, want 5m", got)
 	}
 }
