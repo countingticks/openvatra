@@ -7,10 +7,12 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/models"
 )
 
 func TestWriteReadyIsOneJSONLine(t *testing.T) {
@@ -121,5 +123,31 @@ func TestModelArgs(t *testing.T) {
 	// Building one model's list must never write into the shared slice another model reads.
 	if c.SharedArgs[3] != "4096" || len(c.SharedArgs) != 4 {
 		t.Fatalf("shared args changed: %v", c.SharedArgs)
+	}
+}
+
+func TestServerArgsProjector(t *testing.T) {
+	off := false
+	m := models.Model{ID: "qwen", Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`}
+	base := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", "8000"}
+	withProjector := append(slices.Clone(base), "--mmproj", m.MMProj)
+	cases := map[string]struct {
+		c         config.Config
+		m         models.Model
+		embedding bool
+		want      []string
+	}{
+		"on by default":     {config.Config{}, m, false, withProjector},
+		"switched off":      {config.Config{Options: map[string]config.ModelOptions{"qwen": {MMProj: &off}}}, m, false, base},
+		"none found":        {config.Config{}, models.Model{ID: "qwen", Path: m.Path}, false, base},
+		"embedding server":  {config.Config{}, m, true, append(slices.Clone(base), "--embeddings")},
+		"before user's own": {config.Config{SharedArgs: []string{"-fa", "on"}}, m, false, append(slices.Clone(withProjector), "-fa", "on")},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := serverArgs(tc.c, tc.m, 8000, tc.embedding); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("args = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

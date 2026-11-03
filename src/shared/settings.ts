@@ -49,7 +49,11 @@ const idleUnloadMinutes = z.union(idleUnloadMinutesChoices.map((minutes) => z.li
 /** One model's own settings; a missing field means "as for every model". */
 export const modelOptionsSchema = z.strictObject({
   /** Added after `sharedArgs`, so a model can override a shared flag (llama-server keeps the last). */
-  args: argsText.optional()
+  args: argsText.optional(),
+  /** Overrides the global `idleUnloadMinutes`; missing = use the global one, null = never. */
+  idleUnloadMinutes: idleUnloadMinutes.optional(),
+  /** Pass the detected vision projector (`--mmproj`); missing = on. Off saves VRAM on models used for text only. */
+  mmproj: z.boolean().optional()
 })
 const modelOptionsById = z.record(modelId, modelOptionsSchema)
 

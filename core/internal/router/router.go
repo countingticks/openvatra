@@ -50,10 +50,10 @@ type Config struct {
 	EmbeddingModel func() string
 	// LoadTimeout bounds one model load; zero means DefaultLoadTimeout.
 	LoadTimeout time.Duration
-	// IdleTimeout returns how long a model may sit unused before it is unloaded;
+	// IdleTimeout returns how long model id may sit unused before it is unloaded;
 	// zero, or a nil function, means never. A function because the user can change
-	// it while core runs.
-	IdleTimeout func() time.Duration
+	// it while core runs, and per model because each model can have its own.
+	IdleTimeout func(id string) time.Duration
 	// AfterFunc runs f after d and returns a function that cancels it. Tests swap
 	// in a fake clock; nil means the real one.
 	AfterFunc func(d time.Duration, f func()) (stop func() bool)
@@ -183,7 +183,7 @@ func (r *Router) armIdle(s *slot, l *loaded) {
 	if l.err != nil {
 		return
 	}
-	d := r.cfg.IdleTimeout()
+	d := r.cfg.IdleTimeout(l.id)
 	if d <= 0 {
 		return
 	}

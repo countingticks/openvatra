@@ -95,7 +95,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	rt := router.New(router.Config{
 		NewBackend:     newBackendFunc(cfg, logger, logOut),
 		EmbeddingModel: func() string { return cfg.Get().EmbeddingModel },
-		IdleTimeout:    func() time.Duration { return time.Duration(cfg.Get().IdleUnloadMinutes) * time.Minute },
+		IdleTimeout:    func(id string) time.Duration { return cfg.Get().IdleTimeout(id) },
 	})
 	cfg.OnChange(rt.Notify)
 	defer rt.Close() // after the server is down, so no request is mid-stream
@@ -144,17 +144,26 @@ func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) fu
 			if err != nil {
 				return nil, err
 			}
-			args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
-			if embedding {
-				args = append(args, "--embeddings")
-			}
-			args = append(args, modelArgs(c, m.ID)...)
+			args := serverArgs(c, m, port, embedding)
 			logger.Info("starting llama-server", "model", m.ID, "port", port, "embedding", embedding)
 			return process.New(process.Config{Path: c.LlamaServerPath, Args: args, Port: port, Log: logs.Prefixed(logOut, m.ID)}), nil
 		}
 		logger.Warn("unknown model requested", "model", id)
 		return nil, router.ErrUnknownModel
 	}
+}
+
+// serverArgs is one llama-server's full argument list: core's own flags first, then the user's.
+func serverArgs(c config.Config, m models.Model, port int, embedding bool) []string {
+	args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
+	if embedding {
+		args = append(args, "--embeddings")
+	}
+	// Embedding servers never take images, so a projector would only cost memory there.
+	if m.MMProj != "" && !embedding && c.UseMMProj(m.ID) {
+		args = append(args, "--mmproj", m.MMProj)
+	}
+	return append(args, modelArgs(c, m.ID)...)
 }
 
 // modelArgs are the user's arguments for one model: the shared ones, then the model's own, so the model's win

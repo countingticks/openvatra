@@ -51,7 +51,10 @@ describe('models settings', () => {
       embeddingModel: 'bge-m3',
       idleUnloadMinutes: null,
       sharedArgs: '-fa on -ctk q8_0 --jinja',
-      options: { qwen: { args: '-c 131072 --alias "my qwen"' } }
+      options: {
+        qwen: { args: '-c 131072 --alias "my qwen"', idleUnloadMinutes: 60, mmproj: false },
+        gemma: { idleUnloadMinutes: null }
+      }
     }
     expect(parse(models).models).toEqual(models)
   })
@@ -62,7 +65,9 @@ describe('models settings', () => {
     ['arguments with an unclosed quote', { options: { m: { args: '--alias "my qwen' } } }],
     ['a flag core sets itself', { sharedArgs: '--port 9000' }],
     ['the old number fields (version 3)', { options: { m: { contextSize: 8192 } } }],
-    ['an unknown option', { options: { m: { shell: 'cmd' } } }]
+    ['an unknown option', { options: { m: { shell: 'cmd' } } }],
+    ["a model's idle time that is not offered", { options: { m: { idleUnloadMinutes: 7 } } }],
+    ['a projector switch that is not a boolean', { options: { m: { mmproj: 'yes' } } }]
   ])('rejects %s', (_case, models) => {
     expect(settingsSchema.safeParse({ schemaVersion: 4, models }).success).toBe(false)
   })
@@ -73,7 +78,7 @@ describe('models settings', () => {
         embeddingModel: 'nomic',
         idleUnloadMinutes: 30,
         sharedArgs: '-fa on',
-        options: { qwen: { args: '-ngl 99' } }
+        options: { qwen: { args: '-ngl 99', idleUnloadMinutes: 5, mmproj: false } }
       }
     }
     expect(settingsPatchSchema.parse(patch)).toEqual(patch)

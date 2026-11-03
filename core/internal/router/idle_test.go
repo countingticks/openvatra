@@ -58,7 +58,7 @@ func newIdleRouter(ev *eventLog, clock *fakeClock) *Router {
 			return &fakeBackend{id: id, events: ev}, nil
 		},
 		EmbeddingModel: func() string { return "embed" },
-		IdleTimeout:    func() time.Duration { return 15 * time.Minute },
+		IdleTimeout:    func(string) time.Duration { return 15 * time.Minute },
 		AfterFunc:      clock.AfterFunc,
 	})
 }
@@ -132,7 +132,7 @@ func TestBusyModelIsNeverUnloaded(t *testing.T) {
 func TestIdleTimeoutZeroMeansNever(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	r := newIdleRouter(ev, clock)
-	r.cfg.IdleTimeout = func() time.Duration { return 0 }
+	r.cfg.IdleTimeout = func(string) time.Duration { return 0 }
 
 	_, release, _ := r.Acquire(context.Background(), Chat, "a")
 	release()
@@ -140,6 +140,26 @@ func TestIdleTimeoutZeroMeansNever(t *testing.T) {
 	if got := ev.get(); !equal(got, []string{"start a"}) {
 		t.Fatalf("events = %v", got)
 	}
+}
+
+func TestIdleTimeoutIsPerModel(t *testing.T) {
+	ev, clock := &eventLog{}, &fakeClock{}
+	r := newIdleRouter(ev, clock)
+	r.cfg.IdleTimeout = func(id string) time.Duration {
+		if id == "embed" {
+			return time.Hour
+		}
+		return 5 * time.Minute
+	}
+
+	_, releaseChat, _ := r.Acquire(context.Background(), Chat, "a")
+	_, releaseEmbed, _ := r.Acquire(context.Background(), Embedding, "embed")
+	releaseChat()
+	releaseEmbed()
+	clock.Advance(5 * time.Minute)
+	waitFor(t, ev, "start a", "start embed", "stop a")
+	clock.Advance(55 * time.Minute)
+	waitFor(t, ev, "start a", "start embed", "stop a", "stop embed")
 }
 
 func TestReloadAfterIdleUnload(t *testing.T) {

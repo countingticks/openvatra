@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestStoreStartsEmptyAndKeepsLastValidConfig(t *testing.T) {
 	s := NewStore()
@@ -25,6 +28,7 @@ func TestValidateOptions(t *testing.T) {
 		"reserved -m=":           {Options: map[string]ModelOptions{"m": {Args: []string{"-m=x.gguf"}}}},
 		"reserved --mmproj":      {Options: map[string]ModelOptions{"m": {Args: []string{"--mmproj", "p.gguf"}}}},
 		"reserved in sharedArgs": {SharedArgs: []string{"--host", "0.0.0.0"}},
+		"negative model idle":    {Options: map[string]ModelOptions{"m": {IdleUnloadMinutes: ptr(-1)}}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -56,5 +60,28 @@ func TestStoreCallsOnChangeOnlyForAcceptedConfigs(t *testing.T) {
 
 	if calls != 1 {
 		t.Fatalf("onChange called %d times, want 1", calls)
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestPerModelOverrides(t *testing.T) {
+	c := Config{
+		IdleUnloadMinutes: 15,
+		Options: map[string]ModelOptions{
+			"own":   {IdleUnloadMinutes: ptr(60)},
+			"never": {IdleUnloadMinutes: ptr(0), MMProj: ptr(false)},
+			"empty": {},
+		},
+	}
+	for id, want := range map[string]time.Duration{"own": time.Hour, "never": 0, "empty": 15 * time.Minute, "unknown": 15 * time.Minute} {
+		if got := c.IdleTimeout(id); got != want {
+			t.Errorf("IdleTimeout(%q) = %v, want %v", id, got, want)
+		}
+	}
+	for id, want := range map[string]bool{"never": false, "empty": true, "unknown": true} {
+		if got := c.UseMMProj(id); got != want {
+			t.Errorf("UseMMProj(%q) = %v, want %v", id, got, want)
+		}
 	}
 }
