@@ -19,12 +19,15 @@ export const windowMinSize = { width: 800, height: 560 } as const
 export const themes = ['system', 'light', 'dark'] as const
 /** What closing the window does: keep running in the tray, or quit the app. */
 export const closeActions = ['tray', 'quit'] as const
+/** Animations: follow Windows' reduced-motion setting, or always / never animate. */
+export const motions = ['system', 'on', 'off'] as const
 
 const theme = z.enum(themes)
 const startWithWindows = z.boolean()
 const lastTab = z.enum(tabIds)
 const closeAction = z.enum(closeActions)
 const sidebarOpen = z.boolean()
+const motion = z.enum(motions)
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
 export const windowBoundsSchema = z.object({
@@ -41,6 +44,7 @@ export const settingsSchema = z.object({
   lastTab: lastTab.default('chat'),
   closeAction: closeAction.default('tray'),
   sidebarOpen: sidebarOpen.default(true),
+  motion: motion.default('system'),
   window: windowBoundsSchema.optional(),
   /** The "still running in the tray" notice is shown once, the first time the window is closed. */
   closeToTrayNoticeShown: z.boolean().default(false)
@@ -65,7 +69,8 @@ export const settingsPatchSchema = z.strictObject({
   startWithWindows: startWithWindows.optional(),
   lastTab: lastTab.optional(),
   closeAction: closeAction.optional(),
-  sidebarOpen: sidebarOpen.optional()
+  sidebarOpen: sidebarOpen.optional(),
+  motion: motion.optional()
 })
 
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>

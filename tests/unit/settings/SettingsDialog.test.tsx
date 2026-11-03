@@ -90,6 +90,26 @@ describe('Settings dialog', () => {
     })
   })
 
+  describe('Animations', () => {
+    it('follows Windows by default', async () => {
+      renderWithStore(<App />)
+      await openSettings()
+
+      expect(within(group('Animations')).getByRole('radio', { name: 'System' })).toBeChecked()
+    })
+
+    it('Off saves the choice and turns motion off for the whole app at once', async () => {
+      const { saveSettings } = renderWithStore(<App />)
+      await openSettings()
+      expect(document.documentElement).toHaveAttribute('data-motion', 'full')
+
+      fireEvent.click(within(group('Animations')).getByRole('radio', { name: 'Off' }))
+
+      await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ motion: 'off' }))
+      await waitFor(() => expect(document.documentElement).toHaveAttribute('data-motion', 'reduce'))
+    })
+  })
+
   describe('Start with Windows', () => {
     it('is a switch, off by default, explained by its hint', async () => {
       renderWithStore(<App />)

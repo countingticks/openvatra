@@ -13,6 +13,12 @@ const themeOptions = [
   { value: 'dark', label: 'Dark' }
 ] as const
 
+const motionOptions = [
+  { value: 'system', label: 'System' },
+  { value: 'on', label: 'On' },
+  { value: 'off', label: 'Off' }
+] as const
+
 const closeOptions = [
   { value: 'tray', label: 'Keep in tray' },
   { value: 'quit', label: 'Quit' }
@@ -25,7 +31,7 @@ export function GeneralSection(): React.JSX.Element {
   const change = (patch: SettingsPatch): void => {
     dispatch(settingsChanged(patch))
   }
-  const ids = { theme: useId(), startup: useId(), startupHint: useId(), close: useId() }
+  const ids = { theme: useId(), motion: useId(), startup: useId(), startupHint: useId(), close: useId() }
 
   return (
     <div className="flex flex-col">
@@ -39,6 +45,19 @@ export function GeneralSection(): React.JSX.Element {
           value={settings.theme}
           options={themeOptions}
           onChange={(theme) => change({ theme })}
+        />
+      </SettingRow>
+
+      <SettingRow
+        label="Animations"
+        hint="Motion and effects across the app. System follows your Windows setting."
+        labelId={ids.motion}
+      >
+        <SegmentedControl
+          labelledBy={ids.motion}
+          value={settings.motion}
+          options={motionOptions}
+          onChange={(motion) => change({ motion })}
         />
       </SettingRow>
 

@@ -184,10 +184,9 @@
       width 240ms var(--panel-ease),
       visibility 0s linear 240ms;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .sidebar-panel,
-    .sidebar-panel[data-state='closed'] {
-      transition: none;
-    }
+  /* Animations off (Settings, or Windows via System): data-motion on <html> is the app's one decision. */
+  :root[data-motion='reduce'] .sidebar-panel,
+  :root[data-motion='reduce'] .sidebar-panel[data-state='closed'] {
+    transition: none;
   }
 }

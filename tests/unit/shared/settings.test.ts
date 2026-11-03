@@ -16,6 +16,7 @@ describe('defaultSettings', () => {
       lastTab: 'chat',
       closeAction: 'tray',
       sidebarOpen: true,
+      motion: 'system',
       closeToTrayNoticeShown: false
     })
   })
@@ -41,6 +42,7 @@ describe('settingsSchema', () => {
       lastTab: 'code',
       closeAction: 'quit',
       sidebarOpen: false,
+      motion: 'off',
       window: { x: -1200, y: 40, width: 1280, height: 800 },
       closeToTrayNoticeShown: true
     }
@@ -50,7 +52,11 @@ describe('settingsSchema', () => {
   it('reads a file written before closeAction and sidebarOpen existed, with their defaults', () => {
     const older = { schemaVersion: 2, theme: 'dark', startWithWindows: true, lastTab: 'code' }
 
-    expect(settingsSchema.parse(older)).toMatchObject({ closeAction: 'tray', sidebarOpen: true })
+    expect(settingsSchema.parse(older)).toMatchObject({
+      closeAction: 'tray',
+      sidebarOpen: true,
+      motion: 'system'
+    })
   })
 
   it('drops keys it does not know', () => {
@@ -67,6 +73,7 @@ describe('settingsSchema', () => {
     ['Settings as the last tab (a dialog since version 2)', { schemaVersion: 2, lastTab: 'settings' }],
     ['an unknown close action', { schemaVersion: 2, closeAction: 'minimize' }],
     ['a non-boolean sidebarOpen', { schemaVersion: 2, sidebarOpen: 'open' }],
+    ['an unknown motion setting', { schemaVersion: 2, motion: 'slow' }],
     [
       'a window smaller than the minimum',
       { schemaVersion: 2, window: { x: 0, y: 0, width: 400, height: 300 } }
@@ -88,7 +95,8 @@ describe('settingsPatchSchema', () => {
       startWithWindows: true,
       lastTab: 'automations',
       closeAction: 'quit',
-      sidebarOpen: false
+      sidebarOpen: false,
+      motion: 'on'
     }
     expect(settingsPatchSchema.parse(patch)).toEqual(patch)
   })

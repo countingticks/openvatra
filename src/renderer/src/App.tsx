@@ -5,6 +5,7 @@ import { Sidebar } from '@renderer/components/Sidebar'
 import { TabView } from '@renderer/components/TabView'
 import { TitleBar } from '@renderer/components/TitleBar'
 import { useAppShortcuts } from '@renderer/hooks/useAppShortcuts'
+import { useApplyMotion } from '@renderer/hooks/useApplyMotion'
 import { useSidebarShortcut } from '@renderer/hooks/useSidebarShortcut'
 import { useTabShortcuts } from '@renderer/hooks/useTabShortcuts'
 import { useAppSelector } from '@renderer/store/hooks'
@@ -15,6 +16,7 @@ export function App(): React.JSX.Element {
   useTabShortcuts()
   useSidebarShortcut()
   useAppShortcuts()
+  useApplyMotion()
   const sidebarOpen = useAppSelector(selectSidebarOpen)
   const activeTab = useAppSelector(selectActiveTab)
   const sidebarToggle = useRef<HTMLButtonElement>(null)

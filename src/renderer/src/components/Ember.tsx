@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { usePrefersReducedMotion } from '@renderer/hooks/usePrefersReducedMotion'
+import { useReducedMotion } from '@renderer/hooks/useReducedMotion'
 import {
   composeFrame,
   mascotSize,
@@ -37,7 +37,7 @@ function label(clip: Clip, progress: number | undefined): string {
 
 /** Ember, the mascot: plays the frames of `state`, then whatever a one-shot (like success) hands over to. */
 export function Ember({ state, progress, scale = 2 }: EmberProps): React.JSX.Element {
-  const reducedMotion = usePrefersReducedMotion()
+  const reducedMotion = useReducedMotion()
   const clip: Clip = state === 'loading' && progress !== undefined && progress >= 1 ? 'ready' : state
   const [playing, setPlaying] = useState<Playing>(() => start(clip))
   const [requested, setRequested] = useState(clip)
