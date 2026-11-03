@@ -154,6 +154,16 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    /* Thin scrollbars in the theme's colours, instead of Windows' classic ones with arrow buttons. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  /* Tells Chromium which scheme the page uses, so native parts (scrollbars, form controls) match the theme. */
+  :root {
+    color-scheme: light;
+  }
+  :root.dark {
+    color-scheme: dark;
   }
   html,
   body,

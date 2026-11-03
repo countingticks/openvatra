@@ -24,7 +24,7 @@ export function SettingsDialog(): React.JSX.Element {
     <Dialog open={open} onOpenChange={(next) => !next && dispatch(settingsClosed())}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-[540px] max-h-[calc(100%-48px)] w-[760px] max-w-[calc(100%-48px)] gap-0 overflow-hidden rounded-[14px] bg-card p-0 text-card-foreground shadow-2xl ring-border sm:max-w-[760px]"
+        className="flex h-[600px] max-h-[calc(100%-48px)] w-[760px] max-w-[calc(100%-48px)] gap-0 overflow-hidden rounded-[14px] bg-card p-0 text-card-foreground shadow-2xl ring-border sm:max-w-[760px]"
       >
         <div className="flex w-46 shrink-0 flex-col gap-0.5 border-r border-border bg-sidebar px-2.5 py-4">
           <DialogTitle className="px-2.5 pb-3.5 text-[15px] font-semibold">Settings</DialogTitle>
