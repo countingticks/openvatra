@@ -50,6 +50,19 @@ func TestDiscover(t *testing.T) {
 			[]Model{{ID: "vision", Path: "v/vision.gguf", MMProj: "v/mmproj-vision-f16.gguf"}},
 		},
 		{
+			"a <model>-mmproj file is attached, not listed",
+			[]string{"v/qwen-7b-q4_K_M.gguf", "v/qwen-7b-mmproj.gguf"},
+			[]Model{{ID: "qwen-7b-q4_K_M", Path: "v/qwen-7b-q4_K_M.gguf", MMProj: "v/qwen-7b-mmproj.gguf"}},
+		},
+		{
+			"each model gets its own projector from a shared folder",
+			[]string{"v/gemma-26b.gguf", "v/gemma-26b-mmproj.gguf", "v/mmproj-qwen-7b-f16.gguf", "v/qwen-7b-q4.gguf"},
+			[]Model{
+				{ID: "gemma-26b", Path: "v/gemma-26b.gguf", MMProj: "v/gemma-26b-mmproj.gguf"},
+				{ID: "qwen-7b-q4", Path: "v/qwen-7b-q4.gguf", MMProj: "v/mmproj-qwen-7b-f16.gguf"},
+			},
+		},
+		{
 			"mmproj in another folder is not attached",
 			[]string{"a/m.gguf", "b/mmproj-x.gguf"},
 			[]Model{{ID: "m", Path: "a/m.gguf"}},

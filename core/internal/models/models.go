@@ -17,7 +17,8 @@ type Model struct {
 	// Path is the file to hand to llama-server; for split models the first part,
 	// because llama.cpp finds the remaining parts itself.
 	Path string
-	// MMProj is the vision projector file in the same folder, or "" if there is none.
+	// MMProj is the vision projector file in the same folder, or "" if there is none. With several projectors in
+	// one folder, the one whose name shares the longest start with the model's (qwen-7b-q4 → qwen-7b-mmproj).
 	MMProj string
 	// SizeBytes is the size on disk; for split models, all parts together.
 	SizeBytes int64
@@ -54,7 +55,8 @@ func Discover(root string) ([]Model, error) {
 		}
 
 		stem := d.Name()[:len(d.Name())-len(".gguf")]
-		if strings.HasPrefix(strings.ToLower(stem), "mmproj") {
+		// Projectors are named both "mmproj-<model>" and "<model>-mmproj"; neither is a model of its own.
+		if strings.Contains(strings.ToLower(stem), "mmproj") {
 			dir := filepath.Dir(path)
 			projectors[dir] = append(projectors[dir], path)
 			return nil
@@ -78,9 +80,7 @@ func Discover(root string) ([]Model, error) {
 
 	for i := range found {
 		found[i].SizeBytes = sizes[filepath.Join(filepath.Dir(found[i].Path), found[i].ID)]
-		if p := projectors[filepath.Dir(found[i].Path)]; len(p) > 0 {
-			found[i].MMProj = p[0]
-		}
+		found[i].MMProj = pickProjector(found[i].ID, projectors[filepath.Dir(found[i].Path)])
 	}
 
 	// WalkDir is lexical, so after a stable sort by ID the first of two
@@ -94,4 +94,25 @@ func Discover(root string) ([]Model, error) {
 		unique = append(unique, m)
 	}
 	return unique, nil
+}
+
+// pickProjector returns the projector whose file name starts most like the model id (ignoring a
+// leading "mmproj-"); the first wins a tie.
+func pickProjector(id string, candidates []string) string {
+	best, bestLen := "", -1
+	for _, p := range candidates {
+		name := strings.TrimPrefix(strings.ToLower(filepath.Base(p)), "mmproj-")
+		if n := commonPrefixLen(strings.ToLower(id), name); n > bestLen {
+			best, bestLen = p, n
+		}
+	}
+	return best
+}
+
+func commonPrefixLen(a, b string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n
 }
