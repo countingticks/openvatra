@@ -6,12 +6,29 @@ import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@renderer/store/store'
-import type { Api, AppApi, AppWindowApi, FileLocations, FilesApi, SettingsApi } from '../../src/shared/ipc'
+import type { CoreState } from '../../src/shared/core'
+import type {
+  Api,
+  AppApi,
+  AppWindowApi,
+  CoreApi,
+  FileLocations,
+  FilesApi,
+  SettingsApi
+} from '../../src/shared/ipc'
 import { defaultSettings, type Settings } from '../../src/shared/settings'
 
 export const exampleLocations: FileLocations = {
   settingsFile: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\settings.json',
   logsFolder: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\logs'
+}
+
+/** The fake models-service API, plus a way to play main's part. */
+export interface FakeCore {
+  restart: Mock<CoreApi['restart']>
+  openLog: Mock<CoreApi['openLog']>
+  /** Report a new state, as main does on every change. */
+  emitState(state: CoreState): void
 }
 
 /** The fake window API, plus a way to play main's part. */
@@ -32,11 +49,33 @@ interface Rendered extends RenderResult {
   openFolder: Mock<FilesApi['openFolder']>
   appWindow: FakeAppWindow
   quit: Mock<AppApi['quit']>
+  core: FakeCore
 }
 
 interface Options {
   /** The window starts maximized. */
   maximized?: boolean
+  /** What core's state is when the UI first asks; default: starting. */
+  coreState?: CoreState
+}
+
+function fakeCore(start: CoreState): { api: CoreApi; fake: FakeCore } {
+  const listeners = new Set<(state: CoreState) => void>()
+  const fake: FakeCore = {
+    restart: vi.fn<CoreApi['restart']>().mockResolvedValue(undefined),
+    openLog: vi.fn<CoreApi['openLog']>().mockResolvedValue(undefined),
+    emitState: (state) => act(() => listeners.forEach((listener) => listener(state)))
+  }
+  const api: CoreApi = {
+    getState: vi.fn<CoreApi['getState']>().mockResolvedValue(start),
+    onState: (callback) => {
+      listeners.add(callback)
+      return () => listeners.delete(callback)
+    },
+    restart: fake.restart,
+    openLog: fake.openLog
+  }
+  return { api, fake }
 }
 
 function fakeAppWindow(startMaximized: boolean): { api: AppWindowApi; fake: FakeAppWindow } {
@@ -73,8 +112,10 @@ export function renderWithStore(
   const openFolder = vi.fn<FilesApi['openFolder']>().mockResolvedValue(undefined)
   const appWindow = fakeAppWindow(options.maximized ?? false)
   const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
-  const api: Pick<Api, 'files' | 'appWindow' | 'app'> = {
+  const core = fakeCore(options.coreState ?? { status: 'starting' })
+  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
     app: { quit },
+    core: core.api,
     files: { locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations), openFolder },
     appWindow: appWindow.api
   }
@@ -87,6 +128,7 @@ export function renderWithStore(
     openFolder,
     appWindow: appWindow.fake,
     quit,
+    core: core.fake,
     ...render(<Provider store={store}>{ui}</Provider>)
   }
 }
