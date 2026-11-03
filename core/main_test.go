@@ -106,14 +106,20 @@ func TestRunStopsWhenStdinCloses(t *testing.T) {
 	waitExit(t, done)
 }
 
-func TestOptionArgs(t *testing.T) {
-	ctx, cpu := 8192, 0
-	got := optionArgs(config.ModelOptions{ContextSize: &ctx, GPULayers: &cpu, ExtraArgs: []string{"--flash-attn", "on"}})
-	want := []string{"--ctx-size", "8192", "--n-gpu-layers", "0", "--flash-attn", "on"}
-	if !reflect.DeepEqual(got, want) {
+func TestModelArgs(t *testing.T) {
+	c := config.Config{
+		SharedArgs: []string{"-fa", "on", "-c", "4096"},
+		Options:    map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "131072"}}},
+	}
+	want := []string{"-fa", "on", "-c", "4096", "-c", "131072"}
+	if got := modelArgs(c, "qwen"); !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
 	}
-	if got := optionArgs(config.ModelOptions{}); len(got) != 0 {
-		t.Fatalf("no options gave %v", got)
+	if got := modelArgs(c, "other"); !reflect.DeepEqual(got, c.SharedArgs) {
+		t.Fatalf("a model without options got %v, want only the shared args", got)
+	}
+	// Building one model's list must never write into the shared slice another model reads.
+	if c.SharedArgs[3] != "4096" || len(c.SharedArgs) != 4 {
+		t.Fatalf("shared args changed: %v", c.SharedArgs)
 	}
 }

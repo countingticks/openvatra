@@ -9,14 +9,10 @@ import (
 	"sync"
 )
 
-// ModelOptions are the per-model llama-server tweaks. nil means "leave llama-server's default"; pointers, because
-// 0 is a real choice for GPULayers (CPU only) and must differ from "not set".
+// ModelOptions are one model's own settings.
 type ModelOptions struct {
-	ContextSize *int `json:"contextSize"`
-	GPULayers   *int `json:"gpuLayers"`
-	// ExtraArgs is an argument list handed straight to the process, never a command string, so nothing is
-	// interpreted by a shell.
-	ExtraArgs []string `json:"extraArgs"`
+	// Args go after Config.SharedArgs, so a model can override a shared flag (llama-server keeps the last).
+	Args []string `json:"args"`
 }
 
 // Config is one complete snapshot. Empty strings mean "not chosen yet".
@@ -26,29 +22,42 @@ type Config struct {
 	// EmbeddingModel is a model id.
 	EmbeddingModel string `json:"embeddingModel"`
 	// IdleUnloadMinutes is 0 for "never unload" (main sends null).
-	IdleUnloadMinutes int                     `json:"idleUnloadMinutes"`
-	Options           map[string]ModelOptions `json:"options"`
+	IdleUnloadMinutes int `json:"idleUnloadMinutes"`
+	// SharedArgs go to every model's llama-server. Like Args, an argument list handed straight to the process,
+	// never a command string, so nothing is interpreted by a shell.
+	SharedArgs []string                `json:"sharedArgs"`
+	Options    map[string]ModelOptions `json:"options"`
 }
 
-// Flags core itself decides: main may not override them through extraArgs.
-var reservedFlags = map[string]bool{"-m": true, "--model": true, "--host": true, "--port": true, "--embeddings": true}
+// Flags core itself decides: main may not override them through arguments. src/shared/args.ts keeps the same list.
+var reservedFlags = map[string]bool{
+	"-m": true, "--model": true, "--host": true, "--port": true,
+	"--embedding": true, "--embeddings": true, "-mm": true, "--mmproj": true,
+}
 
 // Validate rejects values core must not act on. The caller is local, but still not trusted to be bug-free.
 func (c Config) Validate() error {
 	if c.IdleUnloadMinutes < 0 {
 		return errors.New("idleUnloadMinutes must not be negative")
 	}
+	if err := validateArgs(c.SharedArgs); err != nil {
+		return fmt.Errorf("sharedArgs: %w", err)
+	}
 	for id, o := range c.Options {
-		if (o.ContextSize != nil && *o.ContextSize < 0) || (o.GPULayers != nil && *o.GPULayers < 0) {
-			return fmt.Errorf("options for %q: contextSize and gpuLayers must not be negative", id)
+		if err := validateArgs(o.Args); err != nil {
+			return fmt.Errorf("options for %q: %w", id, err)
 		}
-		for _, arg := range o.ExtraArgs {
-			if strings.ContainsRune(arg, 0) {
-				return fmt.Errorf("options for %q: an argument contains a NUL character", id)
-			}
-			if name, _, _ := strings.Cut(arg, "="); reservedFlags[name] {
-				return fmt.Errorf("options for %q: %s is set by core and can't be overridden", id, name)
-			}
+	}
+	return nil
+}
+
+func validateArgs(args []string) error {
+	for _, arg := range args {
+		if strings.ContainsRune(arg, 0) {
+			return errors.New("an argument contains a NUL character")
+		}
+		if name, _, _ := strings.Cut(arg, "="); reservedFlags[name] {
+			return fmt.Errorf("%s is set by core and can't be overridden", name)
 		}
 	}
 	return nil

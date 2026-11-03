@@ -168,11 +168,11 @@ func TestConfigReplacesTheWholeConfig(t *testing.T) {
 		return rec.Code
 	}
 
-	if code := post(`{"modelsDir":"D:/models","idleUnloadMinutes":null,"options":{"a":{"gpuLayers":0}}}`); code != http.StatusNoContent {
+	if code := post(`{"modelsDir":"D:/models","idleUnloadMinutes":null,"sharedArgs":["-fa","on"],"options":{"a":{"args":["-c","4096"]}}}`); code != http.StatusNoContent {
 		t.Fatalf("valid config: status = %d, want 204", code)
 	}
 	got := store.Get()
-	if got.ModelsDir != `D:/models` || got.IdleUnloadMinutes != 0 || got.Options["a"].GPULayers == nil {
+	if got.ModelsDir != `D:/models` || got.IdleUnloadMinutes != 0 || len(got.SharedArgs) != 2 || len(got.Options["a"].Args) != 2 {
 		t.Fatalf("stored = %+v", got)
 	}
 

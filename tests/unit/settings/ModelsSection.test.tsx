@@ -181,54 +181,42 @@ describe('Settings → Models', () => {
       return { ...rendered, group: screen.getByRole('group', { name: `Options for ${qwen.id}` }) }
     }
 
-    it('saves a field when it loses focus, keeping other models’ options', async () => {
-      const { saveSettings, group } = await openOptions({ 'nomic-embed': { gpuLayers: 0 } })
-      const layers = within(group).getByLabelText('GPU layers')
+    it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
+      const { saveSettings, group } = await openOptions({ 'nomic-embed': { args: '-ngl 0' } })
+      const args = within(group).getByLabelText('Arguments')
 
-      fireEvent.change(layers, { target: { value: '40' } })
+      fireEvent.change(args, { target: { value: '  -c 131072 --alias "my qwen"\n' } })
       expect(saveSettings).not.toHaveBeenCalled()
-      fireEvent.blur(layers)
-
-      await waitFor(() =>
-        expect(saveSettings).toHaveBeenCalledWith({
-          models: { options: { 'nomic-embed': { gpuLayers: 0 }, [qwen.id]: { gpuLayers: 40 } } }
-        })
-      )
-    })
-
-    it('saves extra arguments as a list, one per line', async () => {
-      const { saveSettings, group } = await openOptions()
-      const args = within(group).getByLabelText('Extra arguments')
-
-      fireEvent.change(args, { target: { value: '--flash-attn\n\n  on  \n' } })
       fireEvent.blur(args)
 
       await waitFor(() =>
         expect(saveSettings).toHaveBeenCalledWith({
-          models: { options: { [qwen.id]: { extraArgs: ['--flash-attn', 'on'] } } }
+          models: {
+            options: { 'nomic-embed': { args: '-ngl 0' }, [qwen.id]: { args: '-c 131072 --alias "my qwen"' } }
+          }
         })
       )
     })
 
-    it('refuses a value that is not a whole number, and saves nothing', async () => {
+    it('refuses a flag OpenVatra sets itself, and saves nothing', async () => {
       const { saveSettings, group } = await openOptions()
-      const context = within(group).getByLabelText('Context size')
+      const args = within(group).getByLabelText('Arguments')
 
-      fireEvent.change(context, { target: { value: '8k' } })
-      fireEvent.blur(context)
+      fireEvent.change(args, { target: { value: '-c 4096 --port 9000' } })
+      fireEvent.blur(args)
 
-      expect(context).toHaveAttribute('aria-invalid', 'true')
-      expect(context).toHaveAccessibleDescription('A whole number above 0, or empty.')
+      expect(args).toHaveAttribute('aria-invalid', 'true')
+      expect(args).toHaveAccessibleDescription("--port is set by OpenVatra and can't be changed.")
       expect(saveSettings).not.toHaveBeenCalled()
     })
 
-    it('drops the model’s entry when every field is emptied', async () => {
-      const { saveSettings, group } = await openOptions({ [qwen.id]: { contextSize: 8192 } })
-      const context = within(group).getByLabelText('Context size')
-      expect(context).toHaveValue('8192')
+    it('drops the model’s entry when the box is emptied', async () => {
+      const { saveSettings, group } = await openOptions({ [qwen.id]: { args: '-c 8192' } })
+      const args = within(group).getByLabelText('Arguments')
+      expect(args).toHaveValue('-c 8192')
 
-      fireEvent.change(context, { target: { value: '' } })
-      fireEvent.blur(context)
+      fireEvent.change(args, { target: { value: ' ' } })
+      fireEvent.blur(args)
 
       await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ models: { options: {} } }))
     })

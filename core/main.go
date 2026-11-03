@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
@@ -147,7 +148,7 @@ func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) fu
 			if embedding {
 				args = append(args, "--embeddings")
 			}
-			args = append(args, optionArgs(c.Options[m.ID])...)
+			args = append(args, modelArgs(c, m.ID)...)
 			logger.Info("starting llama-server", "model", m.ID, "port", port, "embedding", embedding)
 			return process.New(process.Config{Path: c.LlamaServerPath, Args: args, Port: port, Log: logs.Prefixed(logOut, m.ID)}), nil
 		}
@@ -156,16 +157,10 @@ func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) fu
 	}
 }
 
-// optionArgs turns a model's saved options into llama-server arguments. nil means "not set".
-func optionArgs(o config.ModelOptions) []string {
-	var args []string
-	if o.ContextSize != nil {
-		args = append(args, "--ctx-size", strconv.Itoa(*o.ContextSize))
-	}
-	if o.GPULayers != nil {
-		args = append(args, "--n-gpu-layers", strconv.Itoa(*o.GPULayers))
-	}
-	return append(args, o.ExtraArgs...)
+// modelArgs are the user's arguments for one model: the shared ones, then the model's own, so the model's win
+// (llama-server keeps the last value of a repeated flag).
+func modelArgs(c config.Config, id string) []string {
+	return append(slices.Clone(c.SharedArgs), c.Options[id].Args...)
 }
 
 // watchStdin blocks until stdin is closed, then calls onClose. Electron never

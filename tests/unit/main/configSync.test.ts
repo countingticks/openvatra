@@ -9,14 +9,20 @@ const withModels = (models: Partial<Settings['models']>): Settings => ({
 })
 
 describe('toCoreConfig', () => {
-  it('turns "not chosen" into core\'s empty values and passes the rest through', () => {
-    const options = { qwen: { contextSize: 4096 } }
-    expect(toCoreConfig({ ...defaultSettings.models, idleUnloadMinutes: null, options })).toEqual({
+  it('turns "not chosen" into core\'s empty values and argument text into lists', () => {
+    const models = {
+      ...defaultSettings.models,
+      idleUnloadMinutes: null,
+      sharedArgs: '-fa on --jinja',
+      options: { qwen: { args: '-c 4096 --alias "my qwen"' }, gemma: {} }
+    }
+    expect(toCoreConfig(models)).toEqual({
       llamaServerPath: '',
       modelsDir: '',
       embeddingModel: '',
       idleUnloadMinutes: 0,
-      options
+      sharedArgs: ['-fa', 'on', '--jinja'],
+      options: { qwen: { args: ['-c', '4096', '--alias', 'my qwen'] }, gemma: { args: [] } }
     })
   })
 })

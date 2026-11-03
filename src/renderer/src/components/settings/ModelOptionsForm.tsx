@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { Label } from '@renderer/components/ui/label'
+import { splitArgs } from '../../../../shared/args'
 import type { ModelOptions } from '../../../../shared/settings'
 
 interface ModelOptionsFormProps {
@@ -10,68 +11,28 @@ interface ModelOptionsFormProps {
   onChange: (next: ModelOptions | undefined) => void
 }
 
-type Field = 'contextSize' | 'gpuLayers' | 'extraArgs'
-type Draft = Record<Field, string>
-type Errors = Partial<Record<Field, string>>
-
-const fields: { field: Field; label: string; hint: string }[] = [
-  {
-    field: 'contextSize',
-    label: 'Context size',
-    hint: 'Tokens the model sees at once. Empty: the model’s own.'
-  },
-  { field: 'gpuLayers', label: 'GPU layers', hint: '0 runs on the CPU only. Empty: llama-server decides.' },
-  { field: 'extraArgs', label: 'Extra arguments', hint: 'One per line, passed to llama-server as written.' }
-]
-
-const wholeNumber = /^\d+$/
-
-/** Reads the typed text into options; anything that isn't valid becomes an error and nothing is saved. */
-function parse(draft: Draft): { options: ModelOptions; errors: Errors } {
-  const options: ModelOptions = {}
-  const errors: Errors = {}
-
-  const contextSize = draft.contextSize.trim()
-  if (contextSize && (!wholeNumber.test(contextSize) || Number(contextSize) === 0))
-    errors.contextSize = 'A whole number above 0, or empty.'
-  else if (contextSize) options.contextSize = Number(contextSize)
-
-  const gpuLayers = draft.gpuLayers.trim()
-  if (gpuLayers && !wholeNumber.test(gpuLayers)) errors.gpuLayers = 'A whole number, or empty.'
-  else if (gpuLayers) options.gpuLayers = Number(gpuLayers)
-
-  // A list, never one command line: no quoting rules, and nothing a shell could read differently.
-  const extraArgs = draft.extraArgs
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-  if (extraArgs.length > 50) errors.extraArgs = 'At most 50 arguments.'
-  else if (extraArgs.some((arg) => arg.length > 1000)) errors.extraArgs = 'An argument is too long.'
-  else if (extraArgs.length > 0) options.extraArgs = extraArgs
-
-  return { options, errors }
-}
-
-/** A model's llama-server options. Saved when a field loses focus, so typing "40" doesn't save "4" first. */
+/** A model's own llama-server arguments. Saved when the box loses focus, so typing "-c 40" doesn't save "-c 4" first. */
 export function ModelOptionsForm({
   id,
   modelId,
   options,
   onChange
 }: ModelOptionsFormProps): React.JSX.Element {
-  const [draft, setDraft] = useState<Draft>({
-    contextSize: options?.contextSize?.toString() ?? '',
-    gpuLayers: options?.gpuLayers?.toString() ?? '',
-    extraArgs: options?.extraArgs?.join('\n') ?? ''
-  })
-  const [errors, setErrors] = useState<Errors>({})
-  const baseId = useId()
+  const [draft, setDraft] = useState(options?.args ?? '')
+  const [error, setError] = useState<string>()
+  const inputId = useId()
+  const hintId = `${inputId}-hint`
 
   function commit(): void {
-    const parsed = parse(draft)
-    setErrors(parsed.errors)
-    if (Object.keys(parsed.errors).length > 0) return
-    const next = Object.keys(parsed.options).length > 0 ? parsed.options : undefined
+    const result = splitArgs(draft)
+    setError(result.ok ? undefined : result.error)
+    if (!result.ok) return
+    // Saved as typed, minus outer spaces; an empty box means "only the arguments for every model".
+    const text = draft.trim()
+    const others = { ...options }
+    delete others.args
+    const merged = text ? { ...others, args: text } : others
+    const next = Object.keys(merged).length > 0 ? merged : undefined
     if (JSON.stringify(next) !== JSON.stringify(options)) onChange(next)
   }
 
@@ -80,42 +41,26 @@ export function ModelOptionsForm({
       id={id}
       role="group"
       aria-label={`Options for ${modelId}`}
-      className="mt-2.5 grid grid-cols-2 gap-3 rounded-md bg-sidebar p-3"
+      className="mt-2.5 flex flex-col gap-1 rounded-md bg-sidebar p-3"
     >
-      {fields.map(({ field, label, hint }) => {
-        const inputId = `${baseId}-${field}`
-        const hintId = `${inputId}-hint`
-        const error = errors[field]
-        const props = {
-          id: inputId,
-          value: draft[field],
-          onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-            setDraft((current) => ({ ...current, [field]: event.target.value })),
-          onBlur: commit,
-          'aria-invalid': error ? true : undefined,
-          'aria-describedby': hintId,
-          className:
-            'rounded-md border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive'
-        }
-        return (
-          <div
-            key={field}
-            className={field === 'extraArgs' ? 'col-span-2 flex flex-col gap-1' : 'flex flex-col gap-1'}
-          >
-            <Label htmlFor={inputId} className="text-xs">
-              {label}
-            </Label>
-            {field === 'extraArgs' ? (
-              <textarea {...props} rows={3} spellCheck={false} />
-            ) : (
-              <input {...props} inputMode="numeric" placeholder="Default" />
-            )}
-            <p id={hintId} className={error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
-              {error ?? hint}
-            </p>
-          </div>
-        )
-      })}
+      <Label htmlFor={inputId} className="text-xs">
+        Arguments
+      </Label>
+      <textarea
+        id={inputId}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        rows={2}
+        spellCheck={false}
+        placeholder="-c 131072"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={hintId}
+        className="rounded-md border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive"
+      />
+      <p id={hintId} className={error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+        {error ?? 'llama-server arguments for this model, e.g. -c 131072. Use "…" around values with spaces.'}
+      </p>
     </div>
   )
 }

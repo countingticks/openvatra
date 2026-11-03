@@ -3,6 +3,7 @@
 // point it at a temporary folder.
 import { randomUUID } from 'crypto'
 import { open, readFile, rename, rm } from 'fs/promises'
+import { joinArgs, splitArgs } from '../shared/args'
 import { defaultSettings, type Settings, settingsSchema, settingsSchemaVersion } from '../shared/settings'
 
 type Migration = (old: Record<string, unknown>) => Record<string, unknown>
@@ -14,7 +15,31 @@ const migrations: Readonly<Record<number, Migration>> = {
   1: (old) => (old['lastTab'] === 'settings' ? { ...old, lastTab: 'chat' } : old),
   // 2 → 3: `models` is new. Nothing to move; the schema fills in its defaults. Listed anyway so the chain has no
   // gap, and so a future change to the defaults has an obvious place to go.
-  2: (old) => old
+  2: (old) => old,
+  // 3 → 4: the number fields and the argument list became one line of argument text per model.
+  3: (old) => {
+    const models = old['models']
+    if (!isRecord(models) || !isRecord(models['options'])) return old
+    const options = Object.fromEntries(
+      Object.entries(models['options']).map(([id, value]) => [
+        id,
+        isRecord(value) ? argsFromV3(value) : value
+      ])
+    )
+    return { ...old, models: { ...models, options } }
+  }
+}
+
+/** `{ contextSize, gpuLayers, extraArgs }` → `{ args: '-c … -ngl … …' }`; `{}` if nothing was set. */
+function argsFromV3(options: Record<string, unknown>): Record<string, unknown> {
+  const { contextSize, gpuLayers, extraArgs } = options
+  const args: string[] = []
+  if (typeof contextSize === 'number') args.push('-c', String(contextSize))
+  if (typeof gpuLayers === 'number') args.push('-ngl', String(gpuLayers))
+  if (Array.isArray(extraArgs)) args.push(...extraArgs.filter((arg) => typeof arg === 'string'))
+  const text = joinArgs(args)
+  // v3 never checked for flags core sets itself; drop such a model's arguments rather than set the whole file aside.
+  return text && splitArgs(text).ok ? { args: text } : {}
 }
 
 /** What happened while loading, so the caller can log it. */

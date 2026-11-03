@@ -19,27 +19,28 @@ func TestStoreStartsEmptyAndKeepsLastValidConfig(t *testing.T) {
 }
 
 func TestValidateOptions(t *testing.T) {
-	cases := map[string]ModelOptions{
-		"negative context":    {ContextSize: intp(-1)},
-		"negative gpu layers": {GPULayers: intp(-1)},
-		"nul in argument":     {ExtraArgs: []string{"a\x00b"}},
-		"reserved --port":     {ExtraArgs: []string{"--port", "1"}},
-		"reserved -m=":        {ExtraArgs: []string{"-m=x.gguf"}},
+	cases := map[string]Config{
+		"nul in argument":        {Options: map[string]ModelOptions{"m": {Args: []string{"a\x00b"}}}},
+		"reserved --port":        {Options: map[string]ModelOptions{"m": {Args: []string{"--port", "1"}}}},
+		"reserved -m=":           {Options: map[string]ModelOptions{"m": {Args: []string{"-m=x.gguf"}}}},
+		"reserved --mmproj":      {Options: map[string]ModelOptions{"m": {Args: []string{"--mmproj", "p.gguf"}}}},
+		"reserved in sharedArgs": {SharedArgs: []string{"--host", "0.0.0.0"}},
 	}
-	for name, o := range cases {
+	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
-			if err := (Config{Options: map[string]ModelOptions{"m": o}}).Validate(); err == nil {
+			if err := c.Validate(); err == nil {
 				t.Fatal("accepted")
 			}
 		})
 	}
-	ok := Config{Options: map[string]ModelOptions{"m": {ContextSize: intp(8192), GPULayers: intp(0), ExtraArgs: []string{"--flash-attn", "on"}}}}
+	ok := Config{
+		SharedArgs: []string{"-fa", "on"},
+		Options:    map[string]ModelOptions{"m": {Args: []string{"-c", "8192"}}},
+	}
 	if err := ok.Validate(); err != nil {
 		t.Fatalf("valid options rejected: %v", err)
 	}
 }
-
-func intp(n int) *int { return &n }
 
 func TestStoreCallsOnChangeOnlyForAcceptedConfigs(t *testing.T) {
 	s := NewStore()

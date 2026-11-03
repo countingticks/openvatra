@@ -1,15 +1,28 @@
 // Keeps core.exe's config equal to settings.json: settings.json is the one source of truth, and core only ever
 // holds a copy that main pushes (POST /api/config). Pure functions plus one small factory, so tests need no Electron.
+import { splitArgs } from '../../shared/args'
 import type { ModelsSettings, Settings } from '../../shared/settings'
 
-/** The body core expects (core/internal/config). Core uses "" for "not chosen" and 0 minutes for "never". */
+/** Argument text → list. The settings schema already refused text that doesn't split, so failing here is a bug. */
+function argList(text: string | undefined): string[] {
+  const result = splitArgs(text ?? '')
+  return result.ok ? result.args : []
+}
+
+/**
+ * The body core expects (core/internal/config). Core uses "" for "not chosen" and 0 minutes for "never", and gets
+ * argument lists, never text: splitting happens here, once, so core runs exactly what the settings say.
+ */
 export function toCoreConfig(models: ModelsSettings): Record<string, unknown> {
   return {
     llamaServerPath: models.llamaServerPath ?? '',
     modelsDir: models.modelsDir ?? '',
     embeddingModel: models.embeddingModel ?? '',
     idleUnloadMinutes: models.idleUnloadMinutes ?? 0,
-    options: models.options
+    sharedArgs: argList(models.sharedArgs),
+    options: Object.fromEntries(
+      Object.entries(models.options).map(([id, options]) => [id, { args: argList(options.args) }])
+    )
   }
 }
 
