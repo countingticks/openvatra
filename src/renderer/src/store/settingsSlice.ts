@@ -1,7 +1,7 @@
 // The settings file's current values, for the Settings page. Changes show at once ("optimistic") and are then
 // saved by the store's listener, which puts the saved result in place, or the old values back if saving failed.
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
-import { defaultSettings, type Settings, type SettingsPatch } from '../../../shared/settings'
+import { applyPatch, defaultSettings, type Settings, type SettingsPatch } from '../../../shared/settings'
 
 export const settingsSlice = createSlice({
   name: 'settings',
@@ -9,9 +9,8 @@ export const settingsSlice = createSlice({
   reducers: {
     /** The user changed something: show it now; the listener saves it. */
     settingsChanged(state, action: PayloadAction<SettingsPatch>) {
-      for (const [key, value] of Object.entries(action.payload)) {
-        if (value !== undefined) Object.assign(state, { [key]: value })
-      }
+      // The same merge main uses, so what the UI shows is what will be saved.
+      return applyPatch(state, action.payload)
     },
     /** What main saved (or, after a failure, what was there before). */
     settingsReplaced(_state, action: PayloadAction<Settings>) {

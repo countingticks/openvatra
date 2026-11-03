@@ -5,6 +5,10 @@
 import { createSlice, type PayloadAction } from '@reduxjs/toolkit'
 import type { TabId } from '../../../shared/settings'
 
+/** The Settings dialog's sections, in nav order. */
+export const settingsSections = ['general', 'models'] as const
+export type SettingsSection = (typeof settingsSections)[number]
+
 export interface UiState {
   activeTab: TabId
   sidebarOpen: boolean
@@ -15,6 +19,8 @@ export interface UiState {
   forward: TabId[]
   /** The Settings dialog is open. Not saved: the app never reopens with a dialog in the way. */
   settingsOpen: boolean
+  /** Which section the dialog shows. */
+  settingsSection: SettingsSection
 }
 
 /** Enough to go back a long way, small enough that the history never grows without bound. */
@@ -25,7 +31,8 @@ export const initialUiState: UiState = {
   sidebarOpen: true,
   back: [],
   forward: [],
-  settingsOpen: false
+  settingsOpen: false,
+  settingsSection: 'general'
 }
 
 export const uiSlice = createSlice({
@@ -56,8 +63,13 @@ export const uiSlice = createSlice({
     sidebarToggled(state) {
       state.sidebarOpen = !state.sidebarOpen
     },
-    settingsOpened(state) {
+    /** Opens on General unless a section is named ("Model settings…" opens on Models). */
+    settingsOpened(state, action: PayloadAction<SettingsSection | undefined>) {
       state.settingsOpen = true
+      state.settingsSection = action.payload ?? 'general'
+    },
+    settingsSectionSelected(state, action: PayloadAction<SettingsSection>) {
+      state.settingsSection = action.payload
     },
     settingsClosed(state) {
       state.settingsOpen = false
@@ -68,11 +80,25 @@ export const uiSlice = createSlice({
     selectSidebarOpen: (state) => state.sidebarOpen,
     selectCanGoBack: (state) => state.back.length > 0,
     selectCanGoForward: (state) => state.forward.length > 0,
-    selectSettingsOpen: (state) => state.settingsOpen
+    selectSettingsOpen: (state) => state.settingsOpen,
+    selectSettingsSection: (state) => state.settingsSection
   }
 })
 
-export const { tabSelected, wentBack, wentForward, sidebarToggled, settingsOpened, settingsClosed } =
-  uiSlice.actions
-export const { selectActiveTab, selectSidebarOpen, selectCanGoBack, selectCanGoForward, selectSettingsOpen } =
-  uiSlice.selectors
+export const {
+  tabSelected,
+  wentBack,
+  wentForward,
+  sidebarToggled,
+  settingsOpened,
+  settingsSectionSelected,
+  settingsClosed
+} = uiSlice.actions
+export const {
+  selectActiveTab,
+  selectSidebarOpen,
+  selectCanGoBack,
+  selectCanGoForward,
+  selectSettingsOpen,
+  selectSettingsSection
+} = uiSlice.selectors

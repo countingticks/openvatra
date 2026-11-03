@@ -13,3 +13,37 @@ export function isCoreState(value: unknown): value is CoreState {
   if (status === 'ready') return typeof port === 'number' && typeof version === 'string'
   return status === 'problem' && typeof reason === 'string'
 }
+
+export const modelStates = ['stopped', 'loading', 'ready', 'error'] as const
+
+/** One model on disk, as core reports it (GET /api/state). */
+export interface ModelInfo {
+  /** The file name without .gguf. */
+  id: string
+  state: (typeof modelStates)[number]
+  /** Answering a request right now. */
+  busy: boolean
+  /** Why the last load failed; only with state 'error'. */
+  error?: string
+  sizeBytes: number
+  /** File name of the detected vision projector; missing when the model has none. */
+  projector?: string
+}
+
+function isModelInfo(value: unknown): value is ModelInfo {
+  if (typeof value !== 'object' || value === null) return false
+  const { id, state, busy, error, sizeBytes, projector } = value as Record<string, unknown>
+  return (
+    typeof id === 'string' &&
+    modelStates.includes(state as ModelInfo['state']) &&
+    typeof busy === 'boolean' &&
+    (error === undefined || typeof error === 'string') &&
+    typeof sizeBytes === 'number' &&
+    (projector === undefined || typeof projector === 'string')
+  )
+}
+
+/** Checks a model list that crossed a process boundary (core → main → UI). */
+export function isModelList(value: unknown): value is ModelInfo[] {
+  return Array.isArray(value) && value.every(isModelInfo)
+}

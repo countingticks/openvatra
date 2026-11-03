@@ -93,7 +93,7 @@ describe('migrate', () => {
   describe('1 → 2: Settings became a dialog', () => {
     it('reopens a file left on the Settings tab on Chat', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings', theme: 'dark' })).toEqual({
-        schemaVersion: 2,
+        schemaVersion: 5,
         lastTab: 'chat',
         theme: 'dark'
       })
@@ -101,7 +101,7 @@ describe('migrate', () => {
 
     it('keeps every other tab and setting as it was', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'code', closeAction: 'quit' })).toEqual({
-        schemaVersion: 2,
+        schemaVersion: 5,
         lastTab: 'code',
         closeAction: 'quit'
       })
@@ -113,13 +113,137 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 2, theme: 'dark', lastTab: 'chat' })
+      expect(settings).toMatchObject({ schemaVersion: 5, theme: 'dark', lastTab: 'chat' })
+    })
+  })
+
+  describe('2 → 3: models settings', () => {
+    it('keeps every existing setting and adds only the version', () => {
+      expect(migrate({ schemaVersion: 2, theme: 'dark', lastTab: 'code' })).toEqual({
+        schemaVersion: 5,
+        theme: 'dark',
+        lastTab: 'code'
+      })
+    })
+
+    it('loads a real version-2 file with default models and nothing else changed', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 2, theme: 'dark', closeAction: 'quit' }))
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings).toMatchObject({ schemaVersion: 5, theme: 'dark', closeAction: 'quit' })
+      expect(settings.models).toEqual({
+        llamaServerPath: null,
+        modelsDir: null,
+        embeddingModel: null,
+        idleUnloadMinutes: 15,
+        options: {}
+      })
+    })
+
+    it('upgrades a version-1 file through every step', () => {
+      expect(migrate({ schemaVersion: 1, lastTab: 'settings' })).toEqual({
+        schemaVersion: 5,
+        lastTab: 'chat'
+      })
+    })
+  })
+
+  describe('3 → 4: options became argument text', () => {
+    const v3 = (options: unknown): Record<string, unknown> => ({
+      schemaVersion: 3,
+      theme: 'dark',
+      models: { modelsDir: 'D:/models', idleUnloadMinutes: 60, options }
+    })
+
+    it('turns the number fields and the argument list into one line per model', () => {
+      expect(
+        migrate(
+          v3({
+            qwen: { contextSize: 131072, gpuLayers: 0, extraArgs: ['--alias', 'my qwen'] },
+            gemma: { extraArgs: ['--jinja'] },
+            plain: {}
+          })
+        )
+      ).toEqual({
+        schemaVersion: 5,
+        theme: 'dark',
+        models: {
+          modelsDir: 'D:/models',
+          idleUnloadMinutes: 60,
+          options: {
+            qwen: { args: '-c 131072 -ngl 0 --alias "my qwen"' },
+            gemma: { args: '--jinja' }
+          }
+        }
+      })
+    })
+
+    it("drops a model's arguments that name a flag core sets, instead of setting the file aside", async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify(v3({ qwen: { contextSize: 8192, extraArgs: ['--port', '1'] } }))
+      )
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings.models).toMatchObject({ modelsDir: 'D:/models', options: {} })
+    })
+
+    it('leaves a file without models alone', () => {
+      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 5, theme: 'dark' })
+    })
+  })
+
+  describe('4 → 5: simpler model settings', () => {
+    const v4 = (models: unknown): Record<string, unknown> => ({ schemaVersion: 4, theme: 'dark', models })
+
+    it('drops the shared arguments, the per-model unload time and projector switch, and empty entries', () => {
+      expect(
+        migrate(
+          v4({
+            modelsDir: 'D:/models',
+            embeddingModel: 'bge',
+            sharedArgs: '-fa on',
+            options: {
+              qwen: { args: '-c 4096', idleUnloadMinutes: 60, mmproj: false },
+              gemma: { idleUnloadMinutes: null },
+              plain: { args: '' }
+            }
+          })
+        )
+      ).toEqual({
+        schemaVersion: 5,
+        theme: 'dark',
+        models: { modelsDir: 'D:/models', embeddingModel: 'bge', options: { qwen: { args: '-c 4096' } } }
+      })
+    })
+
+    it('loads an old file, and says in the outcome that shared arguments were dropped', async () => {
+      await writeFile(filePath, JSON.stringify(v4({ sharedArgs: '-fa on', options: {} })))
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded', droppedSharedArgs: true })
+      expect(settings.models).not.toHaveProperty('sharedArgs')
+    })
+
+    it('does not mention shared arguments when there were none', async () => {
+      await writeFile(filePath, JSON.stringify(v4({ sharedArgs: '  ' })))
+
+      expect((await loadSettings(filePath)).outcome).toEqual({ kind: 'loaded' })
+    })
+
+    it('leaves a file without models alone', () => {
+      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 5, theme: 'dark' })
     })
   })
 
   it.each([
-    ['current files', { schemaVersion: 2, theme: 'dark' }],
-    ['newer files', { schemaVersion: 3 }],
+    ['current files', { schemaVersion: 5, theme: 'dark' }],
+    ['newer files', { schemaVersion: 6 }],
     ['files with no migration path', { schemaVersion: 0 }],
     ['non-objects', [1, 2]]
   ])('leaves %s unchanged', (_case, raw) => {

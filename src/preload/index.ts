@@ -1,6 +1,6 @@
 // Runs in a sandbox before the UI loads. Its only job: hand the UI the API defined in src/shared/ipc.ts.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { isCoreState } from '../shared/core'
+import { isCoreState, isModelList } from '../shared/core'
 import { type Api, ipcChannels } from '../shared/ipc'
 
 const api: Api = {
@@ -19,7 +19,8 @@ const api: Api = {
   }),
   files: Object.freeze({
     locations: () => ipcRenderer.invoke(ipcChannels.filesLocations),
-    openFolder: (folder) => ipcRenderer.invoke(ipcChannels.filesOpenFolder, folder)
+    openFolder: (folder) => ipcRenderer.invoke(ipcChannels.filesOpenFolder, folder),
+    pick: (target) => ipcRenderer.invoke(ipcChannels.filesPick, target)
   }),
   appWindow: Object.freeze({
     minimize: () => ipcRenderer.invoke(ipcChannels.windowMinimize),
@@ -54,7 +55,19 @@ const api: Api = {
       }
     },
     restart: () => ipcRenderer.invoke(ipcChannels.coreRestart),
-    openLog: () => ipcRenderer.invoke(ipcChannels.coreOpenLog)
+    openLog: () => ipcRenderer.invoke(ipcChannels.coreOpenLog),
+    models: () => ipcRenderer.invoke(ipcChannels.coreGetModels),
+    onModels: (callback) => {
+      const listener = (_event: IpcRendererEvent, models: unknown): void => {
+        if (isModelList(models)) callback(models)
+      }
+      ipcRenderer.on(ipcChannels.coreModelsChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(ipcChannels.coreModelsChanged, listener)
+      }
+    },
+    load: (id) => ipcRenderer.invoke(ipcChannels.coreLoad, id),
+    unload: (id) => ipcRenderer.invoke(ipcChannels.coreUnload, id)
   })
 }
 

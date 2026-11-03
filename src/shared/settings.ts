@@ -2,6 +2,7 @@
 // zod checks data at runtime (a file on disk or an IPC message can hold anything), and `z.infer` derives the
 // TypeScript type from the same schema, so the check and the type can never disagree.
 import { z } from 'zod'
+import { splitArgs } from './args'
 
 // Settings is a dialog, not a tab (since schema version 2).
 export const tabIds = ['chat', 'code', 'automations'] as const
@@ -9,9 +10,11 @@ export type TabId = (typeof tabIds)[number]
 
 /**
  * Bump when the file's shape changes in a way old files can't satisfy, and add a migration for it
- * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'.
+ * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'. 3: added `models`.
+ * 4: model options became llama-swap style argument text (`sharedArgs`, `options[id].args`).
+ * 5: `sharedArgs` and the per-model unload time and projector switch were removed.
  */
-export const settingsSchemaVersion = 2
+export const settingsSchemaVersion = 5
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -28,6 +31,41 @@ const lastTab = z.enum(tabIds)
 const closeAction = z.enum(closeActions)
 const sidebarOpen = z.boolean()
 const motion = z.enum(motions)
+
+/** Minutes a model may sit unused before core unloads it; null means never. */
+export const idleUnloadMinutesChoices = [5, 15, 30, 60] as const
+
+/**
+ * llama-server arguments as the user typed them (`-c 131072 --jinja`). Kept as text so the box shows exactly what
+ * was typed; main splits it into a list for core (src/shared/args.ts), and text that doesn't split is never saved.
+ */
+const argsText = z
+  .string()
+  .refine((text) => splitArgs(text).ok, { message: 'invalid llama-server arguments' })
+
+// Bare field schemas, shared by the file schema (with defaults) and the UI patch (without).
+const modelId = z.string().min(1)
+const idleUnloadMinutes = z.union(idleUnloadMinutesChoices.map((minutes) => z.literal(minutes))).nullable()
+
+/**
+ * One model's own settings. Arguments are the only option: the projector is passed whenever one is found
+ * (`--no-mmproj` in the arguments turns that off), and models unload by the global time.
+ */
+export const modelOptionsSchema = z.strictObject({
+  args: argsText.optional()
+})
+const modelOptionsById = z.record(modelId, modelOptionsSchema)
+
+/** What core needs to run models. main sends it to core.exe (POST /api/config) on start and on every change. */
+export const modelsSettingsSchema = z.object({
+  /** Full path to llama-server.exe; null until chosen. */
+  llamaServerPath: z.string().min(1).nullable().default(null),
+  modelsDir: z.string().min(1).nullable().default(null),
+  /** A model id (its file name without .gguf). */
+  embeddingModel: modelId.nullable().default(null),
+  idleUnloadMinutes: idleUnloadMinutes.default(15),
+  options: modelOptionsById.default({})
+})
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
 export const windowBoundsSchema = z.object({
@@ -46,11 +84,15 @@ export const settingsSchema = z.object({
   sidebarOpen: sidebarOpen.default(true),
   motion: motion.default('system'),
   window: windowBoundsSchema.optional(),
+  // prefault, not default: the empty object still runs through the field defaults above.
+  models: modelsSettingsSchema.prefault({}),
   /** The "still running in the tray" notice is shown once, the first time the window is closed. */
   closeToTrayNoticeShown: z.boolean().default(false)
 })
 
 export type Settings = z.infer<typeof settingsSchema>
+export type ModelsSettings = z.infer<typeof modelsSettingsSchema>
+export type ModelOptions = z.infer<typeof modelOptionsSchema>
 export type WindowBounds = z.infer<typeof windowBoundsSchema>
 
 // Frozen so no caller can change the defaults everyone else gets.
@@ -70,7 +112,34 @@ export const settingsPatchSchema = z.strictObject({
   lastTab: lastTab.optional(),
   closeAction: closeAction.optional(),
   sidebarOpen: sidebarOpen.optional(),
-  motion: motion.optional()
+  motion: motion.optional(),
+  // No paths: core runs llamaServerPath, so only main's own file dialog may set it (files.pick), never the UI.
+  models: z
+    .strictObject({
+      embeddingModel: modelId.nullable().optional(),
+      idleUnloadMinutes: idleUnloadMinutes.optional(),
+      /** The whole map: the UI sends every model's options, not one model's. */
+      options: modelOptionsById.optional()
+    })
+    .optional()
 })
 
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>
+
+/** Drops keys whose value is undefined: an optional key left out means "no change", not "store undefined". */
+function defined<T extends object>(patch: T): Partial<T> {
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as Partial<T>
+}
+
+/**
+ * The one merge rule, used by main (to save) and the UI (to show the change at once): top-level keys replace,
+ * `models` merges key by key, so changing the embedding model keeps the paths.
+ */
+export function applyPatch(settings: Settings, patch: SettingsPatch): Settings {
+  const { models, ...rest } = patch
+  return {
+    ...settings,
+    ...defined(rest),
+    ...(models && { models: { ...settings.models, ...defined(models) } })
+  }
+}

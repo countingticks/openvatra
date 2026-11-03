@@ -2,6 +2,10 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { renderWithStore } from './renderWithStore'
+import type { ModelInfo } from '../../src/shared/core'
+
+const qwen: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, sizeBytes: 5 * 1024 ** 3 }
+const ready = { status: 'ready', port: 1234, version: '1' } as const
 
 const button = (): HTMLElement => screen.getByRole('button', { name: /^Model:/ })
 
@@ -40,13 +44,13 @@ describe('model button', () => {
     expect(core.openLog).toHaveBeenCalledOnce()
   })
 
-  it('opens Settings from "Model settings…" and closes the popover', async () => {
+  it('opens Settings on Models from "Model settings…" and closes the popover', async () => {
     renderWithStore(<App />)
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Model settings…' }))
 
-    expect(await screen.findByRole('heading', { name: 'General' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: 'Models' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
   })
 
@@ -59,5 +63,89 @@ describe('model button', () => {
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
     )
+  })
+
+  it('lists the models and loads one', async () => {
+    const { core } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
+    const popover = await openPopover()
+
+    fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
+
+    expect(core.load).toHaveBeenCalledWith('Qwen3-8B')
+  })
+
+  it('names the loaded model on the button, highlights its row and unloads it on click', async () => {
+    const { core } = renderWithStore(
+      <App />,
+      {},
+      {
+        coreState: ready,
+        models: [
+          { ...qwen, state: 'ready' },
+          { ...qwen, id: 'Gemma' }
+        ]
+      }
+    )
+
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Ready'))
+    expect(button()).toHaveTextContent('Qwen3-8B')
+    const popover = await openPopover()
+    expect(popover).not.toHaveTextContent('Ready —')
+
+    const loaded = within(popover).getByRole('button', { name: 'Unload Qwen3-8B' })
+    expect(loaded).toHaveAttribute('aria-current', 'true')
+    expect(loaded).toHaveClass('bg-success/10')
+    expect(within(popover).getByRole('button', { name: 'Load Gemma' })).not.toHaveAttribute('aria-current')
+
+    fireEvent.click(loaded)
+    expect(core.unload).toHaveBeenCalledWith('Qwen3-8B')
+  })
+
+  it('shows a disabled spinner row while a model loads, and no state words', async () => {
+    renderWithStore(<App />, {}, { coreState: ready, models: [{ ...qwen, state: 'loading' }] })
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Loading'))
+    const popover = await openPopover()
+
+    expect(within(popover).getByRole('button', { name: 'Loading Qwen3-8B' })).toBeDisabled()
+    expect(popover).not.toHaveTextContent(/Loaded|Not loaded|Loading…/)
+  })
+
+  it('says what is happening when there is no list: starting, or a problem', async () => {
+    const { core } = renderWithStore(<App />)
+    const popover = await openPopover()
+    expect(popover).toHaveTextContent('Starting the models service…')
+
+    core.emitState({ status: 'problem', reason: 'boom' })
+    await waitFor(() => expect(popover).toHaveTextContent('Problem: boom'))
+  })
+
+  it("shows core's error under the model's name", async () => {
+    renderWithStore(
+      <App />,
+      {},
+      { coreState: ready, models: [{ ...qwen, state: 'error', error: 'not enough memory' }] }
+    )
+    const popover = await openPopover()
+
+    expect(await within(popover).findByRole('alert')).toHaveTextContent('not enough memory')
+    expect(within(popover).getByRole('button', { name: 'Load Qwen3-8B' })).toBeEnabled()
+  })
+
+  it('says Loading while a model loads, and shows a failed request', async () => {
+    const { core } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
+    core.load.mockRejectedValueOnce(new Error("Error invoking remote method 'x': Error: out of memory"))
+    const popover = await openPopover()
+    fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
+
+    expect(await within(popover).findByRole('alert')).toHaveTextContent('out of memory')
+  })
+
+  it('explains an empty list, and lists nothing while core is not ready', async () => {
+    const { core } = renderWithStore(<App />, {}, { coreState: ready })
+    const popover = await openPopover()
+    expect(popover).toHaveTextContent('No models found')
+
+    core.emitState({ status: 'problem', reason: 'boom' })
+    await waitFor(() => expect(popover).not.toHaveTextContent('No models found'))
   })
 })

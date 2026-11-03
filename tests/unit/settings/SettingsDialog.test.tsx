@@ -53,7 +53,7 @@ describe('Settings dialog', () => {
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     })
 
-    it('shows General now, and where later sections will go', async () => {
+    it('opens on General, switches to Models, and shows where later sections will go', async () => {
       renderWithStore(<App />)
       const open = await openSettings()
       const sections = within(open).getByRole('navigation', { name: 'Settings sections' })
@@ -62,8 +62,14 @@ describe('Settings dialog', () => {
         'aria-current',
         'page'
       )
-      expect(within(sections).getByRole('button', { name: /Models/ })).toBeDisabled()
       expect(within(open).getByRole('heading', { level: 2, name: 'General' })).toBeInTheDocument()
+      expect(within(sections).queryByRole('button', { name: /Services/ })).not.toBeInTheDocument()
+      expect(within(sections).getByRole('button', { name: /About/ })).toBeDisabled()
+
+      fireEvent.click(within(sections).getByRole('button', { name: 'Models' }))
+
+      expect(within(sections).getByRole('button', { name: 'Models' })).toHaveAttribute('aria-current', 'page')
+      expect(within(open).getByRole('heading', { level: 2, name: 'Models' })).toBeInTheDocument()
     })
   })
 

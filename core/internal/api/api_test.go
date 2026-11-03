@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/models"
 )
 
@@ -36,7 +37,7 @@ func doMethod(t *testing.T, method, path, host, auth string, shutdown func()) *h
 	if method == http.MethodGet && path == "/v1/models?fail" {
 		list = func() ([]models.Model, error) { return nil, errors.New("boom") }
 	}
-	NewHandler(testToken, testPort, shutdown, list, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, shutdown, list, nil, config.NewStore()).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -58,7 +59,7 @@ func TestModelsListEmptyIsArrayAndErrorIs500(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil, config.NewStore()).ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"data":[]`) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
@@ -150,5 +151,42 @@ func TestShutdownNeedsTokenAndPost(t *testing.T) {
 	}
 	if called {
 		t.Fatal("shutdown must not run for rejected requests")
+	}
+}
+
+func TestConfigReplacesTheWholeConfig(t *testing.T) {
+	store := config.NewStore()
+	post := func(body string) int {
+		req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(body))
+		req.Host = "127.0.0.1:53121"
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		rec := httptest.NewRecorder()
+		NewHandler(testToken, testPort, func() {}, nil, nil, store).ServeHTTP(rec, req)
+		if rec.Code != 204 {
+			t.Log(rec.Body.String())
+		}
+		return rec.Code
+	}
+
+	if code := post(`{"modelsDir":"D:/models","idleUnloadMinutes":null,"options":{"a":{"args":["-c","4096"]}}}`); code != http.StatusNoContent {
+		t.Fatalf("valid config: status = %d, want 204", code)
+	}
+	got := store.Get()
+	if got.ModelsDir != `D:/models` || got.IdleUnloadMinutes != 0 || len(got.Options["a"].Args) != 2 {
+		t.Fatalf("stored = %+v", got)
+	}
+
+	for name, body := range map[string]string{
+		"not json":      `{`,
+		"unknown field": `{"modelDir":"x"}`,
+		"invalid value": `{"idleUnloadMinutes":-5}`,
+		"removed field": `{"sharedArgs":["-fa","on"]}`,
+	} {
+		if code := post(body); code != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, want 400", name, code)
+		}
+	}
+	if store.Get().ModelsDir != `D:/models` {
+		t.Fatal("a rejected request changed the config")
 	}
 }

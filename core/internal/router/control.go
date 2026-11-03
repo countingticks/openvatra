@@ -66,6 +66,9 @@ func (r *Router) Subscribe() (<-chan struct{}, func()) {
 	}
 }
 
+// Notify tells every subscriber to re-read the state, for changes the router doesn't see itself (the config).
+func (r *Router) Notify() { r.notify() }
+
 func (r *Router) notify() {
 	r.mu.Lock()
 	defer r.mu.Unlock()

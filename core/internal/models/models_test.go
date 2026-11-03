@@ -50,6 +50,19 @@ func TestDiscover(t *testing.T) {
 			[]Model{{ID: "vision", Path: "v/vision.gguf", MMProj: "v/mmproj-vision-f16.gguf"}},
 		},
 		{
+			"a <model>-mmproj file is attached, not listed",
+			[]string{"v/qwen-7b-q4_K_M.gguf", "v/qwen-7b-mmproj.gguf"},
+			[]Model{{ID: "qwen-7b-q4_K_M", Path: "v/qwen-7b-q4_K_M.gguf", MMProj: "v/qwen-7b-mmproj.gguf"}},
+		},
+		{
+			"each model gets its own projector from a shared folder",
+			[]string{"v/gemma-26b.gguf", "v/gemma-26b-mmproj.gguf", "v/mmproj-qwen-7b-f16.gguf", "v/qwen-7b-q4.gguf"},
+			[]Model{
+				{ID: "gemma-26b", Path: "v/gemma-26b.gguf", MMProj: "v/gemma-26b-mmproj.gguf"},
+				{ID: "qwen-7b-q4", Path: "v/qwen-7b-q4.gguf", MMProj: "v/mmproj-qwen-7b-f16.gguf"},
+			},
+		},
+		{
 			"mmproj in another folder is not attached",
 			[]string{"a/m.gguf", "b/mmproj-x.gguf"},
 			[]Model{{ID: "m", Path: "a/m.gguf"}},
@@ -96,5 +109,29 @@ func TestDiscoverWithoutFolder(t *testing.T) {
 				t.Fatalf("got %v, %v; want no models and no error", got, err)
 			}
 		})
+	}
+}
+
+func TestDiscoverSizes(t *testing.T) {
+	root := t.TempDir()
+	write := func(name string, size int) {
+		if err := os.WriteFile(filepath.Join(root, name), make([]byte, size), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("small.gguf", 3)
+	write("big-00001-of-00002.gguf", 5)
+	write("big-00002-of-00002.gguf", 7)
+
+	got, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sizes := map[string]int64{}
+	for _, m := range got {
+		sizes[m.ID] = m.SizeBytes
+	}
+	if want := map[string]int64{"big": 12, "small": 3}; !reflect.DeepEqual(sizes, want) {
+		t.Fatalf("sizes = %v, want %v (a split model counts all its parts)", sizes, want)
 	}
 }

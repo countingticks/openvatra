@@ -5,6 +5,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
+import { createConfigSync } from './core/configSync'
+import { createModelsClient } from './core/modelsClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -83,17 +85,48 @@ function start(): void {
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
     // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
+    const configSync = createConfigSync(
+      store.get,
+      (path, body) => core?.post(path, body) ?? Promise.reject(),
+      log
+    )
+    store.onChange(configSync.onSettingsChange)
+    const sendToWindow = (channel: string, value: unknown): void => {
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value)
+    }
+    const models = createModelsClient({
+      request: (path, init) => core?.request(path, init) ?? Promise.reject(new Error('core is not running')),
+      onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
+      log
+    })
     core = createSupervisor({
       exePath: coreExePath(),
       logsDir: logsFolder(),
       onState: (state) => {
-        if (mainWindow && !mainWindow.isDestroyed())
-          mainWindow.webContents.send(ipcChannels.coreStateChanged, state)
+        // The list only means something while core is up; a new one arrives once it is ready again.
+        if (state.status !== 'ready') models.stop()
+        sendToWindow(ipcChannels.coreStateChanged, state)
+      },
+      // A fresh core knows nothing: it gets the config as soon as it is ready, and again after every restart.
+      onReady: () => {
+        void configSync.sync()
+        models.start()
       },
       log
     })
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() }, core)
+    registerIpcHandlers(
+      store,
+      appUrl,
+      { settingsFile: settingsPath, logsFolder: logsFolder() },
+      {
+        state: core.state,
+        restart: core.restart,
+        list: models.list,
+        load: models.load,
+        unload: models.unload
+      }
+    )
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)

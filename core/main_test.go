@@ -6,8 +6,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
+	"slices"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/models"
 )
 
 func TestWriteReadyIsOneJSONLine(t *testing.T) {
@@ -101,4 +106,45 @@ func TestRunStopsWhenStdinCloses(t *testing.T) {
 
 	stdinW.Close()
 	waitExit(t, done)
+}
+
+func TestModelArgs(t *testing.T) {
+	c := config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "131072"}}}}
+	got := modelArgs(c, "qwen")
+	if want := []string{"-c", "131072"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("args = %v, want %v", got, want)
+	}
+	if got := modelArgs(c, "other"); len(got) != 0 {
+		t.Fatalf("a model without options got %v, want none", got)
+	}
+	// The list is a copy: writing into it must never change the config.
+	got[1] = "x"
+	if c.Options["qwen"].Args[1] != "131072" {
+		t.Fatalf("config args changed: %v", c.Options["qwen"].Args)
+	}
+}
+
+func TestServerArgsProjector(t *testing.T) {
+	m := models.Model{ID: "qwen", Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`}
+	base := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", "8000"}
+	withProjector := append(slices.Clone(base), "--mmproj", m.MMProj)
+	cases := map[string]struct {
+		c         config.Config
+		m         models.Model
+		embedding bool
+		want      []string
+	}{
+		"on by default":     {config.Config{}, m, false, withProjector},
+		"no-mmproj in args": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"--no-mmproj"}}}}, m, false, append(slices.Clone(base), "--no-mmproj")},
+		"none found":        {config.Config{}, models.Model{ID: "qwen", Path: m.Path}, false, base},
+		"embedding server":  {config.Config{}, m, true, append(slices.Clone(base), "--embeddings")},
+		"before user's own": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "4096"}}}}, m, false, append(slices.Clone(withProjector), "-c", "4096")},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := serverArgs(tc.c, tc.m, 8000, tc.embedding); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("args = %v, want %v", got, tc.want)
+			}
+		})
+	}
 }

@@ -12,6 +12,9 @@ import (
 
 func main() {
 	port := flag.Int("port", 8080, "port to listen on")
+	// core always passes these; the fake accepts and ignores them (flag exits on one it doesn't know).
+	flag.String("m", "", "model file (ignored)")
+	flag.String("host", "127.0.0.1", "address (ignored; the fake always binds to 127.0.0.1)")
 	// Like a real server loading a model: /health says 503 until it is done.
 	loadTime := flag.Duration("load-time", 0, "answer /health with 503 for this long")
 	exitCode := flag.Int("exit", -1, "exit immediately with this code (>= 0)")

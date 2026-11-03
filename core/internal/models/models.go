@@ -17,8 +17,11 @@ type Model struct {
 	// Path is the file to hand to llama-server; for split models the first part,
 	// because llama.cpp finds the remaining parts itself.
 	Path string
-	// MMProj is the vision projector file in the same folder, or "" if there is none.
+	// MMProj is the vision projector file in the same folder, or "" if there is none. With several projectors in
+	// one folder, the one whose name shares the longest start with the model's (qwen-7b-q4 → qwen-7b-mmproj).
 	MMProj string
+	// SizeBytes is the size on disk; for split models, all parts together.
+	SizeBytes int64
 }
 
 // splitPart matches "name-00002-of-00003" (the file name without ".gguf").
@@ -33,6 +36,7 @@ func Discover(root string) ([]Model, error) {
 
 	var found []Model
 	projectors := map[string][]string{} // folder -> mmproj files, in walk order
+	sizes := map[string]int64{}         // folder + id -> bytes, so every part of a split model counts
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -51,20 +55,23 @@ func Discover(root string) ([]Model, error) {
 		}
 
 		stem := d.Name()[:len(d.Name())-len(".gguf")]
-		if strings.HasPrefix(strings.ToLower(stem), "mmproj") {
+		// Projectors are named both "mmproj-<model>" and "<model>-mmproj"; neither is a model of its own.
+		if strings.Contains(strings.ToLower(stem), "mmproj") {
 			dir := filepath.Dir(path)
 			projectors[dir] = append(projectors[dir], path)
 			return nil
 		}
 
-		id := stem
+		id, first := stem, true
 		if m := splitPart.FindStringSubmatch(stem); m != nil {
-			if m[2] != "00001" {
-				return nil // counted once, via its first part
-			}
-			id = m[1]
+			id, first = m[1], m[2] == "00001"
 		}
-		found = append(found, Model{ID: id, Path: path})
+		if info, err := d.Info(); err == nil {
+			sizes[filepath.Join(filepath.Dir(path), id)] += info.Size()
+		}
+		if first { // a split model is listed once, via its first part
+			found = append(found, Model{ID: id, Path: path})
+		}
 		return nil
 	})
 	if err != nil {
@@ -72,9 +79,8 @@ func Discover(root string) ([]Model, error) {
 	}
 
 	for i := range found {
-		if p := projectors[filepath.Dir(found[i].Path)]; len(p) > 0 {
-			found[i].MMProj = p[0]
-		}
+		found[i].SizeBytes = sizes[filepath.Join(filepath.Dir(found[i].Path), found[i].ID)]
+		found[i].MMProj = pickProjector(found[i].ID, projectors[filepath.Dir(found[i].Path)])
 	}
 
 	// WalkDir is lexical, so after a stable sort by ID the first of two
@@ -88,4 +94,25 @@ func Discover(root string) ([]Model, error) {
 		unique = append(unique, m)
 	}
 	return unique, nil
+}
+
+// pickProjector returns the projector whose file name starts most like the model id (ignoring a
+// leading "mmproj-"); the first wins a tie.
+func pickProjector(id string, candidates []string) string {
+	best, bestLen := "", -1
+	for _, p := range candidates {
+		name := strings.TrimPrefix(strings.ToLower(filepath.Base(p)), "mmproj-")
+		if n := commonPrefixLen(strings.ToLower(id), name); n > bestLen {
+			best, bestLen = p, n
+		}
+	}
+	return best
+}
+
+func commonPrefixLen(a, b string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n
 }

@@ -13,10 +13,12 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
+	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
@@ -44,11 +46,6 @@ func main() {
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
-	// Temporary: main will send the folder through POST /api/config (later task).
-	modelsDir := fs.String("models-dir", "", "folder to search for .gguf models")
-	llamaServer := fs.String("llama-server", "", "full path to llama-server.exe")
-	embeddingModel := fs.String("embedding-model", "", "id of the model that serves /v1/embeddings")
-	idleMinutes := fs.Int("idle-minutes", 15, "unload a model after this many idle minutes; 0 never unloads")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -91,14 +88,23 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	defer stop()
 	go watchStdin(stdin, stop)
 
-	listModels := func() ([]models.Model, error) { return models.Discover(*modelsDir) }
+	// Empty until main sends POST /api/config (right after core is ready). Every use reads the live value, so a
+	// change in Settings applies without restarting core.
+	cfg := config.NewStore()
+	listModels := func() ([]models.Model, error) { return models.Discover(cfg.Get().ModelsDir) }
 	rt := router.New(router.Config{
-		NewBackend:     newBackendFunc(*llamaServer, *modelsDir, logger, logOut),
-		EmbeddingModel: func() string { return *embeddingModel },
-		IdleTimeout:    func() time.Duration { return time.Duration(*idleMinutes) * time.Minute },
+		NewBackend:     newBackendFunc(cfg, logger, logOut),
+		EmbeddingModel: func() string { return cfg.Get().EmbeddingModel },
+		IdleTimeout:    func(id string) time.Duration { return cfg.Get().IdleTimeout(id) },
 	})
+	cfg.OnChange(rt.Notify)
 	defer rt.Close() // after the server is down, so no request is mid-stream
-	srv := &http.Server{Handler: api.NewHandler(token, actualPort, stop, listModels, rt)}
+	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
+	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
+	srv := &http.Server{
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg),
+		BaseContext: func(net.Listener) context.Context { return ctx },
+	}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.Serve(ln) }()
 
@@ -123,9 +129,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 // newBackendFunc builds the router's server factory: look the model up on disk,
 // give its llama-server a free port, and add --embeddings when asked. Its output
 // goes to core.log, every line prefixed with the model id.
-func newBackendFunc(llamaServer, modelsDir string, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
+func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
 	return func(id string, embedding bool) (router.Backend, error) {
-		found, err := models.Discover(modelsDir)
+		c := cfg.Get() // one snapshot, so a config change mid-call can't mix old and new values
+		found, err := models.Discover(c.ModelsDir)
 		if err != nil {
 			return nil, err
 		}
@@ -137,16 +144,31 @@ func newBackendFunc(llamaServer, modelsDir string, logger *slog.Logger, logOut i
 			if err != nil {
 				return nil, err
 			}
-			args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
-			if embedding {
-				args = append(args, "--embeddings")
-			}
+			args := serverArgs(c, m, port, embedding)
 			logger.Info("starting llama-server", "model", m.ID, "port", port, "embedding", embedding)
-			return process.New(process.Config{Path: llamaServer, Args: args, Port: port, Log: logs.Prefixed(logOut, m.ID)}), nil
+			return process.New(process.Config{Path: c.LlamaServerPath, Args: args, Port: port, Log: logs.Prefixed(logOut, m.ID)}), nil
 		}
 		logger.Warn("unknown model requested", "model", id)
 		return nil, router.ErrUnknownModel
 	}
+}
+
+// serverArgs is one llama-server's full argument list: core's own flags first, then the user's.
+func serverArgs(c config.Config, m models.Model, port int, embedding bool) []string {
+	args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
+	if embedding {
+		args = append(args, "--embeddings")
+	}
+	// Embedding servers never take images, so a projector would only cost memory there.
+	if m.MMProj != "" && !embedding && c.UseMMProj(m.ID) {
+		args = append(args, "--mmproj", m.MMProj)
+	}
+	return append(args, modelArgs(c, m.ID)...)
+}
+
+// modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.
+func modelArgs(c config.Config, id string) []string {
+	return slices.Clone(c.Options[id].Args)
 }
 
 // watchStdin blocks until stdin is closed, then calls onClose. Electron never

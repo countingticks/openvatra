@@ -351,3 +351,79 @@ describe('core supervisor', () => {
     })
   })
 })
+
+describe('core supervisor: onReady, post and request', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  function start(fetchImpl: typeof fetch): FakeChild & {
+    onReady: ReturnType<typeof vi.fn>
+    spawn: ReturnType<typeof vi.fn>
+    supervisor: Supervisor
+  } {
+    const fake = fakeChild()
+    const onReady = vi.fn()
+    const spawn = vi.fn().mockReturnValue(fake.process)
+    const supervisor = createSupervisor({
+      exePath: 'core.exe',
+      logsDir: 'logs',
+      onState: () => {},
+      onReady,
+      log: { info: vi.fn(), warn: vi.fn() },
+      spawn,
+      fetch: fetchImpl
+    })
+    supervisor.start()
+    return { ...fake, onReady, spawn, supervisor }
+  }
+
+  it('calls onReady once core is healthy, not before', async () => {
+    const { child, onReady } = start(vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+    expect(onReady).not.toHaveBeenCalled()
+    child.stdout.write(readyLine())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onReady).toHaveBeenCalledTimes(1)
+  })
+
+  it('posts JSON with the token, and rejects on an error status', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    const { child, spawn, supervisor } = start(fetchMock)
+    child.stdout.write(readyLine(53121))
+    await vi.advanceTimersByTimeAsync(0)
+
+    await supervisor.post('/api/config', { modelsDir: 'x' })
+
+    const token = (spawn.mock.calls[0][1] as NodeJS.ProcessEnv)['OPENVATRA_CORE_TOKEN']
+    const [url, init] = fetchMock.mock.lastCall as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:53121/api/config')
+    expect(init).toMatchObject({ method: 'POST', body: '{"modelsDir":"x"}' })
+    expect(Object.fromEntries(new Headers(init.headers))).toEqual({
+      authorization: `Bearer ${token}`,
+      'content-type': 'application/json'
+    })
+
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 400 })
+    await expect(supervisor.post('/api/config', {})).rejects.toThrow('HTTP 400')
+  })
+
+  it('rejects a post while core is not ready', async () => {
+    const { supervisor } = start(vi.fn())
+    await expect(supervisor.post('/api/config', {})).rejects.toThrow('not ready')
+  })
+
+  it('sends any request with the token and hands back the response, whatever its status', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    const { child, spawn, supervisor } = start(fetchMock)
+    child.stdout.write(readyLine(53121))
+    await vi.advanceTimersByTimeAsync(0)
+    const notFound = { ok: false, status: 404 }
+    fetchMock.mockResolvedValueOnce(notFound)
+
+    expect(await supervisor.request('/api/state')).toBe(notFound)
+
+    const token = (spawn.mock.calls[0][1] as NodeJS.ProcessEnv)['OPENVATRA_CORE_TOKEN']
+    const [url, init] = fetchMock.mock.lastCall as [string, RequestInit]
+    expect(url).toBe('http://127.0.0.1:53121/api/state')
+    expect(new Headers(init.headers).get('Authorization')).toBe(`Bearer ${token}`)
+  })
+})
