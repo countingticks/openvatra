@@ -50,7 +50,8 @@ export function ModelButton(): React.JSX.Element {
   const state = useCoreState()
   const dispatch = useAppDispatch()
   const [open, setOpen] = useState(false)
-  const models = useModels()
+  // Embedding models load on demand for document search; the button and its list are about chat models.
+  const models = useModels().filter((model) => model.kind === 'chat')
   const active =
     models.find((model) => model.state === 'ready') ?? models.find((model) => model.state === 'loading')
   const { label, detail, dot } = describe(state, active)

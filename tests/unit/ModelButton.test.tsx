@@ -4,7 +4,13 @@ import { App } from '@renderer/App'
 import { renderWithStore } from './renderWithStore'
 import type { ModelInfo } from '../../src/shared/core'
 
-const qwen: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, sizeBytes: 5 * 1024 ** 3 }
+const qwen: ModelInfo = {
+  id: 'Qwen3-8B',
+  state: 'stopped',
+  busy: false,
+  sizeBytes: 5 * 1024 ** 3,
+  kind: 'chat'
+}
 const ready = { status: 'ready', port: 1234, version: '1' } as const
 
 const button = (): HTMLElement => screen.getByRole('button', { name: /^Model:/ })
@@ -72,6 +78,19 @@ describe('model button', () => {
     fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
 
     expect(core.load).toHaveBeenCalledWith('Qwen3-8B')
+  })
+
+  it('lists chat models only: embedding models and unreadable files load on demand or not at all', async () => {
+    const embed: ModelInfo = { ...qwen, id: 'nomic-embed', kind: 'embedding', state: 'ready' }
+    const junk: ModelInfo = { ...qwen, id: 'junk', kind: 'unreadable', error: 'not a GGUF file' }
+    renderWithStore(<App />, {}, { coreState: ready, models: [embed, qwen, junk] })
+    const popover = await openPopover()
+
+    expect(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' })).toBeInTheDocument()
+    expect(within(popover).queryByText('nomic-embed')).not.toBeInTheDocument()
+    expect(within(popover).queryByText('junk')).not.toBeInTheDocument()
+    // A loaded embedding model is not "the model" the button names.
+    expect(button()).toHaveAccessibleName('Model: no model, Ready')
   })
 
   it('names the loaded model on the button, highlights its row and unloads it on click', async () => {

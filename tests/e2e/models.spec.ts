@@ -5,6 +5,7 @@ import { join } from 'path'
 import { promisify } from 'util'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { settingsSchemaVersion } from '../../src/shared/settings'
+import { ggufHeader } from './ggufHeader'
 import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
 
 const run = promisify(execFile)
@@ -21,7 +22,7 @@ test.beforeAll(async () => {
   await run('go', ['build', '-C', 'core', '-o', fakeServer, './testdata/fake-server'])
   const modelsDir = join(workDir, 'models')
   await mkdir(modelsDir)
-  await writeFile(join(modelsDir, 'tiny.gguf'), 'not a real model')
+  await writeFile(join(modelsDir, 'tiny.gguf'), ggufHeader('llama'))
 
   userDataDir = await createUserDataDir()
   const settings = {

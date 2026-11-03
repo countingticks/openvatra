@@ -20,12 +20,13 @@ describe('isCoreState', () => {
 })
 
 describe('isModelList', () => {
-  const model = { id: 'qwen', state: 'ready', busy: false, sizeBytes: 5_000_000_000 }
+  const model = { id: 'qwen', state: 'ready', busy: false, sizeBytes: 5_000_000_000, kind: 'chat' }
 
   it.each([
     [[]],
     [[model]],
     [[{ ...model, projector: 'mmproj-qwen.gguf' }]],
+    [[{ ...model, kind: 'unreadable', error: 'not a GGUF file' }]],
     [[{ ...model, state: 'error', error: 'llama-server.exe not found' }]]
   ])('accepts %j', (list) => expect(isModelList(list)).toBe(true))
 
@@ -37,6 +38,8 @@ describe('isModelList', () => {
     [{ ...model, busy: undefined }],
     [{ ...model, error: 42 }],
     [{ ...model, projector: 7 }],
+    [{ ...model, kind: 'reranker' }],
+    [{ ...model, kind: undefined }],
     [model, null]
   ])('rejects %j', (value) => expect(isModelList(value)).toBe(false))
 })
