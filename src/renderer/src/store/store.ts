@@ -1,9 +1,15 @@
 // The Redux store: the single place the UI's shared state lives.
-import { combineSlices, configureStore, createListenerMiddleware, type UnknownAction } from '@reduxjs/toolkit'
+import {
+  combineSlices,
+  configureStore,
+  createListenerMiddleware,
+  isAnyOf,
+  type UnknownAction
+} from '@reduxjs/toolkit'
 import type { SettingsApi } from '../../../shared/ipc'
 import { defaultSettings, type Settings, type SettingsPatch } from '../../../shared/settings'
 import { settingsChanged, settingsReplaced, settingsSlice } from './settingsSlice'
-import { sidebarToggled, tabSelected, uiSlice } from './uiSlice'
+import { initialUiState, sidebarToggled, tabSelected, uiSlice, wentBack, wentForward } from './uiSlice'
 
 const rootReducer = combineSlices(uiSlice, settingsSlice)
 
@@ -29,12 +35,14 @@ export function createAppStore({ settings, initialSettings }: AppStoreOptions): 
   }
 
   listener.startListening({
-    actionCreator: tabSelected,
-    effect: async (action, api) => {
-      // Selecting the tab that is already open changes nothing, so there's nothing to save.
-      if (api.getOriginalState().ui.activeTab === action.payload) return
+    // Clicking a tab, Back and Forward all change the open tab, and the app should reopen on it.
+    matcher: isAnyOf(tabSelected, wentBack, wentForward),
+    effect: async (_action, api) => {
+      const tab = api.getState().ui.activeTab
+      // Selecting the open tab, or Back with no history, changes nothing, so there's nothing to save.
+      if (api.getOriginalState().ui.activeTab === tab) return
       try {
-        await save({ lastTab: action.payload }, api.dispatch)
+        await save({ lastTab: tab }, api.dispatch)
       } catch (error) {
         // The tab still switches; only remembering it for next launch failed.
         console.error('Could not save the last open tab', error)
@@ -72,7 +80,8 @@ export function createAppStore({ settings, initialSettings }: AppStoreOptions): 
   return configureStore({
     reducer: rootReducer,
     preloadedState: {
-      ui: { activeTab: startup.lastTab, sidebarOpen: startup.sidebarOpen },
+      // History starts empty each launch: Back never leads somewhere from a previous session.
+      ui: { ...initialUiState, activeTab: startup.lastTab, sidebarOpen: startup.sidebarOpen },
       settings: startup
     },
     middleware: (getDefault) => getDefault().prepend(listener.middleware)

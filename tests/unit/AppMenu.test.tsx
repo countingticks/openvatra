@@ -134,7 +134,7 @@ describe('app menu', () => {
     })
   })
 
-  it('Go: Back and Forward wait for the navigation history', async () => {
+  it('Go: Back and Forward are dimmed while there is no history', async () => {
     renderWithStore(<App />)
     const go = await openSubmenu('Go')
 

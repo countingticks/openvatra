@@ -15,7 +15,15 @@ import {
 } from '@renderer/components/ui/dropdown-menu'
 import { useAltMenu, type MenuName } from '@renderer/hooks/useAltMenu'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectActiveTab, sidebarToggled, tabSelected } from '@renderer/store/uiSlice'
+import {
+  selectActiveTab,
+  selectCanGoBack,
+  selectCanGoForward,
+  sidebarToggled,
+  tabSelected,
+  wentBack,
+  wentForward
+} from '@renderer/store/uiSlice'
 import { tabs } from '@renderer/tabs'
 import type { EditCommand } from '../../../shared/ipc'
 
@@ -50,6 +58,8 @@ function AccessKey({ label }: { label: string }): React.JSX.Element {
 export function AppMenu(): React.JSX.Element {
   const dispatch = useAppDispatch()
   const activeTab = useAppSelector(selectActiveTab)
+  const canGoBack = useAppSelector(selectCanGoBack)
+  const canGoForward = useAppSelector(selectCanGoForward)
   const [open, setOpen] = useState(false)
   const [openMenu, setOpenMenu] = useState<MenuName | null>(null)
   // The element that had focus before the menu: Edit commands act on it, and focus returns to it on close.
@@ -173,11 +183,10 @@ export function AppMenu(): React.JSX.Element {
               )}
               {name === 'Go' && (
                 <>
-                  {/* Back and Forward arrive with the navigation history (T28b). */}
-                  <DropdownMenuItem disabled>
+                  <DropdownMenuItem disabled={!canGoBack} onClick={() => dispatch(wentBack())}>
                     Back <DropdownMenuShortcut>Alt+←</DropdownMenuShortcut>
                   </DropdownMenuItem>
-                  <DropdownMenuItem disabled>
+                  <DropdownMenuItem disabled={!canGoForward} onClick={() => dispatch(wentForward())}>
                     Forward <DropdownMenuShortcut>Alt+→</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </>
