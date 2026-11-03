@@ -40,12 +40,12 @@ export function ArgsField({ label, value, placeholder, hint, onCommit }: ArgsFie
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
-        rows={2}
+        rows={1}
         spellCheck={false}
         placeholder={placeholder}
         aria-invalid={error ? true : undefined}
         aria-describedby={hintId}
-        className="rounded-md border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive"
+        className="min-h-6.5 max-h-40 resize-y rounded-md border border-input bg-background px-2 py-1 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring aria-invalid:border-destructive"
       />
       <p id={hintId} className={error ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
         {error ?? hint}

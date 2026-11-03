@@ -12,8 +12,20 @@ const chosen: ModelsSettings = {
   llamaServerPath: 'C:\\llama\\llama-server.exe',
   modelsDir: 'D:\\models'
 }
-const qwen: ModelInfo = { id: 'Qwen3-8B-Q4_K_M', state: 'stopped', busy: false, sizeBytes: 5 * 1024 ** 3 }
-const nomic: ModelInfo = { id: 'nomic-embed', state: 'ready', busy: false, sizeBytes: 140 * 1024 ** 2 }
+const qwen: ModelInfo = {
+  id: 'Qwen3-8B-Q4_K_M',
+  state: 'stopped',
+  busy: false,
+  sizeBytes: 5 * 1024 ** 3,
+  kind: 'chat'
+}
+const nomic: ModelInfo = {
+  id: 'nomic-embed',
+  state: 'ready',
+  busy: false,
+  sizeBytes: 140 * 1024 ** 2,
+  kind: 'embedding'
+}
 
 type Rendered = ReturnType<typeof renderWithStore>
 
@@ -108,41 +120,87 @@ describe('Settings → Models', () => {
   })
 
   describe('the model list', () => {
-    it('lists each model with its size, and follows changes, with no state and no Load or Unload', async () => {
-      const { core } = await openModels(chosen, { coreState: ready, models: [qwen, nomic] })
+    const junk: ModelInfo = {
+      id: 'broken',
+      state: 'stopped',
+      busy: false,
+      sizeBytes: 10,
+      kind: 'unreadable',
+      error: 'not a GGUF file'
+    }
 
-      const list = await screen.findByRole('list', { name: 'Available models' })
-      expect(within(list).getByText('5.0 GB')).toBeInTheDocument()
-      expect(within(list).getByText('140 MB')).toBeInTheDocument()
-      expect(within(list).queryByText(/Loaded|Not loaded/)).not.toBeInTheDocument()
+    it('groups models by kind, with unreadable files last, no state and no Load or Unload', async () => {
+      const { core } = await openModels(chosen, { coreState: ready, models: [junk, nomic, qwen] })
+
+      const chat = await screen.findByRole('region', { name: 'Chat models' })
+      const embedding = screen.getByRole('region', { name: 'Embedding models' })
+      const unusable = screen.getByRole('region', { name: "Files that can't be used" })
+      expect(within(chat).getByText('5.0 GB')).toBeInTheDocument()
+      expect(within(chat).queryByText(nomic.id)).not.toBeInTheDocument()
+      expect(within(embedding).getByText('140 MB')).toBeInTheDocument()
+      expect(within(unusable).getByText('not a GGUF file')).toBeInTheDocument()
+      expect(within(unusable).queryByRole('button')).not.toBeInTheDocument()
+      expect(chat.compareDocumentPosition(embedding) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(embedding.compareDocumentPosition(unusable) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(screen.queryByText(/Loaded|Not loaded/)).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /^(Load|Unload) / })).not.toBeInTheDocument()
 
       core.emitModels([qwen])
 
       expect(screen.queryByText(/nomic-embed/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'Embedding models' })).not.toBeInTheDocument()
     })
 
-    it('chooses the embedding model, or none', async () => {
-      const { saveSettings } = await openModels(
-        { ...chosen, embeddingModel: 'nomic-embed' },
-        { coreState: ready, models: [qwen, nomic] }
-      )
+    it('offers only embedding models, Automatic first, and saves the choice', async () => {
+      const second: ModelInfo = { ...nomic, id: 'qwen3-embedding' }
+      const { saveSettings } = await openModels(chosen, { coreState: ready, models: [qwen, nomic, second] })
       const select = await screen.findByRole('combobox', { name: 'Embedding model' })
-      expect(select).toHaveValue('nomic-embed')
+      expect(select).toHaveValue('')
       expect(
         within(select)
           .getAllByRole('option')
           .map((option) => option.textContent)
-      ).toEqual(['None', qwen.id, 'nomic-embed'])
+      ).toEqual(['Automatic (nomic-embed)', 'nomic-embed', 'qwen3-embedding'])
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
-      fireEvent.change(select, { target: { value: qwen.id } })
+      fireEvent.change(select, { target: { value: 'qwen3-embedding' } })
       await waitFor(() =>
-        expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: qwen.id } })
+        expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: 'qwen3-embedding' } })
       )
-      expect(select).toHaveValue(qwen.id)
+      expect(select).toHaveValue('qwen3-embedding')
 
       fireEvent.change(select, { target: { value: '' } })
       await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: null } }))
+    })
+
+    it('is disabled with a hint when there is no embedding model', async () => {
+      await openModels(chosen, { coreState: ready, models: [qwen] })
+      const select = await screen.findByRole('combobox', { name: 'Embedding model' })
+
+      expect(select).toBeDisabled()
+      expect(select).toHaveDisplayValue('No embedding model found')
+    })
+
+    it('warns about a chat model chosen for embeddings and resets it', async () => {
+      const { saveSettings } = await openModels(
+        { ...chosen, embeddingModel: qwen.id },
+        { coreState: ready, models: [qwen, nomic] }
+      )
+      const select = await screen.findByRole('combobox', { name: 'Embedding model' })
+      const alert = screen.getByRole('alert')
+
+      expect(alert).toHaveTextContent(`${qwen.id} is a chat model, so Automatic is used`)
+      expect(select).toHaveValue('')
+
+      fireEvent.click(within(alert).getByRole('button', { name: 'Reset' }))
+
+      await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: null } }))
+    })
+
+    it('also warns when the chosen model is gone', async () => {
+      await openModels({ ...chosen, embeddingModel: 'deleted' }, { coreState: ready, models: [nomic] })
+
+      expect(await screen.findByRole('alert')).toHaveTextContent("deleted isn't an available embedding model")
     })
   })
 
@@ -157,6 +215,19 @@ describe('Settings → Models', () => {
       expect(toggle).toHaveAttribute('aria-expanded', 'true')
       return { ...rendered, group: screen.getByRole('group', { name: `Options for ${qwen.id}` }) }
     }
+
+    it("keeps one model's options open at a time, across groups", async () => {
+      await openModels(chosen, { coreState: ready, models: [qwen, nomic] })
+      const first = await screen.findByRole('button', { name: `Options for ${qwen.id}` })
+      const second = screen.getByRole('button', { name: `Options for ${nomic.id}` })
+
+      fireEvent.click(first)
+      fireEvent.click(second)
+
+      expect(first).toHaveAttribute('aria-expanded', 'false')
+      expect(second).toHaveAttribute('aria-expanded', 'true')
+      expect(screen.getAllByRole('group')).toHaveLength(1)
+    })
 
     it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
       const { saveSettings, group } = await openOptions({ 'nomic-embed': { args: '-ngl 0' } })
@@ -202,7 +273,7 @@ describe('Settings → Models', () => {
     it('says so when no projector was found, and has no per-model unload setting', async () => {
       const { group } = await openOptions()
 
-      expect(within(group).getByText('No projector found next to this model.')).toBeInTheDocument()
+      expect(within(group).getByText('None found.')).toBeInTheDocument()
       expect(within(group).queryByRole('radiogroup')).not.toBeInTheDocument()
     })
 

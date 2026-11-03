@@ -16,6 +16,8 @@ export function isCoreState(value: unknown): value is CoreState {
 
 export const modelStates = ['stopped', 'loading', 'ready', 'error'] as const
 
+export const modelKinds = ['chat', 'embedding', 'unreadable'] as const
+
 /** One model on disk, as core reports it (GET /api/state). */
 export interface ModelInfo {
   /** The file name without .gguf. */
@@ -23,23 +25,26 @@ export interface ModelInfo {
   state: (typeof modelStates)[number]
   /** Answering a request right now. */
   busy: boolean
-  /** Why the last load failed; only with state 'error'. */
+  /** Why the last load failed (state 'error'), or why the file can't be read (kind 'unreadable'). */
   error?: string
   sizeBytes: number
   /** File name of the detected vision projector; missing when the model has none. */
   projector?: string
+  /** What the file is for, read from its GGUF header. */
+  kind: (typeof modelKinds)[number]
 }
 
 function isModelInfo(value: unknown): value is ModelInfo {
   if (typeof value !== 'object' || value === null) return false
-  const { id, state, busy, error, sizeBytes, projector } = value as Record<string, unknown>
+  const { id, state, busy, error, sizeBytes, projector, kind } = value as Record<string, unknown>
   return (
     typeof id === 'string' &&
     modelStates.includes(state as ModelInfo['state']) &&
     typeof busy === 'boolean' &&
     (error === undefined || typeof error === 'string') &&
     typeof sizeBytes === 'number' &&
-    (projector === undefined || typeof projector === 'string')
+    (projector === undefined || typeof projector === 'string') &&
+    modelKinds.includes(kind as ModelInfo['kind'])
   )
 }
 

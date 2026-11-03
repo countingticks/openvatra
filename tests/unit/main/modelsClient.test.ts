@@ -5,7 +5,7 @@ import type { ModelInfo } from '../../../src/shared/core'
 
 type Request = (path: string, init?: RequestInit) => Promise<Response>
 
-const qwen: ModelInfo = { id: 'qwen', state: 'stopped', busy: false, sizeBytes: 5_000 }
+const qwen: ModelInfo = { id: 'qwen', state: 'stopped', busy: false, sizeBytes: 5_000, kind: 'chat' }
 const stateEvent = (models: unknown): string => `event: state\ndata: ${JSON.stringify({ models })}\n\n`
 
 describe('takeSseEvents', () => {

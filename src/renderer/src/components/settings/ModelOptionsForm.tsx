@@ -30,16 +30,14 @@ export function ModelOptionsForm({
         label="Arguments"
         value={options?.args ?? ''}
         placeholder="-c 131072"
-        hint='llama-server arguments for this model, e.g. -c 131072. Use "…" around values with spaces.'
+        hint="llama-server arguments, e.g. -c 131072"
         onCommit={(text) => onChange(text ? { args: text } : undefined)}
       />
 
       <div className="flex flex-col gap-0.5">
         <span className="text-xs font-medium">Vision projector</span>
         <p className="truncate text-xs text-muted-foreground" title={projector}>
-          {projector
-            ? `${projector} (add --no-mmproj to the arguments to skip it)`
-            : 'No projector found next to this model.'}
+          {projector ? `${projector} (--no-mmproj skips it)` : 'None found.'}
         </p>
       </div>
     </div>

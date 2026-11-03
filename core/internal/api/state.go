@@ -19,6 +19,9 @@ type modelState struct {
 	SizeBytes int64 `json:"sizeBytes"`
 	// Projector is the detected vision projector's file name (never its path); left out when there is none.
 	Projector string `json:"projector,omitempty"`
+	// Kind is chat, embedding or unreadable, read from the GGUF header; Error says why a file is unreadable.
+	Kind  models.Kind `json:"kind"`
+	Error string      `json:"error,omitempty"`
 }
 
 // stateBody is the JSON of GET /api/state and of every "state" event.
@@ -47,7 +50,12 @@ func currentState(rt Router, list func() ([]models.Model, error)) (stateBody, er
 		if m.MMProj != "" {
 			projector = filepath.Base(m.MMProj)
 		}
-		out = append(out, modelState{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector})
+		// Both the router and the header can have an error; the outer field shadows the embedded one in JSON, so merge.
+		errText := st.Error
+		if errText == "" {
+			errText = m.Error
+		}
+		out = append(out, modelState{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector, Kind: m.Kind, Error: errText})
 	}
 	return stateBody{Models: out}, nil
 }
