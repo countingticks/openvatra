@@ -20,6 +20,7 @@ import {
   selectCanGoBack,
   selectCanGoForward,
   sidebarToggled,
+  settingsOpened,
   tabSelected,
   wentBack,
   wentForward
@@ -139,7 +140,7 @@ export function AppMenu(): React.JSX.Element {
                   <DropdownMenuItem disabled>
                     New chat <DropdownMenuShortcut>Ctrl+N</DropdownMenuShortcut>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => dispatch(tabSelected('settings'))}>
+                  <DropdownMenuItem onClick={() => dispatch(settingsOpened())}>
                     Settings… <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

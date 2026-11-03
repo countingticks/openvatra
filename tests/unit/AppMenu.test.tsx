@@ -72,7 +72,7 @@ describe('app menu', () => {
 
       fireEvent.click(item(await openSubmenu('File'), /Settings/))
 
-      expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
+      expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
     })
 
     it('shows New chat as not available yet', async () => {
@@ -190,7 +190,7 @@ describe('app menu', () => {
 
       expect(quit).toHaveBeenCalledOnce()
       expect(appWindow.close).toHaveBeenCalledOnce()
-      expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
+      expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
     })
   })
 })

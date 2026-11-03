@@ -7,8 +7,12 @@ import { defaultSettings, type Settings, settingsSchema, settingsSchemaVersion }
 
 type Migration = (old: Record<string, unknown>) => Record<string, unknown>
 
-/** `migrations[n]` turns a version-n file into a version-(n + 1) file. None yet: version 1 is the first. */
-const migrations: Readonly<Record<number, Migration>> = {}
+/** `migrations[n]` turns a version-n file into a version-(n + 1) file; `migrate` sets the new version number. */
+const migrations: Readonly<Record<number, Migration>> = {
+  // 1 → 2: Settings became a dialog, so a file left on the Settings tab reopens on Chat instead of failing
+  // validation (which would set the whole file aside and lose every other setting).
+  1: (old) => (old['lastTab'] === 'settings' ? { ...old, lastTab: 'chat' } : old)
+}
 
 /** What happened while loading, so the caller can log it. */
 export type LoadOutcome =

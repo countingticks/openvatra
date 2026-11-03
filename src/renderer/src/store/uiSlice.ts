@@ -13,6 +13,8 @@ export interface UiState {
   back: TabId[]
   /** Where Forward goes after going back, most recent last; emptied by choosing a new tab. */
   forward: TabId[]
+  /** The Settings dialog is open. Not saved: the app never reopens with a dialog in the way. */
+  settingsOpen: boolean
 }
 
 /** Enough to go back a long way, small enough that the history never grows without bound. */
@@ -22,7 +24,8 @@ export const initialUiState: UiState = {
   activeTab: 'chat',
   sidebarOpen: true,
   back: [],
-  forward: []
+  forward: [],
+  settingsOpen: false
 }
 
 export const uiSlice = createSlice({
@@ -52,15 +55,24 @@ export const uiSlice = createSlice({
     },
     sidebarToggled(state) {
       state.sidebarOpen = !state.sidebarOpen
+    },
+    settingsOpened(state) {
+      state.settingsOpen = true
+    },
+    settingsClosed(state) {
+      state.settingsOpen = false
     }
   },
   selectors: {
     selectActiveTab: (state) => state.activeTab,
     selectSidebarOpen: (state) => state.sidebarOpen,
     selectCanGoBack: (state) => state.back.length > 0,
-    selectCanGoForward: (state) => state.forward.length > 0
+    selectCanGoForward: (state) => state.forward.length > 0,
+    selectSettingsOpen: (state) => state.settingsOpen
   }
 })
 
-export const { tabSelected, wentBack, wentForward, sidebarToggled } = uiSlice.actions
-export const { selectActiveTab, selectSidebarOpen, selectCanGoBack, selectCanGoForward } = uiSlice.selectors
+export const { tabSelected, wentBack, wentForward, sidebarToggled, settingsOpened, settingsClosed } =
+  uiSlice.actions
+export const { selectActiveTab, selectSidebarOpen, selectCanGoBack, selectCanGoForward, selectSettingsOpen } =
+  uiSlice.selectors

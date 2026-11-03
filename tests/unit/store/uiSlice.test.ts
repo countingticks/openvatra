@@ -6,6 +6,8 @@ import {
   selectCanGoBack,
   selectCanGoForward,
   selectSidebarOpen,
+  settingsClosed,
+  settingsOpened,
   sidebarToggled,
   tabSelected,
   uiSlice,
@@ -28,8 +30,15 @@ describe('ui slice', () => {
       activeTab: 'chat',
       sidebarOpen: true,
       back: [],
-      forward: []
+      forward: [],
+      settingsOpen: false
     })
+  })
+
+  it('opens and closes the Settings dialog without changing the open tab', () => {
+    const open = reduce(visit('code'), settingsOpened())
+    expect(open).toMatchObject({ settingsOpen: true, activeTab: 'code' })
+    expect(reduce(open, settingsClosed()).settingsOpen).toBe(false)
   })
 
   it('switches to the selected tab', () => {
@@ -49,15 +58,15 @@ describe('ui slice', () => {
   })
 
   it('reads its values from the whole app state', () => {
-    const state = { ui: { ...initialUiState, activeTab: 'settings' as const, sidebarOpen: false } }
-    expect(selectActiveTab(state)).toBe('settings')
+    const state = { ui: { ...initialUiState, activeTab: 'automations' as const, sidebarOpen: false } }
+    expect(selectActiveTab(state)).toBe('automations')
     expect(selectSidebarOpen(state)).toBe(false)
   })
 })
 
 describe('back and forward', () => {
   it('remembers where you came from', () => {
-    const state = visit('code', 'settings')
+    const state = visit('code', 'automations')
 
     expect(state.back).toEqual(['chat', 'code'])
     expect(selectCanGoBack({ ui: state })).toBe(true)
@@ -65,7 +74,7 @@ describe('back and forward', () => {
   })
 
   it('goes back one step at a time, and forward again', () => {
-    let state = visit('code', 'settings')
+    let state = visit('code', 'automations')
 
     state = reduce(state, wentBack())
     expect(state.activeTab).toBe('code')
@@ -75,11 +84,11 @@ describe('back and forward', () => {
     state = reduce(state, wentForward())
     expect(state.activeTab).toBe('code')
     state = reduce(state, wentForward())
-    expect(state.activeTab).toBe('settings')
+    expect(state.activeTab).toBe('automations')
   })
 
   it('forgets the forward path when you choose a new tab after going back, as a browser does', () => {
-    let state = visit('code', 'settings')
+    let state = visit('code', 'automations')
     state = reduce(state, wentBack())
 
     state = reduce(state, tabSelected('automations'))

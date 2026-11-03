@@ -2,7 +2,7 @@
 // Alt+← / Alt+→ (back / forward).
 import { useEffect } from 'react'
 import { useAppDispatch } from '@renderer/store/hooks'
-import { tabSelected, wentBack, wentForward } from '@renderer/store/uiSlice'
+import { settingsOpened, wentBack, wentForward } from '@renderer/store/uiSlice'
 
 export function useAppShortcuts(): void {
   const dispatch = useAppDispatch()
@@ -21,7 +21,7 @@ export function useAppShortcuts(): void {
 
       if (!event.ctrlKey || event.altKey) return
       const key = event.key.toLowerCase()
-      if (key === ',') dispatch(tabSelected('settings'))
+      if (key === ',') dispatch(settingsOpened())
       else if (key === 'w') void window.api.appWindow.close().catch((error) => console.error(error))
       else if (key === 'q') void window.api.app.quit().catch((error) => console.error(error))
       else return

@@ -66,10 +66,10 @@ describe('app store', () => {
     const settings = { update: vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')) }
     const store = createAppStore({ settings })
 
-    store.dispatch(tabSelected('settings'))
+    store.dispatch(tabSelected('automations'))
     await settle()
 
-    expect(selectActiveTab(store.getState())).toBe('settings')
+    expect(selectActiveTab(store.getState())).toBe('automations')
     expect(error).toHaveBeenCalledWith('Could not save the last open tab', expect.any(Error))
   })
 })

@@ -3,11 +3,15 @@
 // TypeScript type from the same schema, so the check and the type can never disagree.
 import { z } from 'zod'
 
-export const tabIds = ['chat', 'code', 'automations', 'settings'] as const
+// Settings is a dialog, not a tab (since schema version 2).
+export const tabIds = ['chat', 'code', 'automations'] as const
 export type TabId = (typeof tabIds)[number]
 
-/** Bump when the file's shape changes in a way old files can't satisfy, and add a migration for it. */
-export const settingsSchemaVersion = 1
+/**
+ * Bump when the file's shape changes in a way old files can't satisfy, and add a migration for it
+ * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'.
+ */
+export const settingsSchemaVersion = 2
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const

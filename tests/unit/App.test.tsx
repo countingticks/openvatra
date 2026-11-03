@@ -7,13 +7,13 @@ const sidebar = (): HTMLElement => screen.getByRole('navigation', { name: 'Main'
 const tabButton = (name: string): HTMLElement => within(sidebar()).getByRole('button', { name })
 
 describe('App', () => {
-  it('shows a sidebar with the four tabs in order', () => {
+  it('shows a sidebar with the three tabs in order', () => {
     renderWithStore(<App />)
 
     const names = within(sidebar())
       .getAllByRole('button')
       .map((button) => button.textContent)
-    expect(names).toEqual(['Chat', 'Code', 'Automations', 'Settings'])
+    expect(names).toEqual(['Chat', 'Code', 'Automations'])
   })
 
   it('opens on Chat the first time', () => {
@@ -45,11 +45,10 @@ describe('App', () => {
   it.each([
     ['1', 'Chat'],
     ['2', 'Code'],
-    ['3', 'Automations'],
-    ['4', 'Settings']
+    ['3', 'Automations']
   ])('Ctrl+%s opens %s', (key, name) => {
     // Start somewhere else, so Ctrl+1 really has to switch.
-    renderWithStore(<App />, { lastTab: key === '1' ? 'settings' : 'chat' })
+    renderWithStore(<App />, { lastTab: key === '1' ? 'code' : 'chat' })
 
     fireEvent.keyDown(window, { key, ctrlKey: true })
 
@@ -71,15 +70,15 @@ describe('App', () => {
     renderWithStore(<App />)
 
     expect(tabButton('Chat')).toHaveAttribute('aria-keyshortcuts', 'Control+1')
-    expect(tabButton('Settings')).toHaveAttribute('aria-keyshortcuts', 'Control+4')
+    expect(tabButton('Automations')).toHaveAttribute('aria-keyshortcuts', 'Control+3')
   })
 
   it('remembers the newly opened tab in settings', async () => {
     const { saveSettings } = renderWithStore(<App />)
 
-    fireEvent.click(tabButton('Settings'))
+    fireEvent.click(tabButton('Automations'))
 
-    await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ lastTab: 'settings' }))
+    await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ lastTab: 'automations' }))
   })
 
   it('stops listening for shortcuts once it is gone', () => {

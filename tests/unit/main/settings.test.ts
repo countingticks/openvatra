@@ -90,9 +90,36 @@ describe('migrate', () => {
     expect(migrate({ schemaVersion: 0, colour: 'dark' }, steps)).toEqual({ schemaVersion: 1, theme: 'dark' })
   })
 
+  describe('1 → 2: Settings became a dialog', () => {
+    it('reopens a file left on the Settings tab on Chat', () => {
+      expect(migrate({ schemaVersion: 1, lastTab: 'settings', theme: 'dark' })).toEqual({
+        schemaVersion: 2,
+        lastTab: 'chat',
+        theme: 'dark'
+      })
+    })
+
+    it('keeps every other tab and setting as it was', () => {
+      expect(migrate({ schemaVersion: 1, lastTab: 'code', closeAction: 'quit' })).toEqual({
+        schemaVersion: 2,
+        lastTab: 'code',
+        closeAction: 'quit'
+      })
+    })
+
+    it('loads a version-1 file from disk without setting it aside', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 1, theme: 'dark', lastTab: 'settings' }))
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings).toMatchObject({ schemaVersion: 2, theme: 'dark', lastTab: 'chat' })
+    })
+  })
+
   it.each([
-    ['current files', { schemaVersion: 1, theme: 'dark' }],
-    ['newer files', { schemaVersion: 2 }],
+    ['current files', { schemaVersion: 2, theme: 'dark' }],
+    ['newer files', { schemaVersion: 3 }],
     ['files with no migration path', { schemaVersion: 0 }],
     ['non-objects', [1, 2]]
   ])('leaves %s unchanged', (_case, raw) => {

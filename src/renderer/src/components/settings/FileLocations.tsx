@@ -35,13 +35,13 @@ export function FileLocations(): React.JSX.Element {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <span className="font-medium">File locations</span>
+    <div className="flex flex-col gap-2.5 py-4">
+      <span className="text-sm font-medium">File locations</span>
       <dl className="flex flex-col gap-3">
         {rows.map((row) => (
           <div key={row.folder} className="flex items-center justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-0.5">
-              <dt className="text-muted-foreground">{row.label}</dt>
+              <dt className="text-[12.5px] text-muted-foreground">{row.label}</dt>
               <dd className="font-mono text-xs break-all select-text">
                 {locations ? row.path(locations) : '…'}
               </dd>

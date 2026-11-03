@@ -60,8 +60,11 @@ test('System follows the Windows mode', async () => {
 })
 
 test('the last tab, the theme and the sidebar survive a restart', async () => {
-  // Still on Settings from the tests above: pick Dark there, then leave the app on Automations.
+  // Settings is still open from the tests above: pick Dark there, close it (a modal blocks the app behind it),
+  // then leave the app on Automations.
   await chooseTheme('Dark')
+  await mainWindow.keyboard.press('Escape')
+  await expect(mainWindow.getByRole('dialog')).toBeHidden()
   await mainWindow.keyboard.press('Control+3')
   await mainWindow.getByRole('button', { name: 'Sidebar' }).click()
   await expect
