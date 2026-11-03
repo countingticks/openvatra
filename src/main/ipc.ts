@@ -1,9 +1,11 @@
 // IPC handlers: main's side of the contract in src/shared/ipc.ts. Every request is treated as untrusted.
 import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
 import { z } from 'zod'
 import { appFolders, editCommands, ipcChannels, type AppFolder, type FileLocations } from '../shared/ipc'
+import type { CoreState } from '../shared/core'
 import type { Settings } from '../shared/settings'
+import type { Supervisor } from './core/supervisor'
 import { log } from './logger'
 import type { SettingsStore } from './settingsStore'
 import { isAppUrl } from './urlPolicy'
@@ -11,7 +13,15 @@ import { isAppUrl } from './urlPolicy'
 const appFolderSchema = z.enum(appFolders)
 const editCommandSchema = z.enum(editCommands)
 
-export function registerIpcHandlers(store: SettingsStore, appUrl: string, locations: FileLocations): void {
+/** The part of the supervisor the UI may use. */
+export type CoreControl = Pick<Supervisor, 'state' | 'restart'>
+
+export function registerIpcHandlers(
+  store: SettingsStore,
+  appUrl: string,
+  locations: FileLocations,
+  core: CoreControl
+): void {
   const folders: Record<AppFolder, string> = {
     settings: dirname(locations.settingsFile),
     logs: locations.logsFolder
@@ -80,6 +90,29 @@ export function registerIpcHandlers(store: SettingsStore, appUrl: string, locati
   ipcMain.handle(ipcChannels.appQuit, (event) => {
     assertFromApp(event)
     app.quit()
+  })
+
+  ipcMain.handle(ipcChannels.coreGetState, (event): CoreState => {
+    assertFromApp(event)
+    return core.state()
+  })
+
+  ipcMain.handle(ipcChannels.coreRestart, async (event): Promise<void> => {
+    assertFromApp(event)
+    log.info('core: restart requested from the UI')
+    await core.restart()
+  })
+
+  // No argument: the UI cannot choose which file opens.
+  ipcMain.handle(ipcChannels.coreOpenLog, async (event): Promise<void> => {
+    assertFromApp(event)
+    const logFile = join(locations.logsFolder, 'main.log')
+    // A .log file may have no default app; then show it in Explorer instead.
+    const failure = await shell.openPath(logFile)
+    if (failure) {
+      log.warn(`Could not open the log: ${failure}`)
+      shell.showItemInFolder(logFile)
+    }
   })
 
   // The UI names one of our folders; it can never make Explorer open (or run) a path of its choosing.

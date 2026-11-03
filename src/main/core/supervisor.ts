@@ -4,10 +4,9 @@ import { randomBytes } from 'crypto'
 import { spawn as nodeSpawn, type ChildProcessWithoutNullStreams } from 'child_process'
 import { createInterface } from 'readline'
 
-export type CoreState =
-  | { status: 'starting' }
-  | { status: 'ready'; port: number; version: string }
-  | { status: 'problem'; reason: string }
+import type { CoreState } from '../../shared/core'
+
+export type { CoreState }
 
 /** Must match core/main.go: the per-launch token travels in the environment, never on the command line. */
 const tokenEnv = 'OPENVATRA_CORE_TOKEN'
@@ -36,6 +35,8 @@ export interface Supervisor {
   /** Asks core to shut down, kills it after the timeout. Resolves once it is gone; no restarts afterwards. */
   stop: () => Promise<void>
   state: () => CoreState
+  /** Stops the running core (if any) and starts a fresh one, forgetting earlier crashes. No-op once stop() ran. */
+  restart: () => Promise<void>
 }
 
 // One launch of core.exe. Events from an old child must never touch the state of a newer one.
@@ -159,7 +160,11 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   function stop(): Promise<void> {
     stopping = true
     clearTimeout(restartTimer)
-    const attempt = active
+    return shutDown(active)
+  }
+
+  // Asks one attempt to exit, kills it after the timeout. Resolves once it is gone.
+  function shutDown(attempt: Attempt | null): Promise<void> {
     if (!attempt || attempt.exited) return Promise.resolve()
 
     return new Promise((resolve) => {
@@ -184,7 +189,25 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     })
   }
 
-  return { start, stop, state: () => current }
+  let restarting = false
+  async function restart(): Promise<void> {
+    // A double click must not launch two cores; after stop() the app is quitting.
+    if (stopping || restarting) return
+    restarting = true
+    try {
+      clearTimeout(restartTimer)
+      const attempt = active
+      // Marked failed first, so its exit is not mistaken for a crash (no counting, no automatic restart).
+      if (attempt) attempt.failed = true
+      await shutDown(attempt)
+      crashTimes = []
+      start() // checks `stopping` itself, in case the app began quitting while we waited
+    } finally {
+      restarting = false
+    }
+  }
+
+  return { start, stop, restart, state: () => current }
 }
 
 function parseReadyLine(line: string): { port: number; version: string } | null {

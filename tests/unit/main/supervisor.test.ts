@@ -267,4 +267,81 @@ describe('core supervisor', () => {
       expect(spawn).toHaveBeenCalledTimes(1)
     })
   })
+
+  describe('restart', () => {
+    function setUpRestartable(): ReturnType<typeof setUp> & { children: FakeChild[] } {
+      const children: FakeChild[] = []
+      const spawn = vi.fn().mockImplementation(() => {
+        const fake = fakeChild()
+        children.push(fake)
+        return fake.process
+      })
+      const states: CoreState[] = []
+      const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      const supervisor = createSupervisor({
+        exePath: 'core.exe',
+        onState: (state) => states.push(state),
+        log: { info: vi.fn(), warn: vi.fn() },
+        spawn,
+        fetch: fetchImpl
+      })
+      supervisor.start()
+      return { ...children[0], children, states, spawn, supervisor, fetch: fetchImpl }
+    }
+
+    it('shuts the old core down, then starts a new one without counting it as a crash', async () => {
+      const { children, states, spawn, supervisor } = setUpRestartable()
+      children[0].child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+
+      const restarted = vi.fn()
+      void supervisor.restart().then(restarted)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spawn).toHaveBeenCalledTimes(1) // waits for the old one to be gone
+
+      children[0].child.emit('exit', 0)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(restarted).toHaveBeenCalled()
+      expect(spawn).toHaveBeenCalledTimes(2)
+      expect(states.map((state) => state.status)).not.toContain('problem')
+      expect(states.at(-1)).toEqual({ status: 'starting' })
+    })
+
+    it('starts over after core gave up, forgetting the old crashes', async () => {
+      const { children, states, spawn, supervisor } = setUpRestartable()
+      children[0].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(1_000)
+      children[1].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(5_000)
+      children[2].child.emit('exit', 1)
+      expect(states.at(-1)).toMatchObject({ status: 'problem' })
+      expect(spawn).toHaveBeenCalledTimes(3)
+
+      await supervisor.restart()
+      expect(spawn).toHaveBeenCalledTimes(4)
+      children[3].child.emit('exit', 1) // first crash again, so it restarts after 1 s
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(spawn).toHaveBeenCalledTimes(5)
+    })
+
+    it('ignores a second click while the first restart is in progress', async () => {
+      const { children, spawn, supervisor } = setUpRestartable()
+      children[0].child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+
+      void supervisor.restart()
+      void supervisor.restart()
+      children[0].child.emit('exit', 0)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(spawn).toHaveBeenCalledTimes(2)
+    })
+
+    it('does nothing once the app is stopping', async () => {
+      const { child, spawn, supervisor } = setUp()
+      void supervisor.stop()
+      child.emit('exit', 0)
+      await supervisor.restart()
+      expect(spawn).toHaveBeenCalledTimes(1)
+    })
+  })
 })

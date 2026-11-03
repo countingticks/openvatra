@@ -2,6 +2,7 @@ import { app, Menu, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { createSupervisor, type Supervisor } from './core/supervisor'
@@ -80,8 +81,18 @@ function start(): void {
 
     const settingsPath = join(app.getPath('userData'), 'settings.json')
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
+    // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
+    // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
+    core = createSupervisor({
+      exePath: coreExePath(),
+      onState: (state) => {
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send(ipcChannels.coreStateChanged, state)
+      },
+      log
+    })
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() })
+    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() }, core)
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)
@@ -96,8 +107,6 @@ function start(): void {
     mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
     mainWindow.on('closed', () => (mainWindow = null))
 
-    // After the window, which never waits for core. The state is only logged for now; the UI gets it later.
-    core = createSupervisor({ exePath: coreExePath(), onState: () => undefined, log })
     core.start()
 
     tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
