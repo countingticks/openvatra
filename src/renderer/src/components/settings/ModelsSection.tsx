@@ -38,7 +38,7 @@ export function ModelsSection(): React.JSX.Element {
       />
       <PathRow
         label="Models folder"
-        hint="Every .gguf file in it, subfolders included, is a model."
+        hint="Scans this folder and its subfolders."
         path={models.modelsDir}
         onBrowse={() => void pick('modelsDir')}
       />
@@ -48,11 +48,7 @@ export function ModelsSection(): React.JSX.Element {
         </p>
       )}
 
-      <SettingRow
-        label="Unload models after"
-        hint="A model nobody has used for this long gives its memory back."
-        labelId={idleId}
-      >
+      <SettingRow label="Unload models after" hint="Frees an idle model's memory." labelId={idleId}>
         <SegmentedControl
           labelledBy={idleId}
           value={idle.value}

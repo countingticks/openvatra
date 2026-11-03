@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Radio } from '@base-ui/react/radio'
 import { RadioGroup } from '@base-ui/react/radio-group'
 
@@ -19,8 +20,28 @@ export function SegmentedControl<T extends string>({
   options,
   onChange
 }: SegmentedControlProps<T>): React.JSX.Element {
+  const groupRef = useRef<HTMLDivElement>(null)
+  // Where the raised pill sits: under the checked option. It slides there instead of jumping.
+  const [pill, setPill] = useState<{ left: number; width: number }>()
+
+  useLayoutEffect(() => {
+    const group = groupRef.current
+    if (!group) return
+    function place(): void {
+      const checked = group?.querySelector<HTMLElement>('[role="radio"][data-checked]')
+      if (checked) setPill({ left: checked.offsetLeft, width: checked.offsetWidth })
+    }
+    place()
+    // Fonts loading or a text-size change moves the options without the value changing.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(place)
+    observer.observe(group)
+    return () => observer.disconnect()
+  }, [value, options])
+
   return (
     <RadioGroup
+      ref={groupRef}
       aria-labelledby={labelledBy}
       value={value}
       // Base UI reports the new value as unknown; only accept one of ours.
@@ -28,13 +49,20 @@ export function SegmentedControl<T extends string>({
         const option = options.find((candidate) => candidate.value === next)
         if (option) onChange(option.value)
       }}
-      className="inline-flex shrink-0 gap-0.5 rounded-lg border border-border bg-sidebar p-[3px]"
+      className="relative inline-flex shrink-0 gap-0.5 rounded-lg border border-border bg-sidebar p-[3px]"
     >
+      {pill && (
+        <span
+          aria-hidden
+          style={{ width: pill.width, transform: `translateX(${pill.left}px)` }}
+          className="absolute top-[3px] bottom-[3px] left-0 rounded-md bg-card shadow-sm transition-[transform,width] duration-200 ease-out in-data-[motion=reduce]:transition-none dark:bg-accent"
+        />
+      )}
       {options.map((option) => (
         <Radio.Root
           key={option.value}
           value={option.value}
-          className="inline-flex h-7 items-center justify-center rounded-md px-3 text-[13px] whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-card data-checked:font-medium data-checked:text-foreground data-checked:shadow-sm dark:data-checked:bg-accent"
+          className="relative inline-flex h-7 items-center justify-center rounded-md px-3 text-[13px] whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-checked:font-medium data-checked:text-foreground"
         >
           {/* Trimmed to cap height and baseline, so centring lines up the letters you see. Geist leaves more room
               below the baseline than above the capitals, which otherwise put the labels ~1.3px high. */}

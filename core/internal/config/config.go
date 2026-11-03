@@ -22,7 +22,7 @@ type ModelOptions struct {
 type Config struct {
 	LlamaServerPath string `json:"llamaServerPath"`
 	ModelsDir       string `json:"modelsDir"`
-	// EmbeddingModel is a model id.
+	// EmbeddingModel is a model id; "" means Automatic. Only an embedding model counts (see models.ResolveEmbedding).
 	EmbeddingModel string `json:"embeddingModel"`
 	// IdleUnloadMinutes is 0 for "never unload" (main sends null).
 	IdleUnloadMinutes int                     `json:"idleUnloadMinutes"`
@@ -48,13 +48,10 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// IdleTimeout is how long model id may sit unused before core unloads it. Zero means never. The embedding model never
-// unloads: it is small, and every RAG question needs it first, so reloading it would delay answers by seconds to
-// save little memory.
-func (c Config) IdleTimeout(id string) time.Duration {
-	if id == c.EmbeddingModel {
-		return 0
-	}
+// IdleTimeout is how long a model may sit unused before core unloads it. Zero means never. (The serving embedding
+// model never unloads: it is small, and every RAG question needs it first. core decides which one that is, because
+// it takes the model's kind from the file, so main.go handles that case before asking here.)
+func (c Config) IdleTimeout() time.Duration {
 	return time.Duration(c.IdleUnloadMinutes) * time.Minute
 }
 

@@ -94,8 +94,14 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	listModels := func() ([]models.Model, error) { return models.Discover(cfg.Get().ModelsDir) }
 	rt := router.New(router.Config{
 		NewBackend:     newBackendFunc(cfg, logger, logOut),
-		EmbeddingModel: func() string { return cfg.Get().EmbeddingModel },
-		IdleTimeout:    func(id string) time.Duration { return cfg.Get().IdleTimeout(id) },
+		EmbeddingModel: func() string { return resolveEmbedding(cfg.Get()) },
+		IdleTimeout: func(id string) time.Duration {
+			c := cfg.Get()
+			if id == resolveEmbedding(c) {
+				return 0 // the serving embedding model never unloads, whichever way it was chosen
+			}
+			return c.IdleTimeout()
+		},
 	})
 	cfg.OnChange(rt.Notify)
 	defer rt.Close() // after the server is down, so no request is mid-stream
@@ -124,6 +130,16 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,
+// else the first one found (Automatic), else "".
+func resolveEmbedding(c config.Config) string {
+	found, err := models.Discover(c.ModelsDir)
+	if err != nil {
+		return ""
+	}
+	return models.ResolveEmbedding(found, c.EmbeddingModel)
 }
 
 // newBackendFunc builds the router's server factory: look the model up on disk,

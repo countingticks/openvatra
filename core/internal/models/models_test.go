@@ -109,6 +109,10 @@ func TestDiscover(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			// The files are empty, so every kind is "unreadable"; kinds have their own tests (gguf_test.go).
+			for i := range got {
+				got[i].Kind, got[i].Error = "", ""
+			}
 			var want []Model
 			for _, m := range tt.want {
 				m.Path = filepath.Join(root, filepath.FromSlash(m.Path))
