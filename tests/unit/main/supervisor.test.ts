@@ -116,4 +116,155 @@ describe('core supervisor', () => {
     }).start()
     expect(states.at(-1)).toMatchObject({ status: 'problem', reason: expect.stringContaining('ENOENT') })
   })
+
+  describe('after a crash', () => {
+    // Every spawn call returns a fresh fake child, so restarts can be observed.
+    function setUpMany(): SetUp & { children: FakeChild[] } {
+      const children: FakeChild[] = []
+      const states: CoreState[] = []
+      const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      const spawn = vi.fn().mockImplementation(() => {
+        const fake = fakeChild()
+        children.push(fake)
+        return fake.process
+      })
+      const supervisor = createSupervisor({
+        exePath: 'core.exe',
+        onState: (state) => states.push(state),
+        log: { info: vi.fn(), warn: vi.fn() },
+        spawn,
+        fetch: fetchImpl
+      })
+      supervisor.start()
+      return { ...children[0], children, states, spawn, supervisor, fetch: fetchImpl }
+    }
+
+    it('restarts after 1 s, then after 5 s, and gives up on the third crash', async () => {
+      const { children, states, spawn } = setUpMany()
+      children[0].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(999)
+      expect(spawn).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(spawn).toHaveBeenCalledTimes(2)
+
+      children[1].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(4_999)
+      expect(spawn).toHaveBeenCalledTimes(2)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(spawn).toHaveBeenCalledTimes(3)
+
+      children[2].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(spawn).toHaveBeenCalledTimes(3)
+      expect(states.at(-1)).toMatchObject({
+        status: 'problem',
+        reason: expect.stringContaining('giving up after 3 crashes')
+      })
+    })
+
+    it('restarts a core that crashes after it was ready', async () => {
+      const { children, states, spawn } = setUpMany()
+      children[0].child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+      expect(states.at(-1)?.status).toBe('ready')
+
+      children[0].child.emit('exit', 3)
+      expect(states.at(-1)).toEqual({ status: 'problem', reason: 'core exited unexpectedly (code 3)' })
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(spawn).toHaveBeenCalledTimes(2)
+      expect(states.at(-1)).toEqual({ status: 'starting' })
+    })
+
+    it('forgets crashes older than 2 minutes', async () => {
+      const { children, spawn } = setUpMany()
+      children[0].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(1_000)
+      children[1].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(spawn).toHaveBeenCalledTimes(3)
+
+      children[2].child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(120_000)
+      children[2].child.emit('exit', 1)
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(spawn).toHaveBeenCalledTimes(4)
+    })
+
+    it('kills a core that is up but fails /health, then restarts', async () => {
+      const children: FakeChild[] = []
+      const spawn = vi.fn().mockImplementation(() => {
+        const fake = fakeChild()
+        children.push(fake)
+        return fake.process
+      })
+      createSupervisor({
+        exePath: 'core.exe',
+        onState: () => undefined,
+        log: { info: vi.fn(), warn: vi.fn() },
+        spawn,
+        fetch: vi.fn().mockResolvedValue({ ok: false, status: 500 })
+      }).start()
+      children[0].child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(1_000)
+      expect(children[0].child.kill).toHaveBeenCalled()
+      expect(spawn).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('stop', () => {
+    it('posts /shutdown with the token, resolves when core exits, and does not restart', async () => {
+      const { child, spawn, fetch, supervisor } = setUp()
+      child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+
+      const stopped = vi.fn()
+      void supervisor.stop().then(stopped)
+      const token = (spawn.mock.calls[0][1] as NodeJS.ProcessEnv)['OPENVATRA_CORE_TOKEN']
+      expect(fetch).toHaveBeenLastCalledWith('http://127.0.0.1:53121/shutdown', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(stopped).not.toHaveBeenCalled()
+
+      child.emit('exit', 0)
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(stopped).toHaveBeenCalled()
+      expect(child.kill).not.toHaveBeenCalled()
+      expect(spawn).toHaveBeenCalledTimes(1)
+    })
+
+    it('kills core if it has not exited after 8 s', async () => {
+      const { child, supervisor } = setUp()
+      child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+
+      const stopped = vi.fn()
+      void supervisor.stop().then(stopped)
+      await vi.advanceTimersByTimeAsync(7_999)
+      expect(child.kill).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(1)
+      expect(child.kill).toHaveBeenCalled()
+      expect(stopped).toHaveBeenCalled()
+    })
+
+    it('kills core at once when /shutdown cannot be reached', async () => {
+      const { child, supervisor } = setUp(
+        vi.fn().mockResolvedValueOnce({ ok: true, status: 200 }).mockRejectedValue(new Error('refused'))
+      )
+      child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+      void supervisor.stop()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(child.kill).toHaveBeenCalled()
+    })
+
+    it('cancels a pending restart', async () => {
+      const { child, spawn, supervisor } = setUp()
+      child.emit('exit', 1)
+      await supervisor.stop()
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(spawn).toHaveBeenCalledTimes(1)
+    })
+  })
 })

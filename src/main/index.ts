@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
-import { createSupervisor } from './core/supervisor'
+import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
@@ -29,6 +29,7 @@ function coreExePath(): string {
 
 let mainWindow: BrowserWindow | null = null
 let tray: AppTray | null = null
+let core: Supervisor | null = null
 
 // Set by 'before-quit'. Until then, closing the window only hides it to the tray.
 let quitting = false
@@ -96,7 +97,8 @@ function start(): void {
     mainWindow.on('closed', () => (mainWindow = null))
 
     // After the window, which never waits for core. The state is only logged for now; the UI gets it later.
-    createSupervisor({ exePath: coreExePath(), onState: () => undefined, log }).start()
+    core = createSupervisor({ exePath: coreExePath(), onState: () => undefined, log })
+    core.start()
 
     tray = createTray({ open: focusMainWindow, quit: () => app.quit() })
     hideOnClose(
@@ -119,7 +121,8 @@ function start(): void {
     // quit() from inside it is ignored, which left the process running.
     app.once('will-quit', (event) => {
       event.preventDefault()
-      void store.whenIdle().finally(() => app.exit())
+      // core gets up to 8 s to shut down; the pending saves finish in the meantime.
+      void Promise.all([store.whenIdle(), core?.stop()]).finally(() => app.exit())
     })
   })
 }
