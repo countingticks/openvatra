@@ -13,8 +13,13 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,components.json,CHANGELOG.md,README.md,AGENTS.md}'
   - '!{.env,.env.*,.npmrc,.nvmrc}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!resources/core/**'
 asarUnpack:
   - resources/**
+# The Go core is a real executable, so it ships beside app.asar (outside it) as resources/core/core.exe.
+extraResources:
+  - from: resources/core
+    to: core
 win:
   executableName: OpenVatra
 nsis:

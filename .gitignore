@@ -37,3 +37,4 @@ Thumbs.db
 
 # Go core build output
 core/*.exe
+resources/core/
