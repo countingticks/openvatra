@@ -16,6 +16,9 @@ import (
 
 const version = "0.1.0"
 
+// tokenEnv is the environment variable Electron main passes the per-launch token in.
+const tokenEnv = "OPENVATRA_CORE_TOKEN"
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "core:", err)
@@ -30,6 +33,12 @@ func run(args []string, stdout io.Writer) error {
 		return err
 	}
 
+	// Fail closed: without a token every request would have to be refused anyway.
+	token := os.Getenv(tokenEnv)
+	if token == "" {
+		return fmt.Errorf("%s is not set", tokenEnv)
+	}
+
 	// Loopback only: never reachable from other PCs.
 	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", *port))
 	if err != nil {
@@ -37,10 +46,11 @@ func run(args []string, stdout io.Writer) error {
 	}
 
 	// With port 0 the real port is only known after listening.
-	if err := writeReady(stdout, ln.Addr().(*net.TCPAddr).Port); err != nil {
+	actualPort := ln.Addr().(*net.TCPAddr).Port
+	if err := writeReady(stdout, actualPort); err != nil {
 		return err
 	}
-	return http.Serve(ln, api.NewHandler())
+	return http.Serve(ln, api.NewHandler(token, actualPort))
 }
 
 // writeReady prints the one JSON line main waits for.

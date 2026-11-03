@@ -6,11 +6,12 @@ import (
 	"net/http"
 )
 
-// NewHandler returns the router for every core endpoint.
-func NewHandler() http.Handler {
+// NewHandler returns the router for every core endpoint, behind the token and
+// Host checks. port is the one core listens on.
+func NewHandler(token string, port int) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
-	return mux
+	return guard(token, port, mux)
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {
