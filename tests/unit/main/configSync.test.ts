@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createConfigSync, toCoreConfig } from '../../../src/main/core/configSync'
 import { defaultSettings, type Settings } from '../../../src/shared/settings'
 
+const bundled = 'C:/app/resources/llama/llama-server.exe'
+
 const withModels = (models: Partial<Settings['models']>): Settings => ({
   ...defaultSettings,
   models: { ...defaultSettings.models, ...models }
@@ -15,8 +17,8 @@ describe('toCoreConfig', () => {
       idleUnloadMinutes: null,
       options: { qwen: { args: '-c 4096 --alias "my qwen"' }, gemma: {} }
     }
-    expect(toCoreConfig(models)).toEqual({
-      llamaServerPath: '',
+    expect(toCoreConfig(models, bundled)).toEqual({
+      llamaServerPath: bundled,
       modelsDir: '',
       embeddingModel: '',
       idleUnloadMinutes: 0,
@@ -25,6 +27,13 @@ describe('toCoreConfig', () => {
         gemma: { args: [] }
       }
     })
+  })
+
+  it('runs the bundled llama-server unless the user chose their own', () => {
+    const own = { ...defaultSettings.models, llamaServerPath: 'D:/llama/llama-server.exe' }
+
+    expect(toCoreConfig(defaultSettings.models, bundled)).toMatchObject({ llamaServerPath: bundled })
+    expect(toCoreConfig(own, bundled)).toMatchObject({ llamaServerPath: 'D:/llama/llama-server.exe' })
   })
 })
 
@@ -35,7 +44,7 @@ describe('config sync', () => {
     const post = vi.fn().mockResolvedValue(undefined)
     const settings = withModels({ modelsDir: 'D:/models', idleUnloadMinutes: 60 })
 
-    await createConfigSync(() => settings, post, log).sync()
+    await createConfigSync(() => settings, post, log, bundled).sync()
 
     expect(post).toHaveBeenCalledWith(
       '/api/config',
@@ -45,7 +54,7 @@ describe('config sync', () => {
 
   it('syncs when models changed, and ignores other settings changes', async () => {
     const post = vi.fn().mockResolvedValue(undefined)
-    const sync = createConfigSync(() => defaultSettings, post, log)
+    const sync = createConfigSync(() => defaultSettings, post, log, bundled)
 
     sync.onSettingsChange({ ...defaultSettings, theme: 'dark' }, defaultSettings)
     expect(post).not.toHaveBeenCalled()
@@ -56,7 +65,7 @@ describe('config sync', () => {
 
   it('logs a failure instead of throwing, and keeps working afterwards', async () => {
     const post = vi.fn().mockRejectedValueOnce(new Error('core is not ready')).mockResolvedValue(undefined)
-    const sync = createConfigSync(() => defaultSettings, post, log)
+    const sync = createConfigSync(() => defaultSettings, post, log, bundled)
 
     await expect(sync.sync()).resolves.toBeUndefined()
     expect(log.warn).toHaveBeenCalled()
@@ -72,7 +81,7 @@ describe('config sync', () => {
       bodies.push(body)
       if (bodies.length === 1) await new Promise<void>((resolve) => (release = resolve))
     })
-    const sync = createConfigSync(() => current, post, log)
+    const sync = createConfigSync(() => current, post, log, bundled)
 
     const first = sync.sync()
     await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(1))

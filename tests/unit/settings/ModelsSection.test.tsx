@@ -49,7 +49,36 @@ describe('Settings → Models', () => {
 
       expect(screen.getByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
       expect(screen.getByText('Not chosen')).toBeInTheDocument()
-      expect(screen.getByRole('status')).toHaveTextContent('Choose llama-server.exe and your models folder')
+      expect(screen.getByRole('status')).toHaveTextContent('Choose your models folder')
+    })
+
+    it('shows the bundled build when no llama-server is chosen, with no "Use bundled" button', async () => {
+      await openModels({ llamaServerPath: null })
+
+      expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toHaveTextContent(
+        'Use my own…'
+      )
+      expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
+    })
+
+    it('"Use bundled" asks main to forget the custom path, and shows the bundled build again', async () => {
+      const { useBundledLlama } = await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Use bundled' }))
+
+      expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
+      expect(useBundledLlama).toHaveBeenCalledOnce()
+      expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
+    })
+
+    it('says so when "Use bundled" can’t be saved', async () => {
+      const { useBundledLlama } = await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' })
+      useBundledLlama.mockRejectedValueOnce(new Error('disk full'))
+
+      fireEvent.click(screen.getByRole('button', { name: 'Use bundled' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('That setting could not be saved.')
     })
 
     it('Browse… asks main to pick, and shows what main saved', async () => {
@@ -71,7 +100,7 @@ describe('Settings → Models', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for llama-server.exe' }))
       await waitFor(() => expect(pick).toHaveBeenCalledWith('llamaServer'))
-      expect(screen.getAllByText('Not chosen')).toHaveLength(2)
+      expect(screen.getAllByText('Not chosen')).toHaveLength(1)
 
       pick.mockRejectedValueOnce(new Error('disk full'))
       fireEvent.click(screen.getByRole('button', { name: 'Browse for llama-server.exe' }))

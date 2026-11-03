@@ -89,8 +89,7 @@ export function ModelList(): React.JSX.Element {
 
   let empty: string | null = null
   if (core?.status === 'problem') empty = `The models service has a problem: ${core.reason}`
-  else if (!settings.llamaServerPath || !settings.modelsDir)
-    empty = 'Choose llama-server.exe and your models folder above, and your models will show here.'
+  else if (!settings.modelsDir) empty = 'Choose your models folder above, and your models will show here.'
   else if (core?.status !== 'ready') empty = 'Starting the models service…'
   else if (models.length === 0) empty = 'No models found. Put .gguf files in the models folder.'
 

@@ -53,6 +53,8 @@ interface Rendered extends RenderResult {
   openFolder: Mock<FilesApi['openFolder']>
   /** Answers like main after the user picked a path; set its result per test. Default: cancelled (null). */
   pick: Mock<FilesApi['pick']>
+  /** Answers like main after "Use bundled"; set its result per test. */
+  useBundledLlama: Mock<FilesApi['useBundledLlama']>
   appWindow: FakeAppWindow
   quit: Mock<AppApi['quit']>
   core: FakeCore
@@ -132,6 +134,9 @@ export function renderWithStore(
   const appWindow = fakeAppWindow(options.maximized ?? false)
   const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
   const pick = vi.fn<FilesApi['pick']>().mockResolvedValue(null)
+  const useBundledLlama = vi
+    .fn<FilesApi['useBundledLlama']>()
+    .mockImplementation(async () => ({ ...current, models: { ...current.models, llamaServerPath: null } }))
   const core = fakeCore(options.coreState ?? { status: 'starting' }, options.models ?? [])
   const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
     app: { quit },
@@ -139,7 +144,9 @@ export function renderWithStore(
     files: {
       locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations),
       openFolder,
-      pick
+      pick,
+      bundledLlama: vi.fn<FilesApi['bundledLlama']>().mockResolvedValue({ tag: 'b12078' }),
+      useBundledLlama
     },
     appWindow: appWindow.api
   }
@@ -151,6 +158,7 @@ export function renderWithStore(
     saveSettings,
     openFolder,
     pick,
+    useBundledLlama,
     appWindow: appWindow.fake,
     quit,
     core: core.fake,

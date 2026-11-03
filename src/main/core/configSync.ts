@@ -16,10 +16,11 @@ function toCoreOptions(options: ModelOptions): Record<string, unknown> {
 /**
  * The body core expects (core/internal/config). Core uses "" for "not chosen" and 0 minutes for "never", and gets
  * argument lists, never text: splitting happens here, once, so core runs exactly what the settings say.
+ * No chosen llama-server means the bundled one, so core always gets a real path.
  */
-export function toCoreConfig(models: ModelsSettings): Record<string, unknown> {
+export function toCoreConfig(models: ModelsSettings, bundledLlamaServer: string): Record<string, unknown> {
   return {
-    llamaServerPath: models.llamaServerPath ?? '',
+    llamaServerPath: models.llamaServerPath ?? bundledLlamaServer,
     modelsDir: models.modelsDir ?? '',
     embeddingModel: models.embeddingModel ?? '',
     idleUnloadMinutes: models.idleUnloadMinutes ?? 0,
@@ -39,7 +40,8 @@ export interface ConfigSync {
 export function createConfigSync(
   getSettings: () => Settings,
   post: (path: string, body: unknown) => Promise<void>,
-  log: { warn: (message: string, error?: unknown) => void }
+  log: { warn: (message: string, error?: unknown) => void },
+  bundledLlamaServer: string
 ): ConfigSync {
   // Sends run one after another, and each reads the settings when its turn comes. So two quick changes can't
   // arrive out of order and leave core with the older one.
@@ -48,7 +50,7 @@ export function createConfigSync(
   function sync(): Promise<void> {
     queue = queue.then(async () => {
       try {
-        await post('/api/config', toCoreConfig(getSettings().models))
+        await post('/api/config', toCoreConfig(getSettings().models, bundledLlamaServer))
       } catch (error) {
         log.warn('Could not send the config to core', error)
       }
