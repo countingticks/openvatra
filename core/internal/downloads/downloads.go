@@ -232,7 +232,7 @@ func (m *Manager) enqueue(id string, mustBeStopped bool) error {
 	return nil
 }
 
-// Cancel stops a download and deletes its partial files, whatever state it is in. A finished one is just dismissed.
+// Cancel stops a download and deletes what it wrote so far, whatever state it is in. A finished one is just dismissed.
 func (m *Manager) Cancel(id string) error {
 	m.mu.Lock()
 	var entry *catalog.Entry
@@ -250,6 +250,7 @@ func (m *Manager) Cancel(id string) error {
 		folder = filepath.Join(dir, id)
 	}
 	j := m.jobs[id]
+	finished := j != nil && j.state == Done // installed: dismissing it must not touch the files
 	switch {
 	case j != nil && (j.state == Downloading || j.state == Verifying):
 		// The worker deletes the files once the fetch has really stopped; deleting an open file would fail on Windows.
@@ -265,8 +266,8 @@ func (m *Manager) Cancel(id string) error {
 		return ErrNoDownload
 	}
 	m.mu.Unlock()
-	if folder != "" {
-		removeParts(folder, entry.Files)
+	if folder != "" && !finished {
+		discard(folder, entry.Files)
 	}
 	m.notify()
 	return nil
@@ -350,7 +351,7 @@ func (m *Manager) run(id string) {
 	m.mu.Unlock()
 
 	if cancelled {
-		removeParts(folder, entry.Files)
+		discard(folder, entry.Files)
 	}
 	if err == nil && m.cfg.OnFinish != nil {
 		m.cfg.OnFinish()
@@ -437,8 +438,13 @@ func missingBytes(folder string, files []catalog.File) int64 {
 	return n
 }
 
-func removeParts(folder string, files []catalog.File) {
+// discard deletes what a cancelled download wrote: every file of the entry, finished or partial (a model of several
+// files can be cancelled after its first one completed), then the folder core made for it. os.Remove leaves a folder
+// that is not empty, so anything else the user keeps there survives.
+func discard(folder string, files []catalog.File) {
 	for _, f := range files {
 		_ = os.Remove(filepath.Join(folder, f.Name+".part"))
+		_ = os.Remove(filepath.Join(folder, f.Name))
 	}
+	_ = os.Remove(folder)
 }
