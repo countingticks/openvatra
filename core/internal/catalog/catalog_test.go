@@ -222,3 +222,22 @@ func TestFolder(t *testing.T) {
 		t.Fatalf("no folder: err = %v", err)
 	}
 }
+
+func TestBaseURLOnlyInTestCatalogAndOnlyLocal(t *testing.T) {
+	entry := func(base string) []byte {
+		return []byte(`[{"id":"x","name":"X","summary":"s","tags":["chat"],"licence":"MIT","repo":"o/x","revision":"` +
+			strings.Repeat("a", 40) + `","files":[{"name":"x.gguf","sizeBytes":1,"sha256":"` + strings.Repeat("b", 64) +
+			`"}],"needsGB":1,"rank":1,"baseUrl":"` + base + `"}]`)
+	}
+	if _, err := Parse(entry("http://127.0.0.1:1234")); err == nil {
+		t.Fatal("the normal parser accepted a baseUrl")
+	}
+	if _, err := ParseTest(entry("http://127.0.0.1:1234")); err != nil {
+		t.Fatalf("test catalog with a local baseUrl: %v", err)
+	}
+	for _, bad := range []string{"https://evil.example", "http://evil.example", "http://127.0.0.1.evil.example", "ftp://127.0.0.1"} {
+		if _, err := ParseTest(entry(bad)); err == nil {
+			t.Fatalf("test catalog accepted %q", bad)
+		}
+	}
+}

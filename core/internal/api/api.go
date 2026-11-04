@@ -15,15 +15,15 @@ import (
 // reply is sent) when a client asks core to stop; listModels reports the models
 // currently on disk (a function, because the folder will change at runtime); rt
 // picks the model server for the chat and embedding endpoints; cfg receives what
-// main sends to POST /api/config; hardware measures the PC; cat is the list of models to download.
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store, hardware Hardware, cat Catalog) http.Handler {
+// main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads.
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store, hardware Hardware, cat Catalog, dl Downloads) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
 	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
 	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
 	mux.HandleFunc("GET /api/state", stateHandler(rt, listModels))
-	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels))
+	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl))
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /api/config", configHandler(cfg))
@@ -31,6 +31,9 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("POST /api/hardware/refresh", hardwareHandler(hardware.Refresh))
 	mux.HandleFunc("GET /api/catalog", catalogHandler(cat))
 	mux.HandleFunc("GET /api/catalog/{id}/folder", catalogFolderHandler(cat))
+	mux.HandleFunc("POST /api/downloads", startDownloadHandler(dl))
+	mux.HandleFunc("DELETE /api/downloads/{id}", cancelDownloadHandler(dl))
+	mux.HandleFunc("POST /api/downloads/{id}/resume", resumeDownloadHandler(dl))
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

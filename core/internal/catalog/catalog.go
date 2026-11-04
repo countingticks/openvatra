@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -54,6 +55,8 @@ type Entry struct {
 	Files    []File   `json:"files"`
 	NeedsGB  int      `json:"needsGB"` // memory to run it comfortably at the default 16 k context
 	Rank     int      `json:"rank"`    // higher = better answers; picks the recommendation
+	// BaseURL replaces https://huggingface.co. Only a test catalog (ParseTest) may set it, and only to a local address.
+	BaseURL string `json:"baseUrl,omitempty"`
 }
 
 var (
@@ -68,7 +71,13 @@ var (
 func Builtin() ([]Entry, error) { return Parse(builtin) }
 
 // Parse reads and checks a catalog. Ids and file names become paths, so they are held to a strict pattern.
-func Parse(data []byte) ([]Entry, error) {
+func Parse(data []byte) ([]Entry, error) { return parse(data, false) }
+
+// ParseTest is Parse for the end-to-end tests' catalog: entries may name a local server in baseUrl.
+// Only main's --test-catalog flag calls it, so the built-in list can never point anywhere else.
+func ParseTest(data []byte) ([]Entry, error) { return parse(data, true) }
+
+func parse(data []byte, allowBase bool) ([]Entry, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields() // a misspelt key would otherwise be silently empty
 	var entries []Entry
@@ -77,7 +86,7 @@ func Parse(data []byte) ([]Entry, error) {
 	}
 	seen := map[string]bool{}
 	for _, e := range entries {
-		if err := e.validate(); err != nil {
+		if err := e.validate(allowBase); err != nil {
 			return nil, fmt.Errorf("catalog entry %q: %w", e.ID, err)
 		}
 		if seen[e.ID] {
@@ -88,8 +97,10 @@ func Parse(data []byte) ([]Entry, error) {
 	return entries, nil
 }
 
-func (e Entry) validate() error {
+func (e Entry) validate(allowBase bool) error {
 	switch {
+	case e.BaseURL != "" && !(allowBase && localBase(e.BaseURL)):
+		return errors.New("baseUrl is only allowed in a test catalog, and only for a local address")
 	case !safeID.MatchString(e.ID):
 		return errors.New("id must be lowercase letters, digits, dots and dashes")
 	case e.Name == "" || e.Summary == "" || e.Licence == "":
@@ -123,6 +134,12 @@ func (e Entry) validate() error {
 		names[f.Name] = true
 	}
 	return nil
+}
+
+// localBase accepts http://127.0.0.1:<port> or http://localhost:<port> and nothing else.
+func localBase(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost") && u.Path == ""
 }
 
 // FitFor labels a model that needs needsGB on the PC in r. Only the GPU with the most memory counts (hw picks it).
