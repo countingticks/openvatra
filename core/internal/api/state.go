@@ -174,6 +174,17 @@ func loadHandler(rt Router) http.HandlerFunc {
 
 // unloadHandler asks for a model to be unloaded. 202 because the server may
 // still be finishing a reply and stops in the background.
+// refreshHandler tells every listener to re-read the models folder. For changes core can't see itself: main moves a
+// removed model to the Recycle Bin, and the list has to drop it.
+func refreshHandler(rt Router) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		rt.Notify()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted)
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "refreshing"})
+	}
+}
+
 func unloadHandler(rt Router) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !rt.Unload(r.PathValue("id")) {

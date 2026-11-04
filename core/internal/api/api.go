@@ -26,6 +26,7 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl))
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
+	mux.HandleFunc("POST /api/models/refresh", refreshHandler(rt))
 	mux.HandleFunc("POST /api/config", configHandler(cfg))
 	mux.HandleFunc("GET /api/hardware", hardwareHandler(hardware.Get))
 	mux.HandleFunc("POST /api/hardware/refresh", hardwareHandler(hardware.Refresh))

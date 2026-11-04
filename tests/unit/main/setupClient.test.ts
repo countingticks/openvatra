@@ -130,6 +130,15 @@ describe('setup client: remove', () => {
     expect(request).toHaveBeenCalledWith('/api/downloads/qwen3-8b', { method: 'DELETE' })
   })
 
+  it('asks core to re-read the folder, so the model lists drop the removed model', async () => {
+    const { client, request, trash } = setUp(`${modelsDir}\\qwen3-8b`)
+
+    await client.remove('qwen3-8b')
+
+    expect(trash).toHaveBeenCalledTimes(1)
+    expect(request).toHaveBeenLastCalledWith('/api/models/refresh', { method: 'POST' }) // after the folder is gone
+  })
+
   it('leaves the queue alone when the model has no finished download', async () => {
     const { client, request } = setUp(`${modelsDir}\\qwen3-8b`)
 

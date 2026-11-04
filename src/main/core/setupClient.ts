@@ -143,6 +143,12 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
 
     await trashWithRetry(catalogId, folder)
 
+    // Core reads the folder only when something it knows about changes; a move to the Recycle Bin isn't one, so it is
+    // told, and the model lists drop the model. Tidying up like the dismissal below: a failure is only logged.
+    await json('/api/models/refresh', { method: 'POST' }).catch((error) =>
+      log.warn('setup: could not ask core to re-read the models folder', error)
+    )
+
     // Core keeps a finished download in its queue; left there, the row would read "Almost ready" for a model that is
     // gone. Dismissing it is tidying up, so a failure is only logged: the removal itself worked.
     if (downloads().some((item) => item.id === catalogId && item.state === 'done')) {

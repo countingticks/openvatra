@@ -79,6 +79,15 @@ func TestEventsSendsStateNowAndAfterEachChange(t *testing.T) {
 	}
 }
 
+func TestRefreshEndpointNotifiesListeners(t *testing.T) {
+	rt := &stubRouter{}
+	rec := httptest.NewRecorder()
+	refreshHandler(rt).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/models/refresh", nil))
+	if rec.Code != http.StatusAccepted || rt.notified != 1 {
+		t.Fatalf("status %d, notified %d times; want 202 and once", rec.Code, rt.notified)
+	}
+}
+
 func TestLoadAndUnloadEndpoints(t *testing.T) {
 	rt := &stubRouter{unloadOK: true}
 	mux := http.NewServeMux()
