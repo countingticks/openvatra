@@ -10,7 +10,8 @@ const ready: CoreState = { status: 'ready', port: 1234, version: '1' }
 const chosen: ModelsSettings = {
   ...defaultSettings.models,
   llamaServerPath: 'C:\\llama\\llama-server.exe',
-  modelsDir: 'D:\\models'
+  modelsDir: 'D:\\models',
+  showAdvanced: true
 }
 const qwen: ModelInfo = {
   id: 'Qwen3-8B-Q4_K_M',
@@ -32,24 +33,31 @@ type Rendered = ReturnType<typeof renderWithStore>
 /** Renders the app with Settings open on Models. */
 async function openModels(
   models: Partial<ModelsSettings> = chosen,
-  options: { coreState?: CoreState; models?: ModelInfo[] } = {}
+  options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
 ): Promise<Rendered & { section: HTMLElement }> {
-  const rendered = renderWithStore(<App />, { models: { ...defaultSettings.models, ...models } }, options)
+  // Most tests are about the advanced view, so it is on unless a test says otherwise.
+  const rendered = renderWithStore(
+    <App />,
+    { models: { ...defaultSettings.models, showAdvanced: true, ...models } },
+    options
+  )
   act(() => {
     rendered.store.dispatch(settingsOpened('models'))
   })
-  const section = await screen.findByRole('region', { name: 'Available models' })
+  const advanced = models.showAdvanced ?? true
+  const section = await screen.findByRole('region', {
+    name: advanced ? 'Available models' : 'Installed models'
+  })
   return { ...rendered, section }
 }
 
 describe('Settings → Models', () => {
   describe('paths', () => {
-    it('shows both paths, or "Not chosen", and explains what to choose first', async () => {
+    it('shows both paths, or the default folder when none is chosen', async () => {
       await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' })
 
       expect(screen.getByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
-      expect(screen.getByText('Not chosen')).toBeInTheDocument()
-      expect(screen.getByRole('status')).toHaveTextContent('Choose your models folder')
+      expect(screen.getByText(/OpenVatra.Models folder/)).toBeInTheDocument()
     })
 
     it('shows the bundled build when no llama-server is chosen, with no "Use bundled" button', async () => {
@@ -100,11 +108,87 @@ describe('Settings → Models', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for llama-server.exe' }))
       await waitFor(() => expect(pick).toHaveBeenCalledWith('llamaServer'))
-      expect(screen.getAllByText('Not chosen')).toHaveLength(1)
+      expect(screen.getByText(/OpenVatra.Models folder/)).toBeInTheDocument()
 
       pick.mockRejectedValueOnce(new Error('disk full'))
       fireEvent.click(screen.getByRole('button', { name: 'Browse for llama-server.exe' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('That path could not be saved.')
+    })
+  })
+
+  describe('default and advanced views', () => {
+    const catalog = {
+      diskFreeBytes: null,
+      recommended: null,
+      entries: [
+        {
+          id: 'small-3b',
+          name: 'Small 3B',
+          summary: 's',
+          tags: [],
+          licence: 'Apache-2.0',
+          sizeBytes: 2 * 1024 ** 3,
+          needsGB: 3,
+          rank: 1,
+          fit: 'fits' as const,
+          installed: true,
+          diskShortBytes: 0
+        },
+        {
+          id: 'big-9b',
+          name: 'Big 9B',
+          summary: 's',
+          tags: [],
+          licence: 'Apache-2.0',
+          sizeBytes: 6 * 1024 ** 3,
+          needsGB: 8,
+          rank: 2,
+          fit: 'fits' as const,
+          installed: false,
+          diskShortBytes: 0
+        }
+      ]
+    }
+
+    it('shows only the simple things until "Show advanced" is on', async () => {
+      await openModels({ showAdvanced: false }, { coreState: ready, models: [qwen], setup: { catalog } })
+
+      expect(await screen.findByText('Small 3B')).toBeInTheDocument()
+      expect(screen.queryByText('Big 9B')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get more models…' })).toBeInTheDocument()
+      expect(screen.getByRole('radiogroup', { name: 'Unload models after' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Browse for llama-server.exe' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Qwen3-8B-Q4_K_M')).not.toBeInTheDocument()
+    })
+
+    it('"Show advanced" is saved and reveals the engine, the log and every model file', async () => {
+      const { saveSettings } = await openModels(
+        { showAdvanced: false },
+        { coreState: ready, models: [qwen], setup: { catalog } }
+      )
+
+      fireEvent.click(screen.getByRole('switch', { name: 'Show advanced' }))
+
+      await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ models: { showAdvanced: true } }))
+      expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument()
+      expect(await screen.findByText('Qwen3-8B-Q4_K_M')).toBeInTheDocument()
+    })
+
+    it('removes a downloaded model only after confirming', async () => {
+      const { setup } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove Small 3B' }))
+      expect(setup.remove).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole('button', { name: 'Remove it' }))
+
+      await waitFor(() => expect(setup.remove).toHaveBeenCalledWith('small-3b'))
+    })
+
+    it('says so when nothing is installed', async () => {
+      await openModels({ showAdvanced: false }, { coreState: ready })
+      expect(await screen.findByText(/No models yet/)).toBeInTheDocument()
     })
   })
 
@@ -121,20 +205,23 @@ describe('Settings → Models', () => {
 
   describe('empty and problem states', () => {
     it('says the service is starting', async () => {
-      await openModels()
-      expect(screen.getByRole('status')).toHaveTextContent('Starting the models service…')
+      const { section } = await openModels()
+      expect(within(section).getByRole('status')).toHaveTextContent('Starting the models service…')
     })
 
-    it('shows the service problem first, even before the paths are chosen', async () => {
-      await openModels({}, { coreState: { status: 'problem', reason: 'core exited (code 1)' } })
-      expect(await screen.findByRole('alert')).toHaveTextContent(
+    it('shows the service problem instead of the list', async () => {
+      const { section } = await openModels(
+        {},
+        { coreState: { status: 'problem', reason: 'core exited (code 1)' } }
+      )
+      expect(await within(section).findByRole('alert')).toHaveTextContent(
         'The models service has a problem: core exited (code 1)'
       )
     })
 
     it('says when the folder has no models', async () => {
-      await openModels(chosen, { coreState: ready })
-      expect(await screen.findByRole('status')).toHaveTextContent('No models found')
+      const { section } = await openModels(chosen, { coreState: ready })
+      expect(await within(section).findByRole('status')).toHaveTextContent('No models found')
     })
 
     it('restarts the service and opens the log', async () => {

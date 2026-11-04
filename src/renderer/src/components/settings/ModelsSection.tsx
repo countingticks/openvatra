@@ -1,20 +1,23 @@
 import { useEffect, useId, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
+import { InstalledModels } from '@renderer/components/settings/InstalledModels'
 import { ModelList } from '@renderer/components/settings/ModelList'
 import { PathRow } from '@renderer/components/settings/PathRow'
 import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
+import { Switch } from '@renderer/components/ui/switch'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged, settingsReplaced } from '@renderer/store/settingsSlice'
 import { modelsDialogOpened, settingsClosed } from '@renderer/store/uiSlice'
 import type { PickTarget } from '../../../../shared/ipc'
 
-/** Settings → Models: where llama.cpp and the models are, how long models stay loaded, the embedding model, and each model's options. */
+/** Settings → Models: the simple view (folder, installed models, get more, unload timer) and, behind *Show advanced*, the engine, embedding model and per-model options. */
 export function ModelsSection(): React.JSX.Element {
   const { models } = useAppSelector(selectSettings)
   const dispatch = useAppDispatch()
   const idleId = useId()
+  const advancedId = useId()
   const [problem, setProblem] = useState<string>()
   const [bundledTag, setBundledTag] = useState<string | null>(null)
 
@@ -52,23 +55,11 @@ export function ModelsSection(): React.JSX.Element {
   return (
     <div className="flex flex-col">
       <PathRow
-        label="llama-server.exe"
-        hint="The program that runs the models. The bundled one works on any GPU; use your own for CUDA."
-        path={models.llamaServerPath}
-        defaultText={bundledText}
-        browseText="Use my own…"
-        onBrowse={() => void pick('llamaServer')}
-      >
-        {models.llamaServerPath && (
-          <Button variant="outline" size="sm" onClick={() => void switchToBundled()}>
-            Use bundled
-          </Button>
-        )}
-      </PathRow>
-      <PathRow
         label="Models folder"
-        hint="Scans this folder and its subfolders."
+        hint="Where your downloaded models are kept."
         path={models.modelsDir}
+        defaultText="The OpenVatra\Models folder in your user folder"
+        browseText="Change…"
         onBrowse={() => void pick('modelsDir')}
       />
       {problem && (
@@ -103,7 +94,39 @@ export function ModelsSection(): React.JSX.Element {
         </Button>
       </div>
 
-      <ModelList />
+      <InstalledModels />
+
+      <SettingRow
+        label="Show advanced"
+        hint="More options for people who know their way around."
+        controlId={advancedId}
+      >
+        <Switch
+          id={advancedId}
+          checked={models.showAdvanced}
+          onCheckedChange={(checked) => dispatch(settingsChanged({ models: { showAdvanced: checked } }))}
+        />
+      </SettingRow>
+
+      {models.showAdvanced && (
+        <>
+          <PathRow
+            label="llama-server.exe"
+            hint="The program that runs the models. The bundled one works on any GPU; use your own for CUDA."
+            path={models.llamaServerPath}
+            defaultText={bundledText}
+            browseText="Use my own…"
+            onBrowse={() => void pick('llamaServer')}
+          >
+            {models.llamaServerPath && (
+              <Button variant="outline" size="sm" onClick={() => void switchToBundled()}>
+                Use bundled
+              </Button>
+            )}
+          </PathRow>
+          <ModelList />
+        </>
+      )}
     </div>
   )
 }
