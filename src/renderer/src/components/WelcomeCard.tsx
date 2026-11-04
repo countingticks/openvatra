@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { Ember } from '@renderer/components/Ember'
+import { DownloadControls } from '@renderer/components/DownloadControls'
 import { Button } from '@renderer/components/ui/button'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
-import { fitText, hardwareLine, progressText } from '@renderer/lib/setupText'
+import { fitText, hardwareLine } from '@renderer/lib/setupText'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsReplaced } from '@renderer/store/settingsSlice'
-import type { DownloadItem } from '../../../shared/setup'
 
 interface WelcomeCardProps {
-  /** Opens the Models dialog; the link is left out until that dialog exists. */
-  onSeeOtherModels?: () => void
+  /** Opens the Models dialog. */
+  onSeeOtherModels: () => void
 }
 
 /** Shown in the Chat tab while there are no chat models: one recommendation, one button. */
@@ -86,66 +86,9 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
           Change…
         </Button>
       </p>
-      {onSeeOtherModels && (
-        <Button variant="ghost" size="sm" onClick={onSeeOtherModels}>
-          See other models
-        </Button>
-      )}
-    </section>
-  )
-}
-
-interface DownloadControlsProps {
-  item: DownloadItem | undefined
-  disabled: boolean
-  onDownload: () => void
-  onCancel: () => void
-  onResume: () => void
-}
-
-function DownloadControls({
-  item,
-  disabled,
-  onDownload,
-  onCancel,
-  onResume
-}: DownloadControlsProps): React.JSX.Element {
-  if (!item) {
-    return (
-      <Button onClick={onDownload} disabled={disabled}>
-        Download
+      <Button variant="ghost" size="sm" onClick={onSeeOtherModels}>
+        See other models
       </Button>
-    )
-  }
-  if (item.state === 'done') return <p role="status">Almost ready…</p>
-
-  const stuck = item.state === 'paused' || item.state === 'error'
-  const percent = item.total > 0 ? Math.round((item.bytes / item.total) * 100) : 0
-  return (
-    <div className="flex w-full flex-col items-center gap-2">
-      {!stuck && (
-        <progress
-          aria-label="Download progress"
-          className="h-2 w-full accent-primary"
-          max={100}
-          value={percent}
-        />
-      )}
-      <p className="text-sm" role="status">
-        {item.state === 'paused' && `Paused · ${progressText(item)}`}
-        {item.state === 'error' && `The download stopped: ${item.error ?? 'something went wrong'}`}
-        {item.state === 'queued' && 'Waiting to start…'}
-        {item.state === 'verifying' && 'Checking the download…'}
-        {item.state === 'downloading' && progressText(item)}
-      </p>
-      <div className="flex gap-2">
-        {stuck && <Button onClick={onResume}>{item.state === 'error' ? 'Try again' : 'Resume'}</Button>}
-        {item.state !== 'verifying' && (
-          <Button variant="outline" onClick={onCancel}>
-            Cancel
-          </Button>
-        )}
-      </div>
-    </div>
+    </section>
   )
 }

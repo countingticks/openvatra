@@ -5,12 +5,13 @@ import { PixelBackdrop } from '@renderer/components/PixelBackdrop'
 import { WelcomeCard } from '@renderer/components/WelcomeCard'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useModels } from '@renderer/hooks/useModels'
-import { useAppSelector } from '@renderer/store/hooks'
-import { selectActiveTab } from '@renderer/store/uiSlice'
+import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
+import { modelsDialogOpened, selectActiveTab } from '@renderer/store/uiSlice'
 
 /** The open tab's content. Each module replaces its placeholder when it arrives. */
 export function TabView(): React.JSX.Element {
   const coreState = useCoreState()
+  const dispatch = useAppDispatch()
   const noChatModels = useModels().every((model) => model.kind !== 'chat')
   // Only once core is up: before that the model list is empty just because nobody has answered yet.
   const showWelcome = coreState?.status === 'ready' && noChatModels
@@ -23,7 +24,7 @@ export function TabView(): React.JSX.Element {
           <div className="relative h-full">
             {showWelcome ? (
               <div className="flex h-full items-center justify-center p-8">
-                <WelcomeCard />
+                <WelcomeCard onSeeOtherModels={() => dispatch(modelsDialogOpened())} />
               </div>
             ) : (
               <ComingSoon

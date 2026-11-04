@@ -7,6 +7,7 @@ import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged, settingsReplaced } from '@renderer/store/settingsSlice'
+import { modelsDialogOpened, settingsClosed } from '@renderer/store/uiSlice'
 import type { PickTarget } from '../../../../shared/ipc'
 
 /** Settings → Models: where llama.cpp and the models are, how long models stay loaded, the embedding model, and each model's options. */
@@ -87,6 +88,20 @@ export function ModelsSection(): React.JSX.Element {
           }}
         />
       </SettingRow>
+
+      <div className="pt-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            // One dialog at a time: the Models dialog replaces Settings instead of stacking on it.
+            dispatch(settingsClosed())
+            dispatch(modelsDialogOpened())
+          }}
+        >
+          Get more models…
+        </Button>
+      </div>
 
       <ModelList />
     </div>

@@ -33,7 +33,8 @@ describe('ui slice', () => {
       back: [],
       forward: [],
       settingsOpen: false,
-      settingsSection: 'general'
+      settingsSection: 'general',
+      modelsDialogOpen: false
     })
   })
 

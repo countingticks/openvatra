@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { ModelsDialog } from '@renderer/components/ModelsDialog'
 import { SettingsDialog } from '@renderer/components/settings/SettingsDialog'
 import { Sidebar } from '@renderer/components/Sidebar'
 import { TabView } from '@renderer/components/TabView'
@@ -41,6 +42,7 @@ export function App(): React.JSX.Element {
       </main>
       <ErrorBoundary>
         <SettingsDialog />
+        <ModelsDialog />
       </ErrorBoundary>
     </div>
   )

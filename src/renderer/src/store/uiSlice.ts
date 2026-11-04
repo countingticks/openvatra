@@ -21,6 +21,8 @@ export interface UiState {
   settingsOpen: boolean
   /** Which section the dialog shows. */
   settingsSection: SettingsSection
+  /** The Models dialog (get or remove models) is open. Not saved, like the Settings dialog. */
+  modelsDialogOpen: boolean
 }
 
 /** Enough to go back a long way, small enough that the history never grows without bound. */
@@ -32,7 +34,8 @@ export const initialUiState: UiState = {
   back: [],
   forward: [],
   settingsOpen: false,
-  settingsSection: 'general'
+  settingsSection: 'general',
+  modelsDialogOpen: false
 }
 
 export const uiSlice = createSlice({
@@ -73,6 +76,12 @@ export const uiSlice = createSlice({
     },
     settingsClosed(state) {
       state.settingsOpen = false
+    },
+    modelsDialogOpened(state) {
+      state.modelsDialogOpen = true
+    },
+    modelsDialogClosed(state) {
+      state.modelsDialogOpen = false
     }
   },
   selectors: {
@@ -81,7 +90,8 @@ export const uiSlice = createSlice({
     selectCanGoBack: (state) => state.back.length > 0,
     selectCanGoForward: (state) => state.forward.length > 0,
     selectSettingsOpen: (state) => state.settingsOpen,
-    selectSettingsSection: (state) => state.settingsSection
+    selectSettingsSection: (state) => state.settingsSection,
+    selectModelsDialogOpen: (state) => state.modelsDialogOpen
   }
 })
 
@@ -92,7 +102,9 @@ export const {
   sidebarToggled,
   settingsOpened,
   settingsSectionSelected,
-  settingsClosed
+  settingsClosed,
+  modelsDialogOpened,
+  modelsDialogClosed
 } = uiSlice.actions
 export const {
   selectActiveTab,
@@ -100,5 +112,6 @@ export const {
   selectCanGoBack,
   selectCanGoForward,
   selectSettingsOpen,
-  selectSettingsSection
+  selectSettingsSection,
+  selectModelsDialogOpen
 } = uiSlice.selectors

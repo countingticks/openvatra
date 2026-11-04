@@ -42,6 +42,7 @@ export interface FakeSetup {
   download: Mock<SetupApi['download']>
   cancel: Mock<SetupApi['cancel']>
   resume: Mock<SetupApi['resume']>
+  remove: Mock<SetupApi['remove']>
   /** Report a new download queue, as main does on every change. */
   emitDownloads(items: DownloadItem[]): void
 }
@@ -99,6 +100,7 @@ function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeS
     download: vi.fn<SetupApi['download']>().mockResolvedValue(undefined),
     cancel: vi.fn<SetupApi['cancel']>().mockResolvedValue(undefined),
     resume: vi.fn<SetupApi['resume']>().mockResolvedValue(undefined),
+    remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
     emitDownloads: (items) => act(() => listeners.forEach((listener) => listener(items)))
   }
   const api: SetupApi = {
@@ -109,7 +111,7 @@ function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeS
     download: fake.download,
     cancel: fake.cancel,
     resume: fake.resume,
-    remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
+    remove: fake.remove,
     downloads: vi.fn<SetupApi['downloads']>().mockResolvedValue(options.downloads ?? []),
     onDownloads: (callback) => {
       listeners.add(callback)

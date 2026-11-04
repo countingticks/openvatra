@@ -7,7 +7,7 @@ import { useModels } from '@renderer/hooks/useModels'
 import { stateDot } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import { useAppDispatch } from '@renderer/store/hooks'
-import { settingsOpened } from '@renderer/store/uiSlice'
+import { modelsDialogOpened, settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState, ModelInfo } from '../../../shared/core'
 
 /** The words come first so the dot's colour is never the only signal (colour-blind users, screen readers). */
@@ -85,6 +85,16 @@ export function ModelButton(): React.JSX.Element {
             }}
           >
             Model settings…
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setOpen(false)
+              dispatch(modelsDialogOpened())
+            }}
+          >
+            Get more models…
           </Button>
         </div>
       </PopoverContent>
