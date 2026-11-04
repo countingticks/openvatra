@@ -33,6 +33,12 @@ function coreExePath(): string {
     : join(app.getAppPath(), 'resources', 'core', 'core.exe')
 }
 
+// Test seam: a catalog file that may name a local server. Never reachable in an installed app.
+function coreExtraArgs(): string[] {
+  const file = process.env['OPENVATRA_TEST_CATALOG']
+  return !app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && file ? ['--test-catalog', file] : []
+}
+
 let mainWindow: BrowserWindow | null = null
 let tray: AppTray | null = null
 let core: Supervisor | null = null
@@ -117,6 +123,7 @@ function start(): void {
     })
     core = createSupervisor({
       exePath: coreExePath(),
+      extraArgs: coreExtraArgs(),
       logsDir: logsFolder(),
       onState: (state) => {
         // The list only means something while core is up; a new one arrives once it is ready again.

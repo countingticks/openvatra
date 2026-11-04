@@ -29,6 +29,8 @@ export interface SupervisorOptions {
   log: { info: (message: string) => void; warn: (message: string) => void }
   // Injected so tests can use a fake child process and a fake network.
   spawn?: (exePath: string, env: NodeJS.ProcessEnv) => ChildProcessWithoutNullStreams
+  /** Extra command-line arguments for core.exe (the e2e tests' --test-catalog). */
+  extraArgs?: string[]
   fetch?: typeof fetch
   /** How long core may take to print its ready line. */
   readyTimeoutMs?: number
@@ -59,12 +61,12 @@ interface Attempt {
   onExit?: () => void
 }
 
-const defaultSpawn: NonNullable<SupervisorOptions['spawn']> = (exePath, env) =>
-  nodeSpawn(exePath, ['--port', '0'], { env, windowsHide: true })
-
 export function createSupervisor(options: SupervisorOptions): Supervisor {
   const { exePath, logsDir, onState, log } = options
-  const spawn = options.spawn ?? defaultSpawn
+  const spawn =
+    options.spawn ??
+    ((exe: string, env: NodeJS.ProcessEnv) =>
+      nodeSpawn(exe, ['--port', '0', ...(options.extraArgs ?? [])], { env, windowsHide: true }))
   const doFetch = options.fetch ?? fetch
   const readyTimeoutMs = options.readyTimeoutMs ?? 15_000
   const stopTimeoutMs = options.stopTimeoutMs ?? 8_000
