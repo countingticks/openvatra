@@ -16,7 +16,7 @@ function toCoreOptions(options: ModelOptions): Record<string, unknown> {
 /**
  * The body core expects (core/internal/config). Core uses "" for "not chosen" and 0 minutes for "never", and gets
  * argument lists, never text: splitting happens here, once, so core runs exactly what the settings say.
- * No chosen llama-server means the bundled one, so core always gets a real path.
+ * No chosen llama-server means the default one (CUDA or bundled, see bundledLlama.ts), so core always gets a real path.
  */
 export function toCoreConfig(
   models: ModelsSettings,
@@ -46,7 +46,7 @@ export function createConfigSync(
   getSettings: () => Settings,
   post: (path: string, body: unknown) => Promise<void>,
   log: { warn: (message: string, error?: unknown) => void },
-  bundledLlamaServer: string,
+  defaultLlamaServer: () => Promise<string>,
   defaultModelsDir: string
 ): ConfigSync {
   // Sends run one after another, and each reads the settings when its turn comes. So two quick changes can't
@@ -56,7 +56,8 @@ export function createConfigSync(
   function sync(): Promise<void> {
     queue = queue.then(async () => {
       try {
-        await post('/api/config', toCoreConfig(getSettings().models, bundledLlamaServer, defaultModelsDir))
+        const models = getSettings().models
+        await post('/api/config', toCoreConfig(models, await defaultLlamaServer(), defaultModelsDir))
       } catch (error) {
         log.warn('Could not send the config to core', error)
       }

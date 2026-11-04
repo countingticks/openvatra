@@ -10,10 +10,10 @@ import {
   type AppFolder,
   type FileLocations
 } from '../shared/ipc'
+import type { LlamaInfo } from '../shared/ipc'
 import type { CoreState, ModelInfo } from '../shared/core'
 import type { CatalogView, DownloadItem, HardwareReport } from '../shared/setup'
 import type { Settings } from '../shared/settings'
-import { readBundledTag } from './bundledLlama'
 import type { ModelsClient } from './core/modelsClient'
 import type { SetupClient } from './core/setupClient'
 import type { Supervisor } from './core/supervisor'
@@ -36,7 +36,7 @@ export function registerIpcHandlers(
   store: SettingsStore,
   appUrl: string,
   locations: FileLocations,
-  llamaDir: string,
+  llamaInfo: () => Promise<LlamaInfo>,
   core: CoreControl
 ): void {
   const folders: Record<AppFolder, string> = {
@@ -167,6 +167,16 @@ export function registerIpcHandlers(
     return core.downloads()
   })
 
+  ipcMain.handle(ipcChannels.setupDownloadEngine, async (event): Promise<void> => {
+    assertFromApp(event)
+    try {
+      await core.downloadEngine()
+    } catch (error) {
+      log.warn('setup: engine download failed', error)
+      throw error
+    }
+  })
+
   // Same shape for each: the id is validated, core's short message goes back to the UI, the detail to the log.
   for (const [channel, action] of [
     [ipcChannels.setupDownload, 'download'],
@@ -214,9 +224,9 @@ export function registerIpcHandlers(
     return store.setModelPath(parsed.data === 'llamaServer' ? 'llamaServerPath' : 'modelsDir', path)
   })
 
-  ipcMain.handle(ipcChannels.filesBundledLlama, async (event): Promise<{ tag: string | null }> => {
+  ipcMain.handle(ipcChannels.filesBundledLlama, async (event): Promise<LlamaInfo> => {
     assertFromApp(event)
-    return { tag: await readBundledTag(llamaDir) }
+    return llamaInfo()
   })
 
   // Takes no argument: "none chosen" is the only value the UI can ask for, so it can't smuggle in a path.

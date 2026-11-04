@@ -30,6 +30,7 @@ func (s *stubDownloads) record(c string) error {
 	return s.err
 }
 func (s *stubDownloads) Start(id string) error  { return s.record("start " + id) }
+func (s *stubDownloads) StartEngine() error     { return s.record("start engine") }
 func (s *stubDownloads) Resume(id string) error { return s.record("resume " + id) }
 func (s *stubDownloads) Cancel(id string) error { return s.record("cancel " + id) }
 func (s *stubDownloads) Items() []downloads.Item {
@@ -52,6 +53,7 @@ func TestDownloadEndpointsCallTheQueue(t *testing.T) {
 	dl := &stubDownloads{}
 	cases := []struct{ method, path, body, call string }{
 		{"POST", "/api/downloads", `{"catalogId":"qwen"}`, "start qwen"},
+		{"POST", "/api/downloads", `{"engine":"cuda"}`, "start engine"},
 		{"DELETE", "/api/downloads/qwen", "", "cancel qwen"},
 		{"POST", "/api/downloads/qwen/resume", "", "resume qwen"},
 	}
@@ -87,14 +89,11 @@ func TestDownloadErrorsMapToStatuses(t *testing.T) {
 }
 
 func TestStartRejectsBadBodies(t *testing.T) {
-	for _, body := range []string{``, `{}`, `{"catalogId":"a","engine":"cuda"}`, `{"catalogId":"a","x":1}`, `nope`} {
+	for _, body := range []string{``, `{}`, `{"catalogId":"a","engine":"cuda"}`, `{"catalogId":"a","x":1}`, `{"engine":"rocm"}`, `nope`} {
 		dl := &stubDownloads{}
 		if rec := callDownloads(dl, "POST", "/api/downloads", body); rec.Code != http.StatusBadRequest || len(dl.calls) != 0 {
 			t.Fatalf("body %q -> %d, calls %v", body, rec.Code, dl.calls)
 		}
-	}
-	if rec := callDownloads(&stubDownloads{}, "POST", "/api/downloads", `{"engine":"cuda"}`); rec.Code != http.StatusNotImplemented {
-		t.Fatalf("engine = %d, want 501", rec.Code)
 	}
 }
 

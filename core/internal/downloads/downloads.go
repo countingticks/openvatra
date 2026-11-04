@@ -1,5 +1,6 @@
-// Package downloads is the queue in front of package download: it runs catalog downloads one at a time, lets the UI
-// cancel or resume them, and reports progress. Package download moves the bytes; this one decides which, and when.
+// Package downloads is the queue in front of package download: it runs catalog downloads (and the optional CUDA
+// engine) one at a time, lets the UI cancel or resume them, and reports progress. Package download moves the bytes;
+// this one decides which, and when.
 package downloads
 
 import (
@@ -40,7 +41,7 @@ type Item struct {
 
 // Errors the API maps to answers.
 var (
-	ErrUnknown      = errors.New("not a catalog model")
+	ErrUnknown      = errors.New("not a catalog model or engine")
 	ErrNoFolder     = errors.New("no models folder is set")
 	ErrInstalled    = errors.New("already installed")
 	ErrNoSpace      = errors.New("not enough disk space")
@@ -63,10 +64,25 @@ type Config struct {
 	DiskFree func(dir string) (uint64, error)
 	// OnFinish runs after a model finished, so the caller can rescan the folder and tell the UI.
 	OnFinish func()
+	// Engine is the optional CUDA build; nil when core was started without a manifest.
+	Engine *Engine
+}
+
+// target is what one queue entry downloads: a catalog model or the engine. Both are "some files into a folder",
+// which is why one worker and one set of rules serve both.
+type target struct {
+	id        string
+	files     []catalog.File
+	folder    string                      // "" while it is unknown (no models folder yet)
+	url       func(f catalog.File) string // where each file comes from
+	allowHost func(string) bool           // nil = the downloader's own list
+	installed func() bool                 // nil = "every file is in folder"
+	extra     int64                       // disk needed beyond the files themselves (unpacking)
+	finish    func(ctx context.Context, folder string) error
 }
 
 type job struct {
-	entry     catalog.Entry
+	target    target
 	state     State
 	done      int64
 	total     int64
@@ -141,18 +157,17 @@ func (m *Manager) notify() {
 func (m *Manager) Items() []Item {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	dir := m.cfg.ModelsDir()
 	out := []Item{}
-	for _, e := range m.cfg.Entries {
-		if j := m.jobs[e.ID]; j != nil {
-			out = append(out, Item{ID: e.ID, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
+	for _, t := range m.targets() {
+		if j := m.jobs[t.id]; j != nil {
+			out = append(out, Item{ID: t.id, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
 			continue
 		}
-		if dir == "" {
+		if t.folder == "" {
 			continue
 		}
-		if have := partBytes(filepath.Join(dir, e.ID), e.Files); have > 0 {
-			out = append(out, Item{ID: e.ID, State: Paused, Bytes: have, Total: totalSize(e.Files)})
+		if have := partBytes(t.folder, t.files); have > 0 {
+			out = append(out, Item{ID: t.id, State: Paused, Bytes: have, Total: totalSize(t.files)})
 		}
 	}
 	return out
@@ -164,24 +179,25 @@ func (m *Manager) Start(id string) error { return m.enqueue(id, false) }
 // Resume queues a paused or failed download again. The partial file is continued where it stopped.
 func (m *Manager) Resume(id string) error { return m.enqueue(id, true) }
 
+// StartEngine queues the CUDA engine; ErrUnknown when core has no manifest for it.
+func (m *Manager) StartEngine() error { return m.enqueue(EngineID, false) }
+
 func (m *Manager) enqueue(id string, mustBeStopped bool) error {
 	m.mu.Lock()
-	var entry *catalog.Entry
-	for i := range m.cfg.Entries {
-		if m.cfg.Entries[i].ID == id {
-			entry = &m.cfg.Entries[i]
-		}
-	}
-	if entry == nil {
+	t, ok := m.target(id)
+	if !ok {
 		m.mu.Unlock()
 		return ErrUnknown
 	}
-	dir := m.cfg.ModelsDir()
-	if dir == "" {
+	if t.folder == "" {
 		m.mu.Unlock()
 		return ErrNoFolder
 	}
-	folder := filepath.Join(dir, id)
+	if t.installed != nil && t.installed() {
+		m.mu.Unlock()
+		return ErrInstalled
+	}
+	folder := t.folder
 	stopped := false // paused or failed, with or without a job in memory
 	if j := m.jobs[id]; j != nil {
 		switch j.state {
@@ -194,15 +210,15 @@ func (m *Manager) enqueue(id string, mustBeStopped bool) error {
 		case Paused, Failed:
 			stopped = true
 		}
-	} else if partBytes(folder, entry.Files) > 0 {
+	} else if partBytes(folder, t.files) > 0 {
 		stopped = true
 	}
 	if mustBeStopped && !stopped {
 		m.mu.Unlock()
 		return ErrNotResumable
 	}
-	missing := missingBytes(folder, entry.Files)
-	if missing == 0 {
+	missing := missingBytes(folder, t.files)
+	if missing == 0 && t.installed == nil {
 		m.mu.Unlock()
 		return ErrInstalled
 	}
@@ -212,7 +228,7 @@ func (m *Manager) enqueue(id string, mustBeStopped bool) error {
 	if err := os.MkdirAll(folder, 0o755); err != nil {
 		return err
 	}
-	if free, err := m.cfg.DiskFree(folder); err == nil && uint64(missing)+diskSpare > free {
+	if free, err := m.cfg.DiskFree(folder); err == nil && uint64(missing+t.extra)+diskSpare > free {
 		return ErrNoSpace // an unreadable drive never blocks a download, as in the catalog
 	}
 
@@ -221,7 +237,7 @@ func (m *Manager) enqueue(id string, mustBeStopped bool) error {
 		m.mu.Unlock()
 		return nil // a second request got in while the disk was being checked
 	}
-	m.jobs[id] = &job{entry: *entry, state: Queued, done: totalSize(entry.Files) - missing, total: totalSize(entry.Files)}
+	m.jobs[id] = &job{target: t, state: Queued, done: totalSize(t.files) - missing, total: totalSize(t.files)}
 	m.queue = append(m.queue, id)
 	m.mu.Unlock()
 	m.notify()
@@ -235,20 +251,12 @@ func (m *Manager) enqueue(id string, mustBeStopped bool) error {
 // Cancel stops a download and deletes what it wrote so far, whatever state it is in. A finished one is just dismissed.
 func (m *Manager) Cancel(id string) error {
 	m.mu.Lock()
-	var entry *catalog.Entry
-	for i := range m.cfg.Entries {
-		if m.cfg.Entries[i].ID == id {
-			entry = &m.cfg.Entries[i]
-		}
-	}
-	if entry == nil {
+	t, ok := m.target(id)
+	if !ok {
 		m.mu.Unlock()
 		return ErrUnknown
 	}
-	folder := ""
-	if dir := m.cfg.ModelsDir(); dir != "" {
-		folder = filepath.Join(dir, id)
-	}
+	folder := t.folder
 	j := m.jobs[id]
 	finished := j != nil && j.state == Done // installed: dismissing it must not touch the files
 	switch {
@@ -261,13 +269,13 @@ func (m *Manager) Cancel(id string) error {
 	case j != nil:
 		m.dequeue(id)
 		delete(m.jobs, id)
-	case folder == "" || partBytes(folder, entry.Files) == 0:
+	case folder == "" || partBytes(folder, t.files) == 0:
 		m.mu.Unlock()
 		return ErrNoDownload
 	}
 	m.mu.Unlock()
 	if folder != "" && !finished {
-		discard(folder, entry.Files)
+		discard(folder, t.files)
 	}
 	m.notify()
 	return nil
@@ -317,19 +325,27 @@ func (m *Manager) run(id string) {
 
 	m.mu.Lock()
 	j := m.jobs[id]
-	dir := m.cfg.ModelsDir()
-	if j == nil || dir == "" {
+	if j == nil {
 		m.mu.Unlock()
 		return
 	}
+	// Looked up again: the user may have changed the models folder while this job waited.
+	t, _ := m.target(id)
+	if t.folder == "" {
+		m.mu.Unlock()
+		return
+	}
+	j.target = t
 	j.state, j.err, j.cancel = Downloading, "", cancel
 	j.lastAt, j.lastBytes = time.Now(), j.done
-	entry := j.entry
 	m.mu.Unlock()
 	m.notify()
 
-	folder := filepath.Join(dir, id)
-	err := m.fetchAll(ctx, j, entry, folder)
+	folder := t.folder
+	err := m.fetchAll(ctx, j, t)
+	if err == nil && t.finish != nil {
+		err = t.finish(ctx, folder)
+	}
 
 	m.mu.Lock()
 	j.cancel = nil
@@ -351,7 +367,7 @@ func (m *Manager) run(id string) {
 	m.mu.Unlock()
 
 	if cancelled {
-		discard(folder, entry.Files)
+		discard(folder, t.files)
 	}
 	if err == nil && m.cfg.OnFinish != nil {
 		m.cfg.OnFinish()
@@ -359,26 +375,17 @@ func (m *Manager) run(id string) {
 	m.notify()
 }
 
-// fetchAll downloads the entry's files in order, skipping the ones that are already complete.
-func (m *Manager) fetchAll(ctx context.Context, j *job, entry catalog.Entry, folder string) error {
-	base := "https://huggingface.co"
-	if entry.BaseURL != "" {
-		base = entry.BaseURL
-	}
+// fetchAll downloads the target's files in order, skipping the ones that are already complete.
+func (m *Manager) fetchAll(ctx context.Context, j *job, t target) error {
 	var before int64 // bytes of the files before this one
-	for i, f := range entry.Files {
-		dest := filepath.Join(folder, f.Name)
+	for i, f := range t.files {
+		dest := filepath.Join(t.folder, f.Name)
 		if info, err := os.Stat(dest); err == nil && info.Mode().IsRegular() && info.Size() == f.SizeBytes {
 			before += f.SizeBytes
 			continue
 		}
-		last := i == len(entry.Files)-1
-		req := download.Request{
-			URL:    fmt.Sprintf("%s/%s/resolve/%s/%s", base, entry.Repo, entry.Revision, f.Name),
-			Dest:   dest,
-			Size:   f.SizeBytes,
-			SHA256: f.SHA256,
-		}
+		last := i == len(t.files)-1
+		req := download.Request{URL: t.url(f), Dest: dest, Size: f.SizeBytes, SHA256: f.SHA256, AllowHost: t.allowHost}
 		err := m.cfg.Downloader.Fetch(ctx, req, func(p download.Progress) {
 			m.progress(j, before+p.Done, last && p.Done == p.Total)
 		})
@@ -388,6 +395,43 @@ func (m *Manager) fetchAll(ctx context.Context, j *job, entry catalog.Entry, fol
 		before += f.SizeBytes
 	}
 	return nil
+}
+
+// target finds a queue entry by id. The caller holds m.mu or does not mind a stale ModelsDir.
+func (m *Manager) target(id string) (target, bool) {
+	for _, t := range m.targets() {
+		if t.id == id {
+			return t, true
+		}
+	}
+	return target{}, false
+}
+
+// targets lists every catalog model, then the engine if core has one.
+func (m *Manager) targets() []target {
+	dir := m.cfg.ModelsDir()
+	var out []target
+	for _, e := range m.cfg.Entries {
+		base := "https://huggingface.co"
+		if e.BaseURL != "" {
+			base = e.BaseURL
+		}
+		t := target{
+			id:    e.ID,
+			files: e.Files,
+			url: func(f catalog.File) string {
+				return fmt.Sprintf("%s/%s/resolve/%s/%s", base, e.Repo, e.Revision, f.Name)
+			},
+		}
+		if dir != "" {
+			t.folder = filepath.Join(dir, e.ID)
+		}
+		out = append(out, t)
+	}
+	if m.cfg.Engine != nil {
+		out = append(out, m.cfg.Engine.target())
+	}
+	return out
 }
 
 func (m *Manager) progress(j *job, done int64, verifying bool) {

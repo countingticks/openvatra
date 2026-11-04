@@ -1,9 +1,17 @@
 // @vitest-environment node
-import { mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { bundledLlamaDir, bundledLlamaExe, readBundledTag } from '../../../src/main/bundledLlama'
+import {
+  bundledLlamaDir,
+  bundledLlamaExe,
+  cudaStatus,
+  defaultLlamaServer,
+  llamaManifestPath,
+  readBundledTag,
+  readPinnedTag
+} from '../../../src/main/bundledLlama'
 
 describe('bundled llama.cpp location', () => {
   it('is beside app.asar when installed, and in resources/llama/bin in development', () => {
@@ -12,6 +20,15 @@ describe('bundled llama.cpp location', () => {
     )
     expect(bundledLlamaDir(false, 'C:/electron/resources', 'D:/Repos/openvatra')).toBe(
       join('D:/Repos/openvatra', 'resources', 'llama', 'bin')
+    )
+  })
+
+  it('finds llama.json next to the bundled build, which is not inside bin/ in development', () => {
+    expect(llamaManifestPath(true, 'C:/Apps/OpenVatra/resources', 'unused')).toBe(
+      join('C:/Apps/OpenVatra/resources', 'llama', 'llama.json')
+    )
+    expect(llamaManifestPath(false, 'unused', 'D:/Repos/openvatra')).toBe(
+      join('D:/Repos/openvatra', 'resources', 'llama', 'llama.json')
     )
   })
 
@@ -36,5 +53,47 @@ describe('readBundledTag', () => {
     expect(await readBundledTag(dir)).toBeNull()
     await writeFile(join(dir, '.tag'), '  \n')
     expect(await readBundledTag(dir)).toBeNull()
+  })
+})
+
+describe('CUDA engine resolution', () => {
+  let enginesDir: string
+  beforeEach(async () => {
+    enginesDir = await mkdtemp(join(tmpdir(), 'openvatra-engines-'))
+  })
+  afterEach(async () => {
+    await rm(enginesDir, { recursive: true, force: true })
+  })
+  const install = async (name: string): Promise<void> => {
+    await mkdir(join(enginesDir, name), { recursive: true })
+    await writeFile(join(enginesDir, name, 'llama-server.exe'), '')
+  }
+
+  it('reports none, ready for this tag, and stale for an older tag', async () => {
+    expect(await cudaStatus(enginesDir, 'b2')).toBe('none')
+    await install('b1-cuda')
+    expect(await cudaStatus(enginesDir, 'b2')).toBe('stale')
+    await install('b2-cuda')
+    expect(await cudaStatus(enginesDir, 'b2')).toBe('ready')
+    expect(await cudaStatus(join(enginesDir, 'missing'), 'b2')).toBe('none')
+  })
+
+  it('runs CUDA only when chosen and current; stale or unchosen falls back to the bundled build', async () => {
+    const bundled = bundledLlamaExe('C:/app/llama')
+    await install('b1-cuda')
+    expect(await defaultLlamaServer('cuda', 'C:/app/llama', enginesDir, 'b2')).toBe(bundled)
+    await install('b2-cuda')
+    expect(await defaultLlamaServer('bundled', 'C:/app/llama', enginesDir, 'b2')).toBe(bundled)
+    expect(await defaultLlamaServer('cuda', 'C:/app/llama', enginesDir, 'b2')).toBe(
+      join(enginesDir, 'b2-cuda', 'llama-server.exe')
+    )
+    expect(await defaultLlamaServer('cuda', 'C:/app/llama', enginesDir, null)).toBe(bundled)
+  })
+
+  it('reads the pinned tag from llama.json', async () => {
+    const file = join(enginesDir, 'llama.json')
+    await writeFile(file, JSON.stringify({ tag: 'b12078' }))
+    expect(await readPinnedTag(file)).toBe('b12078')
+    expect(await readPinnedTag(join(enginesDir, 'nope.json'))).toBeNull()
   })
 })

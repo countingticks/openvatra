@@ -128,7 +128,17 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     core: ['getState', 'load', 'models', 'onModels', 'onState', 'openLog', 'restart', 'unload'],
     coreFrozen: true,
     // Added in T62: the first-model flow: hardware, catalog, and download/cancel/resume/remove.
-    setup: ['cancel', 'catalog', 'download', 'downloads', 'hardware', 'onDownloads', 'remove', 'resume'],
+    setup: [
+      'cancel',
+      'catalog',
+      'download',
+      'downloadEngine',
+      'downloads',
+      'hardware',
+      'onDownloads',
+      'remove',
+      'resume'
+    ],
     setupFrozen: true
   })
 })

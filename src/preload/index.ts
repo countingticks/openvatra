@@ -76,6 +76,7 @@ const api: Api = {
     hardware: () => ipcRenderer.invoke(ipcChannels.setupHardware),
     catalog: () => ipcRenderer.invoke(ipcChannels.setupCatalog),
     download: (catalogId) => ipcRenderer.invoke(ipcChannels.setupDownload, catalogId),
+    downloadEngine: () => ipcRenderer.invoke(ipcChannels.setupDownloadEngine),
     cancel: (id) => ipcRenderer.invoke(ipcChannels.setupCancel, id),
     resume: (id) => ipcRenderer.invoke(ipcChannels.setupResume, id),
     downloads: () => ipcRenderer.invoke(ipcChannels.setupGetDownloads),

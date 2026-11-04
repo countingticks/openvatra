@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '@renderer/components/ui/popover'
 import { Button } from '@renderer/components/ui/button'
+import { CudaEngineOffer } from '@renderer/components/CudaEngineOffer'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useModels } from '@renderer/hooks/useModels'
@@ -69,6 +70,7 @@ export function ModelButton(): React.JSX.Element {
       <PopoverContent side="top" align="end" aria-label="Models service">
         {detail && <p>{detail}</p>}
         {state?.status === 'ready' && <ModelPicker models={models} />}
+        <CudaEngineOffer variant="card" />
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => run(window.api.core.restart)}>
             Restart

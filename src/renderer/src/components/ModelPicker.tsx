@@ -1,11 +1,22 @@
 import { useState } from 'react'
 import { Check, LoaderCircle } from 'lucide-react'
+import { Button } from '@renderer/components/ui/button'
+import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
 import { failureReason } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
+import { useAppDispatch } from '@renderer/store/hooks'
+import { settingsChanged } from '@renderer/store/settingsSlice'
 import type { ModelInfo } from '../../../shared/core'
 
 /** The whole row is the button: clicking a model loads it, clicking the loaded one unloads it. */
-function PickerRow({ model }: { model: ModelInfo }): React.JSX.Element {
+function PickerRow({
+  model,
+  onUseStandardEngine
+}: {
+  model: ModelInfo
+  /** Set while the faster (CUDA) engine is in use: a failed start may be its fault, so offer the way back. */
+  onUseStandardEngine?: () => void
+}): React.JSX.Element {
   const [pending, setPending] = useState(false)
   const [failure, setFailure] = useState<string>()
   const loaded = model.state === 'ready'
@@ -58,12 +69,24 @@ function PickerRow({ model }: { model: ModelInfo }): React.JSX.Element {
         )}
         {loaded && !loading && <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />}
       </button>
+      {problem && onUseStandardEngine && (
+        <div className="px-2 pb-1">
+          <Button variant="outline" size="sm" onClick={onUseStandardEngine}>
+            Use the standard engine
+          </Button>
+        </div>
+      )}
     </li>
   )
 }
 
 /** The models core found, shown in the model button's popover while core is ready. */
 export function ModelPicker({ models }: { models: ModelInfo[] }): React.JSX.Element {
+  const { inUse } = useCudaEngine()
+  const dispatch = useAppDispatch()
+  const useStandard = inUse
+    ? (): void => void dispatch(settingsChanged({ models: { engine: 'bundled' } }))
+    : undefined
   if (models.length === 0)
     return (
       <p className="text-xs text-muted-foreground">No models found. Choose a folder in Model settings.</p>
@@ -71,7 +94,7 @@ export function ModelPicker({ models }: { models: ModelInfo[] }): React.JSX.Elem
   return (
     <ul aria-label="Models" className="flex max-h-60 flex-col gap-0.5 overflow-y-auto">
       {models.map((model) => (
-        <PickerRow key={model.id} model={model} />
+        <PickerRow key={model.id} model={model} onUseStandardEngine={useStandard} />
       ))}
     </ul>
   )

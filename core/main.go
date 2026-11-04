@@ -56,6 +56,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	// For the end-to-end tests only: main passes it solely when unpackaged with OPENVATRA_E2E=1.
 	testCatalog := fs.String("test-catalog", "", "catalog file that replaces the built-in list and may name a local server")
+	// Both come from Electron main. Without them core still works; it just can't offer the CUDA engine.
+	llamaManifest := fs.String("llama-manifest", "", "llama.json with the pinned llama.cpp builds")
+	enginesDir := fs.String("engines-dir", "", "folder the downloaded llama.cpp engines go into")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -133,6 +136,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		dler.AllowHost = func(h string) bool { return download.HuggingFaceHost(h) || h == "127.0.0.1" || h == "localhost" }
 		logger.Warn("using a test catalog", "file", *testCatalog)
 	}
+	var engine *downloads.Engine
+	if *llamaManifest != "" && *enginesDir != "" {
+		if engine, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
+			logger.Warn("no CUDA engine offered", "err", err) // a build bug at worst: the rest of core is unaffected
+			engine = nil
+		}
+	}
 	cat := catalog.New(entries, hardware.Get, func() string { return cfg.Get().ModelsDir })
 	// A finished download changes what is on disk: tell every listener to re-read the models.
 	dl := downloads.New(downloads.Config{
@@ -140,6 +150,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		Entries:    entries,
 		ModelsDir:  func() string { return cfg.Get().ModelsDir },
 		OnFinish:   rt.Notify,
+		Engine:     engine,
 	})
 	defer dl.Close()
 	defer rt.Close() // after the server is down, so no request is mid-stream

@@ -35,6 +35,7 @@ export const ipcChannels = {
   setupHardware: 'setup:hardware',
   setupCatalog: 'setup:catalog',
   setupDownload: 'setup:download',
+  setupDownloadEngine: 'setup:download-engine',
   setupCancel: 'setup:cancel',
   setupResume: 'setup:resume',
   setupRemove: 'setup:remove',
@@ -92,10 +93,16 @@ export interface FilesApi {
    * settings, or null if the user cancelled.
    */
   pick(target: PickTarget): Promise<Settings | null>
-  /** The llama.cpp build that ships with the app: its release tag (e.g. "b12078"), or null if it can't be read. */
-  bundledLlama(): Promise<{ tag: string | null }>
+  /** The engines: the bundled build's release tag (e.g. "b12078", null if unreadable) and the CUDA build's state. */
+  bundledLlama(): Promise<LlamaInfo>
   /** Goes back to the bundled llama-server (saves "none chosen"); resolves with the saved settings. */
   useBundledLlama(): Promise<Settings>
+}
+
+/** `cuda`: `ready` = installed for this app's tag; `stale` = only an older one (offer the update); `none`. */
+export interface LlamaInfo {
+  tag: string | null
+  cuda: 'none' | 'ready' | 'stale'
 }
 
 export interface RuntimeInfo {
@@ -139,6 +146,8 @@ export interface SetupApi {
   catalog(): Promise<CatalogView>
   /** Queues a catalog model for download; rejects with core's short reason (no space, already installed…). */
   download(catalogId: string): Promise<void>
+  /** Queues the faster engine for NVIDIA cards (the CUDA build); same queue and events, id `engine-cuda`. */
+  downloadEngine(): Promise<void>
   /** Cancels a download and deletes its partial file. */
   cancel(id: string): Promise<void>
   /** Continues a paused or failed download. */
