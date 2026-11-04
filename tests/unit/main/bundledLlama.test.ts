@@ -3,7 +3,12 @@ import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { bundledLlamaDir, bundledLlamaExe, readBundledTag } from '../../../src/main/bundledLlama'
+import {
+  bundledLlamaDir,
+  bundledLlamaExe,
+  llamaManifestPath,
+  readBundledTag
+} from '../../../src/main/bundledLlama'
 
 describe('bundled llama.cpp location', () => {
   it('is beside app.asar when installed, and in resources/llama/bin in development', () => {
@@ -12,6 +17,15 @@ describe('bundled llama.cpp location', () => {
     )
     expect(bundledLlamaDir(false, 'C:/electron/resources', 'D:/Repos/openvatra')).toBe(
       join('D:/Repos/openvatra', 'resources', 'llama', 'bin')
+    )
+  })
+
+  it('finds llama.json next to the bundled build, which is not inside bin/ in development', () => {
+    expect(llamaManifestPath(true, 'C:/Apps/OpenVatra/resources', 'unused')).toBe(
+      join('C:/Apps/OpenVatra/resources', 'llama', 'llama.json')
+    )
+    expect(llamaManifestPath(false, 'unused', 'D:/Repos/openvatra')).toBe(
+      join('D:/Repos/openvatra', 'resources', 'llama', 'llama.json')
     )
   })
 

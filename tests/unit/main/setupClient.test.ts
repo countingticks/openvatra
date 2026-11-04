@@ -191,6 +191,18 @@ describe('setup client: downloads', () => {
     )
   })
 
+  it('queues the CUDA engine without touching the models folder', async () => {
+    const { client, request, makeDir } = setUp(null)
+
+    await client.downloadEngine()
+
+    expect(makeDir).not.toHaveBeenCalled()
+    expect(request).toHaveBeenCalledWith(
+      '/api/downloads',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ engine: 'cuda' }) })
+    )
+  })
+
   it('cancels and resumes by id, encoded into the path', async () => {
     const { client, request } = setUp(null)
 

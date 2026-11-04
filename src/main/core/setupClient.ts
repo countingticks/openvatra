@@ -50,6 +50,7 @@ export interface SetupClient {
   hardware: () => Promise<HardwareReport>
   catalog: () => Promise<CatalogView>
   download: (catalogId: string) => Promise<void>
+  downloadEngine: () => Promise<void>
   cancel: (id: string) => Promise<void>
   resume: (id: string) => Promise<void>
   remove: (catalogId: string) => Promise<void>
@@ -102,6 +103,15 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ catalogId })
+    })
+  }
+
+  async function downloadEngine(): Promise<void> {
+    // Core picks the folder (engines/<tag>-cuda) and the files from the pin in llama.json; nothing here to choose.
+    await json('/api/downloads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ engine: 'cuda' })
     })
   }
 
@@ -173,7 +183,7 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
     }
   }
 
-  return { hardware, catalog, download, cancel, resume, remove }
+  return { hardware, catalog, download, downloadEngine, cancel, resume, remove }
 }
 
 /** core's errors are `{ "error": { "code", "message" } }`; anything else gets a generic message. */

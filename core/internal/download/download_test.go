@@ -213,15 +213,28 @@ func TestFetchStopsOnCancel(t *testing.T) {
 
 func TestPlainHTTPOnlyForLocalWhenAllowed(t *testing.T) {
 	d := New()
-	if err := d.checkURL("http://127.0.0.1:9/x"); err == nil {
+	if err := d.checkURL("http://127.0.0.1:9/x", nil); err == nil {
 		t.Fatal("plain http accepted by default")
 	}
 	d.AllowLocalHTTP = true
 	d.AllowHost = func(string) bool { return true }
-	if err := d.checkURL("http://127.0.0.1:9/x"); err != nil {
+	if err := d.checkURL("http://127.0.0.1:9/x", nil); err != nil {
 		t.Fatalf("local http refused: %v", err)
 	}
-	if err := d.checkURL("http://example.com/x"); err == nil {
+	if err := d.checkURL("http://example.com/x", nil); err == nil {
 		t.Fatal("remote plain http accepted")
+	}
+}
+
+func TestRequestHostListReplacesTheDownloadersOwn(t *testing.T) {
+	d := New() // Hugging Face only
+	if err := d.checkURL("https://github.com/x", nil); err == nil {
+		t.Fatal("github must not pass the default list")
+	}
+	if err := d.checkURL("https://github.com/x", GitHubReleaseHost); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.checkURL("https://huggingface.co/x", GitHubReleaseHost); err == nil {
+		t.Fatal("a per-request list replaces the default, it does not add to it")
 	}
 }

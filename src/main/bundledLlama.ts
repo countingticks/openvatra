@@ -9,6 +9,13 @@ export function bundledLlamaDir(packaged: boolean, resourcesPath: string, appPat
   return packaged ? join(resourcesPath, 'llama') : join(appPath, 'resources', 'llama', 'bin')
 }
 
+/** The pin file: beside the exe's folder in development (it is not inside bin/), inside it once installed. */
+export function llamaManifestPath(packaged: boolean, resourcesPath: string, appPath: string): string {
+  return packaged
+    ? join(resourcesPath, 'llama', 'llama.json')
+    : join(appPath, 'resources', 'llama', 'llama.json')
+}
+
 export function bundledLlamaExe(dir: string): string {
   return join(dir, 'llama-server.exe')
 }

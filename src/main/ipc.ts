@@ -167,6 +167,16 @@ export function registerIpcHandlers(
     return core.downloads()
   })
 
+  ipcMain.handle(ipcChannels.setupDownloadEngine, async (event): Promise<void> => {
+    assertFromApp(event)
+    try {
+      await core.downloadEngine()
+    } catch (error) {
+      log.warn('setup: engine download failed', error)
+      throw error
+    }
+  })
+
   // Same shape for each: the id is validated, core's short message goes back to the UI, the detail to the log.
   for (const [channel, action] of [
     [ipcChannels.setupDownload, 'download'],

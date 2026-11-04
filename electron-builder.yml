@@ -28,6 +28,7 @@ extraResources:
     to: llama
     filter:
       - LICENSE-llama.cpp.txt
+      - llama.json
 win:
   executableName: OpenVatra
 nsis:

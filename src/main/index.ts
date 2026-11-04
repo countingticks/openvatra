@@ -6,7 +6,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
-import { bundledLlamaDir, bundledLlamaExe } from './bundledLlama'
+import { bundledLlamaDir, bundledLlamaExe, llamaManifestPath } from './bundledLlama'
 import { createConfigSync } from './core/configSync'
 import { createModelsClient } from './core/modelsClient'
 import { createSetupClient, defaultModelsDir } from './core/setupClient'
@@ -33,10 +33,27 @@ function coreExePath(): string {
     : join(app.getAppPath(), 'resources', 'core', 'core.exe')
 }
 
-// Test seam: a catalog file that may name a local server. Never reachable in an installed app.
+// Where llama.cpp engines downloaded later live (not in userData: they are large, and Windows can rebuild them).
+function enginesDir(): string {
+  return join(
+    process.env['LOCALAPPDATA'] ?? join(app.getPath('home'), 'AppData', 'Local'),
+    'OpenVatra',
+    'engines'
+  )
+}
+
+// core learns which CUDA build is pinned from the same llama.json the bundled build is checked against.
 function coreExtraArgs(): string[] {
+  const args = [
+    '--llama-manifest',
+    llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath()),
+    '--engines-dir',
+    enginesDir()
+  ]
+  // Test seam: a catalog file that may name a local server. Never reachable in an installed app.
   const file = process.env['OPENVATRA_TEST_CATALOG']
-  return !app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && file ? ['--test-catalog', file] : []
+  if (!app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && file) args.push('--test-catalog', file)
+  return args
 }
 
 let mainWindow: BrowserWindow | null = null

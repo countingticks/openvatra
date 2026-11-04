@@ -35,6 +35,7 @@ export const ipcChannels = {
   setupHardware: 'setup:hardware',
   setupCatalog: 'setup:catalog',
   setupDownload: 'setup:download',
+  setupDownloadEngine: 'setup:download-engine',
   setupCancel: 'setup:cancel',
   setupResume: 'setup:resume',
   setupRemove: 'setup:remove',
@@ -139,6 +140,8 @@ export interface SetupApi {
   catalog(): Promise<CatalogView>
   /** Queues a catalog model for download; rejects with core's short reason (no space, already installed…). */
   download(catalogId: string): Promise<void>
+  /** Queues the faster engine for NVIDIA cards (the CUDA build); same queue and events, id `engine-cuda`. */
+  downloadEngine(): Promise<void>
   /** Cancels a download and deletes its partial file. */
   cancel(id: string): Promise<void>
   /** Continues a paused or failed download. */

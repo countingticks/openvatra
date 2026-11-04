@@ -38,6 +38,8 @@ type Request struct {
 	Dest   string // final path; the data is written to Dest + ".part"
 	Size   int64
 	SHA256 string // lowercase hex
+	// AllowHost replaces the downloader's host list for this file (the engine comes from GitHub, not Hugging Face).
+	AllowHost func(host string) bool
 }
 
 // Progress is reported while bytes arrive. Done includes bytes already in the .part file when resuming.
@@ -70,10 +72,16 @@ func HuggingFaceHost(host string) bool {
 	return host == "huggingface.co" || host == "hf.co" || strings.HasSuffix(host, ".hf.co")
 }
 
+// GitHubReleaseHost allows github.com and the two hosts its release downloads redirect to. Exact names, not a
+// suffix: anyone can publish under other *.githubusercontent.com hosts.
+func GitHubReleaseHost(host string) bool {
+	return host == "github.com" || host == "objects.githubusercontent.com" || host == "release-assets.githubusercontent.com"
+}
+
 // Fetch downloads req. It returns nil only when Dest exists with the right checksum.
 // On context cancel it returns the context's error and leaves the .part file; deleting it is the caller's choice.
 func (d *Downloader) Fetch(ctx context.Context, req Request, onProgress func(Progress)) error {
-	if err := d.checkURL(req.URL); err != nil {
+	if err := d.checkURL(req.URL, req.AllowHost); err != nil {
 		return err
 	}
 	var err error
@@ -101,13 +109,17 @@ func (d *Downloader) Fetch(ctx context.Context, req Request, onProgress func(Pro
 	return err
 }
 
-func (d *Downloader) checkURL(raw string) error {
+// checkURL applies allow (the request's own list) or, when that is nil, the downloader's.
+func (d *Downloader) checkURL(raw string, allow func(string) bool) error {
+	if allow == nil {
+		allow = d.AllowHost
+	}
 	u, err := url.Parse(raw)
 	if err != nil {
 		return fmt.Errorf("%w: %s", ErrNotAllowed, raw)
 	}
 	local := d.AllowLocalHTTP && u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost")
-	if (u.Scheme != "https" && !local) || !d.AllowHost(u.Hostname()) {
+	if (u.Scheme != "https" && !local) || !allow(u.Hostname()) {
 		return fmt.Errorf("%w: %s", ErrNotAllowed, raw)
 	}
 	return nil
@@ -175,7 +187,7 @@ func (d *Downloader) stream(ctx context.Context, req Request, part string, offse
 		if len(via) >= 10 {
 			return errors.New("too many redirects")
 		}
-		return d.checkURL(r.URL.String())
+		return d.checkURL(r.URL.String(), req.AllowHost)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, req.URL, nil)

@@ -13,6 +13,7 @@ type Downloads interface {
 	Items() []downloads.Item
 	Subscribe() (<-chan struct{}, func())
 	Start(id string) error
+	StartEngine() error
 	Resume(id string) error
 	Cancel(id string) error
 }
@@ -43,7 +44,7 @@ func accepted(w http.ResponseWriter) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
 }
 
-// startDownloadHandler queues a catalog model. The CUDA engine arrives with its own step.
+// startDownloadHandler queues a catalog model, or the CUDA engine for {"engine":"cuda"}.
 func startDownloadHandler(dl Downloads) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -56,11 +57,15 @@ func startDownloadHandler(dl Downloads) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "bad_request", `send exactly one of "catalogId" or "engine"`)
 			return
 		}
+		start := func() error { return dl.Start(body.CatalogID) }
 		if body.Engine != "" {
-			writeError(w, http.StatusNotImplemented, "engine_unsupported", "engine downloads are not available yet")
-			return
+			if body.Engine != "cuda" {
+				writeError(w, http.StatusBadRequest, "bad_request", `the only engine is "cuda"`)
+				return
+			}
+			start = dl.StartEngine
 		}
-		if err := dl.Start(body.CatalogID); err != nil {
+		if err := start(); err != nil {
 			writeDownloadError(w, err)
 			return
 		}

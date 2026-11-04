@@ -40,6 +40,7 @@ export interface FakeCore {
 /** The fake first-run setup API, plus a way to play main's part. */
 export interface FakeSetup {
   download: Mock<SetupApi['download']>
+  downloadEngine: Mock<SetupApi['downloadEngine']>
   cancel: Mock<SetupApi['cancel']>
   resume: Mock<SetupApi['resume']>
   remove: Mock<SetupApi['remove']>
@@ -98,6 +99,7 @@ function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeS
   const listeners = new Set<(items: DownloadItem[]) => void>()
   const fake: FakeSetup = {
     download: vi.fn<SetupApi['download']>().mockResolvedValue(undefined),
+    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockResolvedValue(undefined),
     cancel: vi.fn<SetupApi['cancel']>().mockResolvedValue(undefined),
     resume: vi.fn<SetupApi['resume']>().mockResolvedValue(undefined),
     remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
@@ -109,6 +111,7 @@ function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeS
       .fn<SetupApi['catalog']>()
       .mockResolvedValue(options.catalog ?? { entries: [], diskFreeBytes: null, recommended: null }),
     download: fake.download,
+    downloadEngine: fake.downloadEngine,
     cancel: fake.cancel,
     resume: fake.resume,
     remove: fake.remove,
