@@ -1,0 +1,1 @@
+-- Baseline: the database exists and is versioned. Tables arrive in the migrations that follow.

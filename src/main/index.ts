@@ -56,7 +56,10 @@ function coreExtraArgs(): string[] {
     '--llama-manifest',
     llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath()),
     '--engines-dir',
-    enginesDir()
+    enginesDir(),
+    // Chats, attachments and documents: next to settings.json, so one folder holds the user's data.
+    '--data-dir',
+    join(app.getPath('userData'), 'data')
   ]
   // Test seam: a catalog file that may name a local server. Never reachable in an installed app.
   const file = process.env['OPENVATRA_TEST_CATALOG']

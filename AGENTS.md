@@ -24,7 +24,7 @@ Settings: `%APPDATA%\OpenVatra\settings.json` (validated, typed IPC); log: `%APP
 Electron · React 19 · TypeScript (strict) · Redux Toolkit + RTK Query · Tailwind CSS + shadcn/ui ·
 Fontsource (Geist, Geist Mono, Source Serif 4; bundled, never loaded from the web) ·
 electron-vite · Vitest + React Testing Library · Playwright (Electron) · GitHub Actions ·
-Go (standard library only) for `core/`, the local program that will own the services.
+Go (standard library plus `golang.org/x/sys` and the SQLite driver `modernc.org/sqlite`) for `core/`, the local program that will own the services.
 Do not add dependencies outside this list without asking.
 
 ## Commands

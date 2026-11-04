@@ -19,6 +19,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/catalog"
+	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
@@ -26,7 +27,9 @@ import (
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
+	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/store"
 )
 
 const version = "0.1.0"
@@ -59,6 +62,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Both come from Electron main. Without them core still works; it just can't offer the CUDA engine.
 	llamaManifest := fs.String("llama-manifest", "", "llama.json with the pinned llama.cpp builds")
 	enginesDir := fs.String("engines-dir", "", "folder the downloaded llama.cpp engines go into")
+	dataDir := fs.String("data-dir", "", "folder for chats, attachments and documents; created if missing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -81,6 +85,20 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
 	if err := process.SetupTreeCleanup(); err != nil {
 		logger.Warn("job object setup failed", "err", err)
+	}
+
+	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
+	var chatStore *store.Store
+	if *dataDir != "" {
+		if db, err := store.Open(*dataDir); err != nil {
+			logger.Error("open chat database", "err", err)
+		} else {
+			defer db.Close()
+			chatStore = db
+			if ro := db.ReadOnly(); ro != nil {
+				logger.Warn("chat database is read-only", "err", ro)
+			}
+		}
 	}
 
 	// Loopback only: never reachable from other PCs.
@@ -117,6 +135,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		},
 	})
 	cfg.OnChange(rt.Notify)
+	var chats *chat.Service
+	if chatStore != nil {
+		chats = &chat.Service{Store: chatStore, Router: rt, Sizes: &prompt.ContextSizes{}, Logger: logger}
+	}
 	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
 	hardware := hw.NewChecker(func() string { return cfg.Get().LlamaServerPath }, logger)
 	entries, err := catalog.Builtin()
@@ -157,7 +179,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl, chats),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)

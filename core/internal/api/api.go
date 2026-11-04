@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
@@ -15,8 +16,8 @@ import (
 // reply is sent) when a client asks core to stop; listModels reports the models
 // currently on disk (a function, because the folder will change at runtime); rt
 // picks the model server for the chat and embedding endpoints; cfg receives what
-// main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads.
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store, hardware Hardware, cat Catalog, dl Downloads) http.Handler {
+// main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
@@ -35,6 +36,7 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("POST /api/downloads", startDownloadHandler(dl))
 	mux.HandleFunc("DELETE /api/downloads/{id}", cancelDownloadHandler(dl))
 	mux.HandleFunc("POST /api/downloads/{id}/resume", resumeDownloadHandler(dl))
+	registerChats(mux, chats)
 	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)

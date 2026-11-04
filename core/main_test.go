@@ -166,3 +166,22 @@ func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCreatesTheDataFolderAndDatabase(t *testing.T) {
+	t.Setenv(tokenEnv, "tok")
+	dir := filepath.Join(t.TempDir(), "data")
+	stdinR, stdinW := io.Pipe()
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() { done <- run([]string{"--data-dir", dir}, stdinR, pw) }()
+	if err := json.NewDecoder(pr).Decode(&struct{ Port int }{}); err != nil {
+		t.Fatal(err)
+	}
+	go io.Copy(io.Discard, pr)
+
+	if _, err := os.Stat(filepath.Join(dir, "chats.db")); err != nil {
+		t.Fatal("database not created:", err)
+	}
+	stdinW.Close()
+	waitExit(t, done)
+}
