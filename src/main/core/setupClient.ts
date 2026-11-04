@@ -3,7 +3,13 @@
 // (the Recycle Bin and folder creation are passed in), so tests need only fakes.
 import { isAbsolute, join, relative, resolve, sep } from 'path'
 import type { ModelInfo } from '../../shared/core'
-import { isHardwareReport, parseCatalogView, type CatalogView, type HardwareReport } from '../../shared/setup'
+import {
+  isHardwareReport,
+  parseCatalogView,
+  type CatalogView,
+  type DownloadItem,
+  type HardwareReport
+} from '../../shared/setup'
 
 /** The folder models are saved in when the user hasn't chosen one: easy to find in Explorer. */
 export function defaultModelsDir(homeDir: string): string {
@@ -31,6 +37,8 @@ export interface SetupClientOptions {
   trash: (path: string) => Promise<void>
   models: () => ModelInfo[]
   unload: (id: string) => Promise<void>
+  /** Main's latest copy of core's download queue. */
+  downloads: () => DownloadItem[]
   log: { warn: (message: string, error?: unknown) => void }
   /** Pause between checks while waiting for a model to unload; tests pass 1. */
   pollMs?: number
@@ -56,7 +64,18 @@ export const trashFailedMessage =
   'for the Recycle Bin. Try again in a moment, or delete its folder in File Explorer.'
 
 export function createSetupClient(options: SetupClientOptions): SetupClient {
-  const { request, modelsDir, makeDir, trash, models, unload, log, pollMs = 250, retryMs = 2_000 } = options
+  const {
+    request,
+    modelsDir,
+    makeDir,
+    trash,
+    models,
+    unload,
+    downloads,
+    log,
+    pollMs = 250,
+    retryMs = 2_000
+  } = options
 
   async function json(path: string, init?: RequestInit): Promise<unknown> {
     const response = await request(path, init)
@@ -123,6 +142,14 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
     }
 
     await trashWithRetry(catalogId, folder)
+
+    // Core keeps a finished download in its queue; left there, the row would read "Almost ready" for a model that is
+    // gone. Dismissing it is tidying up, so a failure is only logged: the removal itself worked.
+    if (downloads().some((item) => item.id === catalogId && item.state === 'done')) {
+      await cancel(catalogId).catch((error) =>
+        log.warn(`setup: could not dismiss the download of ${catalogId}`, error)
+      )
+    }
   }
 
   // Windows can hold a file for a moment after its process ends, and Defender scans a fresh download; both make the

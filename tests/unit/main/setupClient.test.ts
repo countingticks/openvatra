@@ -8,6 +8,7 @@ import {
   type SetupClient
 } from '../../../src/main/core/setupClient'
 import type { ModelInfo } from '../../../src/shared/core'
+import type { DownloadItem } from '../../../src/shared/setup'
 
 const modelsDir = 'C:\\Users\\me\\OpenVatra\\Models'
 
@@ -47,7 +48,8 @@ const json = (body: unknown, status = 200): Response =>
 /** A client over a fake core that answers the folder and catalog requests `remove` makes. */
 function setUp(
   folder: unknown,
-  models: () => ModelInfo[] = () => []
+  models: () => ModelInfo[] = () => [],
+  downloads: () => DownloadItem[] = () => []
 ): {
   client: SetupClient
   request: Mock<(path: string) => Promise<Response>>
@@ -73,6 +75,7 @@ function setUp(
     trash,
     models,
     unload,
+    downloads,
     log: { warn },
     pollMs: 1,
     retryMs: 1
@@ -116,6 +119,23 @@ describe('setup client: remove', () => {
     expect(unload).toHaveBeenCalledTimes(1)
     expect(unload).toHaveBeenCalledWith('Qwen3-8B-Q4')
     expect(trash).toHaveBeenCalledTimes(1)
+  })
+
+  it('dismisses the finished download, so the row does not stay on "Almost ready"', async () => {
+    const done = { id: 'qwen3-8b', state: 'done' } as DownloadItem
+    const { client, request } = setUp(`${modelsDir}\\qwen3-8b`, undefined, () => [done])
+
+    await client.remove('qwen3-8b')
+
+    expect(request).toHaveBeenCalledWith('/api/downloads/qwen3-8b', { method: 'DELETE' })
+  })
+
+  it('leaves the queue alone when the model has no finished download', async () => {
+    const { client, request } = setUp(`${modelsDir}\\qwen3-8b`)
+
+    await client.remove('qwen3-8b')
+
+    expect(request).not.toHaveBeenCalledWith('/api/downloads/qwen3-8b', expect.anything())
   })
 
   it('tries the Recycle Bin again when a file is still busy', async () => {

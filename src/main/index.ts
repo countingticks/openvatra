@@ -120,6 +120,7 @@ function start(): void {
       trash: (path) => shell.trashItem(path),
       models: models.list,
       unload: models.unload,
+      downloads: models.downloads,
       log
     })
     core = createSupervisor({
