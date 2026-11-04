@@ -24,7 +24,10 @@ describe('defaultSettings', () => {
         modelsDir: null,
         embeddingModel: null,
         idleUnloadMinutes: 15,
-        options: {}
+        options: {},
+        engine: 'bundled',
+        showAdvanced: false,
+        cudaOfferDismissed: false
       },
       closeToTrayNoticeShown: false
     })
@@ -36,10 +39,10 @@ describe('defaultSettings', () => {
 })
 
 describe('models settings', () => {
-  const parse = (models: unknown): Settings => settingsSchema.parse({ schemaVersion: 5, models })
+  const parse = (models: unknown): Settings => settingsSchema.parse({ schemaVersion: 6, models })
 
   it('has defaults, including an empty object for a file that has no models key', () => {
-    expect(settingsSchema.parse({ schemaVersion: 5 }).models).toEqual(defaultSettings.models)
+    expect(settingsSchema.parse({ schemaVersion: 6 }).models).toEqual(defaultSettings.models)
     expect(parse({}).models.idleUnloadMinutes).toBe(15)
   })
 
@@ -52,7 +55,10 @@ describe('models settings', () => {
       options: {
         qwen: { args: '-c 131072 --alias "my qwen"' },
         gemma: {}
-      }
+      },
+      engine: 'cuda',
+      showAdvanced: true,
+      cudaOfferDismissed: true
     }
     expect(parse(models).models).toEqual(models)
   })
@@ -60,13 +66,14 @@ describe('models settings', () => {
   it.each([
     ['an idle time that is not offered', { idleUnloadMinutes: 7 }],
     ['an empty path', { modelsDir: '' }],
+    ['an unknown engine', { engine: 'rocm' }],
     ['arguments with an unclosed quote', { options: { m: { args: '--alias "my qwen' } } }],
     ['the old number fields (version 3)', { options: { m: { contextSize: 8192 } } }],
     ['an unknown option', { options: { m: { shell: 'cmd' } } }],
     ['the removed per-model idle time (version 4)', { options: { m: { idleUnloadMinutes: 60 } } }],
     ['the removed projector switch (version 4)', { options: { m: { mmproj: false } } }]
   ])('rejects %s', (_case, models) => {
-    expect(settingsSchema.safeParse({ schemaVersion: 5, models }).success).toBe(false)
+    expect(settingsSchema.safeParse({ schemaVersion: 6, models }).success).toBe(false)
   })
 
   it('lets the UI change the embedding model, idle unload and arguments', () => {
@@ -79,6 +86,12 @@ describe('models settings', () => {
     }
     expect(settingsPatchSchema.parse(patch)).toEqual(patch)
     expect(settingsPatchSchema.parse({ models: {} })).toEqual({ models: {} })
+  })
+
+  it('lets the UI change the engine, advanced view and the CUDA offer', () => {
+    const patch = { models: { engine: 'cuda', showAdvanced: true, cudaOfferDismissed: true } }
+    expect(settingsPatchSchema.parse(patch)).toEqual(patch)
+    expect(settingsPatchSchema.safeParse({ models: { engine: 'rocm' } }).success).toBe(false)
   })
 
   it.each([
@@ -94,7 +107,7 @@ describe('models settings', () => {
 
 describe('settingsSchema', () => {
   it('fills in defaults for missing fields', () => {
-    expect(settingsSchema.parse({ schemaVersion: 5, theme: 'dark' })).toEqual({
+    expect(settingsSchema.parse({ schemaVersion: 6, theme: 'dark' })).toEqual({
       ...defaultSettings,
       theme: 'dark'
     })
@@ -102,7 +115,7 @@ describe('settingsSchema', () => {
 
   it('accepts a complete, valid file', () => {
     const settings = {
-      schemaVersion: 5,
+      schemaVersion: 6,
       theme: 'light',
       startWithWindows: true,
       lastTab: 'code',
@@ -115,7 +128,10 @@ describe('settingsSchema', () => {
         modelsDir: null,
         embeddingModel: 'bge',
         idleUnloadMinutes: 5,
-        options: {}
+        options: {},
+        engine: 'bundled',
+        showAdvanced: false,
+        cudaOfferDismissed: false
       },
       closeToTrayNoticeShown: true
     }
@@ -123,7 +139,7 @@ describe('settingsSchema', () => {
   })
 
   it('reads a file written before closeAction and sidebarOpen existed, with their defaults', () => {
-    const older = { schemaVersion: 5, theme: 'dark', startWithWindows: true, lastTab: 'code' }
+    const older = { schemaVersion: 6, theme: 'dark', startWithWindows: true, lastTab: 'code' }
 
     expect(settingsSchema.parse(older)).toMatchObject({
       closeAction: 'tray',
@@ -133,25 +149,25 @@ describe('settingsSchema', () => {
   })
 
   it('drops keys it does not know', () => {
-    expect(settingsSchema.parse({ schemaVersion: 5, extra: 'ignored' })).toEqual(defaultSettings)
+    expect(settingsSchema.parse({ schemaVersion: 6, extra: 'ignored' })).toEqual(defaultSettings)
   })
 
   it.each([
     ['not an object', 'settings'],
     ['no schemaVersion', { theme: 'dark' }],
-    ['a different schemaVersion', { schemaVersion: 6 }],
-    ['an unknown theme', { schemaVersion: 5, theme: 'blue' }],
-    ['a non-boolean startWithWindows', { schemaVersion: 5, startWithWindows: 'yes' }],
-    ['an unknown tab', { schemaVersion: 5, lastTab: 'mail' }],
-    ['Settings as the last tab (a dialog since version 2)', { schemaVersion: 5, lastTab: 'settings' }],
-    ['an unknown close action', { schemaVersion: 5, closeAction: 'minimize' }],
-    ['a non-boolean sidebarOpen', { schemaVersion: 5, sidebarOpen: 'open' }],
-    ['an unknown motion setting', { schemaVersion: 5, motion: 'slow' }],
+    ['a different schemaVersion', { schemaVersion: 7 }],
+    ['an unknown theme', { schemaVersion: 6, theme: 'blue' }],
+    ['a non-boolean startWithWindows', { schemaVersion: 6, startWithWindows: 'yes' }],
+    ['an unknown tab', { schemaVersion: 6, lastTab: 'mail' }],
+    ['Settings as the last tab (a dialog since version 2)', { schemaVersion: 6, lastTab: 'settings' }],
+    ['an unknown close action', { schemaVersion: 6, closeAction: 'minimize' }],
+    ['a non-boolean sidebarOpen', { schemaVersion: 6, sidebarOpen: 'open' }],
+    ['an unknown motion setting', { schemaVersion: 6, motion: 'slow' }],
     [
       'a window smaller than the minimum',
-      { schemaVersion: 5, window: { x: 0, y: 0, width: 400, height: 300 } }
+      { schemaVersion: 6, window: { x: 0, y: 0, width: 400, height: 300 } }
     ],
-    ['a window without a position', { schemaVersion: 5, window: { width: 1280, height: 800 } }]
+    ['a window without a position', { schemaVersion: 6, window: { width: 1280, height: 800 } }]
   ])('rejects %s', (_case, input) => {
     expect(settingsSchema.safeParse(input).success).toBe(false)
   })
@@ -176,7 +192,7 @@ describe('settingsPatchSchema', () => {
 
   it.each([
     ['not an object', null],
-    ['schemaVersion', { schemaVersion: 5 }],
+    ['schemaVersion', { schemaVersion: 6 }],
     ['window bounds', { window: { x: 0, y: 0, width: 1280, height: 800 } }],
     ['the close-to-tray notice flag', { closeToTrayNoticeShown: true }],
     ['an unknown key', { theme: 'dark', admin: true }],

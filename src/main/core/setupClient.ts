@@ -1,0 +1,132 @@
+// Model setup through core: hardware, the catalog, downloads and removing a downloaded model. Everything here is
+// asked of core.exe; the only thing main decides itself is whether a folder may be deleted. No Electron imports
+// (the Recycle Bin and folder creation are passed in), so tests need only fakes.
+import { isAbsolute, join, relative, resolve, sep } from 'path'
+import type { ModelInfo } from '../../shared/core'
+import { isHardwareReport, parseCatalogView, type CatalogView, type HardwareReport } from '../../shared/setup'
+
+/** The folder models are saved in when the user hasn't chosen one: easy to find in Explorer. */
+export function defaultModelsDir(homeDir: string): string {
+  return join(homeDir, 'OpenVatra', 'Models')
+}
+
+/**
+ * Whether `child` is strictly inside `parent` (the folder itself doesn't count). Compared after resolving, so `..`
+ * and mixed slashes can't fool it. Windows paths are case-insensitive, hence the lower-casing.
+ */
+export function isInside(parent: string, child: string): boolean {
+  if (!isAbsolute(parent) || !isAbsolute(child)) return false
+  const path = relative(resolve(parent).toLowerCase(), resolve(child).toLowerCase())
+  return path !== '' && path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path)
+}
+
+export interface SetupClientOptions {
+  /** The supervisor's `request`: core's address and token stay there. */
+  request: (path: string, init?: RequestInit) => Promise<Response>
+  /** The folder models live in right now (the chosen one, or the default). */
+  modelsDir: () => string
+  /** Creates a folder and its parents if missing. */
+  makeDir: (path: string) => Promise<void>
+  /** Moves a folder to the Recycle Bin (`shell.trashItem`). */
+  trash: (path: string) => Promise<void>
+  models: () => ModelInfo[]
+  unload: (id: string) => Promise<void>
+  /** Pause between checks while waiting for a model to unload; tests pass 1. */
+  pollMs?: number
+}
+
+export interface SetupClient {
+  hardware: () => Promise<HardwareReport>
+  catalog: () => Promise<CatalogView>
+  download: (catalogId: string) => Promise<void>
+  cancel: (id: string) => Promise<void>
+  resume: (id: string) => Promise<void>
+  remove: (catalogId: string) => Promise<void>
+}
+
+const unloadWaitMs = 15_000
+
+export function createSetupClient(options: SetupClientOptions): SetupClient {
+  const { request, modelsDir, makeDir, trash, models, unload, pollMs = 250 } = options
+
+  async function json(path: string, init?: RequestInit): Promise<unknown> {
+    const response = await request(path, init)
+    if (!response.ok) throw new Error(await errorMessage(response))
+    return response.json()
+  }
+
+  async function hardware(): Promise<HardwareReport> {
+    const body = await json('/api/hardware')
+    if (!isHardwareReport(body)) throw new Error('core sent an unreadable hardware report')
+    return body
+  }
+
+  async function catalog(): Promise<CatalogView> {
+    const view = parseCatalogView(await json('/api/catalog'))
+    if (!view) throw new Error('core sent an unreadable catalog')
+    return view
+  }
+
+  async function download(catalogId: string): Promise<void> {
+    // Core only writes into the folder; making sure it exists is ours, so the default needs no setup step.
+    await makeDir(modelsDir())
+    await json('/api/downloads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ catalogId })
+    })
+  }
+
+  async function cancel(id: string): Promise<void> {
+    await json(`/api/downloads/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  async function resume(id: string): Promise<void> {
+    await json(`/api/downloads/${encodeURIComponent(id)}/resume`, { method: 'POST' })
+  }
+
+  /** The model ids (file names without .gguf) a catalog entry's files appear as in core's model list. */
+  async function modelIdsOf(catalogId: string): Promise<string[]> {
+    const body = (await json('/api/catalog')) as {
+      entries?: { id?: unknown; files?: { name?: unknown }[] }[]
+    }
+    const entry = body.entries?.find((candidate) => candidate.id === catalogId)
+    return (entry?.files ?? []).flatMap((file) =>
+      typeof file.name === 'string' ? [file.name.replace(/\.gguf$/i, '')] : []
+    )
+  }
+
+  async function remove(catalogId: string): Promise<void> {
+    // The folder comes from core, but core is another process: it must still lie inside the models folder.
+    const body = (await json(`/api/catalog/${encodeURIComponent(catalogId)}/folder`)) as { folder?: unknown }
+    const folder = body.folder
+    if (typeof folder !== 'string' || !isInside(modelsDir(), folder)) {
+      throw new Error('That folder is not inside the models folder, so it was not removed')
+    }
+
+    // A loaded model keeps its file open, which would make the Recycle Bin move fail.
+    const ids = await modelIdsOf(catalogId)
+    const active = (): ModelInfo[] => models().filter((m) => ids.includes(m.id) && m.state !== 'stopped')
+    await Promise.all(active().map((m) => unload(m.id)))
+    for (let waited = 0; active().length > 0; waited += pollMs) {
+      if (waited >= unloadWaitMs) throw new Error('The model did not stop in time, try again')
+      await new Promise((done) => setTimeout(done, pollMs))
+    }
+
+    await trash(folder)
+  }
+
+  return { hardware, catalog, download, cancel, resume, remove }
+}
+
+/** core's errors are `{ "error": { "code", "message" } }`; anything else gets a generic message. */
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: { message?: unknown } }
+    const message = body.error?.message
+    if (typeof message === 'string' && message) return message.slice(0, 300)
+  } catch {
+    // not JSON: fall through
+  }
+  return `core answered with HTTP ${response.status}`
+}

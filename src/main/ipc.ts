@@ -11,9 +11,11 @@ import {
   type FileLocations
 } from '../shared/ipc'
 import type { CoreState, ModelInfo } from '../shared/core'
+import type { CatalogView, DownloadItem, HardwareReport } from '../shared/setup'
 import type { Settings } from '../shared/settings'
 import { readBundledTag } from './bundledLlama'
 import type { ModelsClient } from './core/modelsClient'
+import type { SetupClient } from './core/setupClient'
 import type { Supervisor } from './core/supervisor'
 import { log } from './logger'
 import type { SettingsStore } from './settingsStore'
@@ -27,7 +29,8 @@ const modelIdSchema = z.string().min(1).max(255)
 
 /** The parts of the supervisor and the models client the UI may use. */
 export type CoreControl = Pick<Supervisor, 'state' | 'restart'> &
-  Pick<ModelsClient, 'list' | 'load' | 'unload'>
+  Pick<ModelsClient, 'list' | 'load' | 'unload' | 'downloads'> &
+  SetupClient
 
 export function registerIpcHandlers(
   store: SettingsStore,
@@ -147,6 +150,39 @@ export function registerIpcHandlers(
       } catch (error) {
         log.warn(`core: ${action} ${parsed.data} failed`, error)
         throw error // core's message is short and meant for people ("llama-server.exe not found")
+      }
+    })
+  }
+
+  ipcMain.handle(ipcChannels.setupHardware, (event): Promise<HardwareReport> => {
+    assertFromApp(event)
+    return core.hardware()
+  })
+  ipcMain.handle(ipcChannels.setupCatalog, (event): Promise<CatalogView> => {
+    assertFromApp(event)
+    return core.catalog()
+  })
+  ipcMain.handle(ipcChannels.setupGetDownloads, (event): DownloadItem[] => {
+    assertFromApp(event)
+    return core.downloads()
+  })
+
+  // Same shape for each: the id is validated, core's short message goes back to the UI, the detail to the log.
+  for (const [channel, action] of [
+    [ipcChannels.setupDownload, 'download'],
+    [ipcChannels.setupCancel, 'cancel'],
+    [ipcChannels.setupResume, 'resume'],
+    [ipcChannels.setupRemove, 'remove']
+  ] as const) {
+    ipcMain.handle(channel, async (event, id: unknown): Promise<void> => {
+      assertFromApp(event)
+      const parsed = modelIdSchema.safeParse(id)
+      if (!parsed.success) throw new Error('Invalid id')
+      try {
+        await core[action](parsed.data)
+      } catch (error) {
+        log.warn(`setup: ${action} ${parsed.data} failed`, error)
+        throw error
       }
     })
   }

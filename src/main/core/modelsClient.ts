@@ -1,6 +1,7 @@
 // core's model endpoints, for the UI: follows core's event stream (GET /api/events) to keep the model list current
 // without polling, and loads or unloads a model on request. No Electron imports, so tests need only a fake fetch.
 import { isModelList, type ModelInfo } from '../../shared/core'
+import { isDownloadList, type DownloadItem } from '../../shared/setup'
 
 /** Wait before reopening an event stream that ended while core was still ready. */
 const reconnectDelayMs = 2_000
@@ -36,6 +37,8 @@ export interface ModelsClientOptions {
   /** The supervisor's `request`: core's address and token stay there. */
   request: (path: string, init?: RequestInit) => Promise<Response>
   onModels: (models: ModelInfo[]) => void
+  /** The whole download queue, on every change (core sends it at most 4 times a second). */
+  onDownloads: (items: DownloadItem[]) => void
   log: { warn: (message: string, error?: unknown) => void }
 }
 
@@ -45,12 +48,20 @@ export interface ModelsClient {
   /** Stops following and empties the list; call when core stops being ready. */
   stop: () => void
   list: () => ModelInfo[]
+  /** The latest download queue, for a window that opens after the last event. */
+  downloads: () => DownloadItem[]
   load: (id: string) => Promise<void>
   unload: (id: string) => Promise<void>
 }
 
-export function createModelsClient({ request, onModels, log }: ModelsClientOptions): ModelsClient {
+export function createModelsClient({
+  request,
+  onModels,
+  onDownloads,
+  log
+}: ModelsClientOptions): ModelsClient {
   let models: ModelInfo[] = []
+  let downloads: DownloadItem[] = []
   let stream: AbortController | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -68,6 +79,7 @@ export function createModelsClient({ request, onModels, log }: ModelsClientOptio
       if (stream !== controller) return
       stream = null
       set([])
+      setDownloads([])
       reconnectTimer = setTimeout(start, reconnectDelayMs)
     })
   }
@@ -82,7 +94,10 @@ export function createModelsClient({ request, onModels, log }: ModelsClientOptio
         buffer += decoder.decode(chunk, { stream: true })
         const { events, rest } = takeSseEvents(buffer)
         buffer = rest
-        for (const { event, data } of events) if (event === 'state') receive(data)
+        for (const { event, data } of events) {
+          if (event === 'state') receive(data)
+          else if (event === 'downloads') receiveDownloads(data)
+        }
       }
     } catch (error) {
       if (!controller.signal.aborted) log.warn('core: the model event stream failed', error)
@@ -100,12 +115,28 @@ export function createModelsClient({ request, onModels, log }: ModelsClientOptio
     }
   }
 
+  function setDownloads(next: DownloadItem[]): void {
+    downloads = next
+    onDownloads(next)
+  }
+
+  function receiveDownloads(data: string): void {
+    try {
+      const items = (JSON.parse(data) as { items?: unknown } | null)?.items
+      if (isDownloadList(items)) setDownloads(items)
+      else log.warn('core: ignored a malformed download list')
+    } catch (error) {
+      log.warn('core: ignored a download event that is not JSON', error)
+    }
+  }
+
   function stop(): void {
     clearTimeout(reconnectTimer)
     const controller = stream
     stream = null
     controller?.abort()
     if (models.length > 0) set([])
+    if (downloads.length > 0) setDownloads([])
   }
 
   /** POSTs to a model's endpoint; a failure rejects with core's own short message. */
@@ -119,6 +150,7 @@ export function createModelsClient({ request, onModels, log }: ModelsClientOptio
     start,
     stop,
     list: () => models,
+    downloads: () => downloads,
     load: (id) => act(id, 'load'),
     unload: (id) => act(id, 'unload')
   }

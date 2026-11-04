@@ -93,7 +93,7 @@ describe('migrate', () => {
   describe('1 → 2: Settings became a dialog', () => {
     it('reopens a file left on the Settings tab on Chat', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings', theme: 'dark' })).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         lastTab: 'chat',
         theme: 'dark'
       })
@@ -101,7 +101,7 @@ describe('migrate', () => {
 
     it('keeps every other tab and setting as it was', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'code', closeAction: 'quit' })).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         lastTab: 'code',
         closeAction: 'quit'
       })
@@ -113,14 +113,14 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 5, theme: 'dark', lastTab: 'chat' })
+      expect(settings).toMatchObject({ schemaVersion: 6, theme: 'dark', lastTab: 'chat' })
     })
   })
 
   describe('2 → 3: models settings', () => {
     it('keeps every existing setting and adds only the version', () => {
       expect(migrate({ schemaVersion: 2, theme: 'dark', lastTab: 'code' })).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         theme: 'dark',
         lastTab: 'code'
       })
@@ -132,19 +132,22 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 5, theme: 'dark', closeAction: 'quit' })
+      expect(settings).toMatchObject({ schemaVersion: 6, theme: 'dark', closeAction: 'quit' })
       expect(settings.models).toEqual({
         llamaServerPath: null,
         modelsDir: null,
         embeddingModel: null,
         idleUnloadMinutes: 15,
-        options: {}
+        options: {},
+        engine: 'bundled',
+        showAdvanced: false,
+        cudaOfferDismissed: false
       })
     })
 
     it('upgrades a version-1 file through every step', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings' })).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         lastTab: 'chat'
       })
     })
@@ -167,7 +170,7 @@ describe('migrate', () => {
           })
         )
       ).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         theme: 'dark',
         models: {
           modelsDir: 'D:/models',
@@ -193,7 +196,7 @@ describe('migrate', () => {
     })
 
     it('leaves a file without models alone', () => {
-      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 5, theme: 'dark' })
+      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 6, theme: 'dark' })
     })
   })
 
@@ -215,7 +218,7 @@ describe('migrate', () => {
           })
         )
       ).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         theme: 'dark',
         models: { modelsDir: 'D:/models', embeddingModel: 'bge', options: { qwen: { args: '-c 4096' } } }
       })
@@ -237,12 +240,12 @@ describe('migrate', () => {
     })
 
     it('leaves a file without models alone', () => {
-      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 5, theme: 'dark' })
+      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 6, theme: 'dark' })
     })
   })
 
   it.each([
-    ['current files', { schemaVersion: 5, theme: 'dark' }],
+    ['current files', { schemaVersion: 6, theme: 'dark' }],
     ['newer files', { schemaVersion: 6 }],
     ['files with no migration path', { schemaVersion: 0 }],
     ['non-objects', [1, 2]]
