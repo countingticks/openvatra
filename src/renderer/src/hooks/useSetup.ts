@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../../shared/setup'
+import { useCoreState } from './useCoreState'
 
 interface SetupInfo {
   hardware: HardwareReport | null
@@ -9,8 +10,13 @@ interface SetupInfo {
   refreshCatalog: () => void
 }
 
-/** What the welcome card needs: the PC's hardware, the catalog, and the live download queue. Null until answered. */
+/**
+ * What the welcome card needs: the PC's hardware, the catalog, and the live download queue. Null until answered.
+ * Hardware and catalog come from core, so they are asked for only once core is ready, and again after every restart;
+ * the last answer stays on screen in between.
+ */
 export function useSetup(): SetupInfo {
+  const ready = useCoreState()?.status === 'ready'
   const [hardware, setHardware] = useState<HardwareReport | null>(null)
   const [catalog, setCatalog] = useState<CatalogView | null>(null)
   const [downloads, setDownloads] = useState<DownloadItem[] | null>(null)
@@ -22,18 +28,25 @@ export function useSetup(): SetupInfo {
       .catch((error) => console.error('Could not read the model catalog', error))
   }, [])
 
+  // The queue is main's own copy, so it can be read whatever core is doing.
   useEffect(() => {
     // Subscribe first (as useModels does), so a change during the first request isn't lost.
     const unsubscribe = window.api.setup.onDownloads(setDownloads)
-    const log = (what: string) => (error: unknown) => console.error(`Could not read the ${what}`, error)
-    window.api.setup.hardware().then(setHardware).catch(log('hardware report'))
-    readCatalog()
     window.api.setup
       .downloads()
       .then((initial) => setDownloads((current) => current ?? initial))
-      .catch(log('download list'))
+      .catch((error) => console.error('Could not read the download list', error))
     return unsubscribe
-  }, [readCatalog])
+  }, [])
+
+  useEffect(() => {
+    if (!ready) return
+    window.api.setup
+      .hardware()
+      .then(setHardware)
+      .catch((error) => console.error('Could not read the hardware report', error))
+    readCatalog()
+  }, [ready, readCatalog])
 
   // A download that finishes turns an entry into "installed", so the catalog has to be read again.
   const finished = (downloads ?? [])
@@ -41,8 +54,8 @@ export function useSetup(): SetupInfo {
     .map((download) => download.id)
     .join()
   useEffect(() => {
-    if (finished) readCatalog()
-  }, [finished, readCatalog])
+    if (finished && ready) readCatalog()
+  }, [finished, ready, readCatalog])
 
   return { hardware, catalog, downloads: downloads ?? [], refreshCatalog: readCatalog }
 }
