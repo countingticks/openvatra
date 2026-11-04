@@ -6,7 +6,15 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettings, type Settings } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
-import { bundledLlamaDir, bundledLlamaExe, llamaManifestPath } from './bundledLlama'
+import {
+  bundledLlamaDir,
+  cudaStatus,
+  defaultLlamaServer,
+  llamaManifestPath,
+  readBundledTag,
+  readPinnedTag
+} from './bundledLlama'
+import { createEngineWatch } from './engineWatch'
 import { createConfigSync } from './core/configSync'
 import { createModelsClient } from './core/modelsClient'
 import { createSetupClient, defaultModelsDir } from './core/setupClient'
@@ -117,17 +125,29 @@ function start(): void {
       store.get,
       (path, body) => core?.post(path, body) ?? Promise.reject(),
       log,
-      bundledLlamaExe(llamaDir),
+      async () => defaultLlamaServer(store.get().models.engine, llamaDir, enginesDir(), await pinnedTag()),
       userModelsDir
     )
     store.onChange(configSync.onSettingsChange)
     const sendToWindow = (channel: string, value: unknown): void => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value)
     }
+    const manifest = llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath())
+    const pinnedTag = (): Promise<string | null> => readPinnedTag(manifest)
+    // A finished engine download switches to it (the standard engine stays one click away) and tells core.
+    const watchEngine = createEngineWatch(() => {
+      store
+        .update({ models: { engine: 'cuda' } })
+        .then(() => configSync.sync()) // a new tag leaves `engine` as it was, so no settings change would sync
+        .catch((error) => log.warn('Could not switch to the CUDA engine', error))
+    })
     const models = createModelsClient({
       request: (path, init) => core?.request(path, init) ?? Promise.reject(new Error('core is not running')),
       onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
-      onDownloads: (items) => sendToWindow(ipcChannels.setupDownloadsChanged, items),
+      onDownloads: (items) => {
+        watchEngine(items)
+        sendToWindow(ipcChannels.setupDownloadsChanged, items)
+      },
       log
     })
     const setup = createSetupClient({
@@ -157,15 +177,24 @@ function start(): void {
       log
     })
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(store, appUrl, { settingsFile: settingsPath, logsFolder: logsFolder() }, llamaDir, {
-      state: core.state,
-      restart: core.restart,
-      list: models.list,
-      load: models.load,
-      unload: models.unload,
-      downloads: models.downloads,
-      ...setup
-    })
+    registerIpcHandlers(
+      store,
+      appUrl,
+      { settingsFile: settingsPath, logsFolder: logsFolder() },
+      async () => ({
+        tag: await readBundledTag(llamaDir),
+        cuda: await cudaStatus(enginesDir(), await pinnedTag())
+      }),
+      {
+        state: core.state,
+        restart: core.restart,
+        list: models.list,
+        load: models.load,
+        unload: models.unload,
+        downloads: models.downloads,
+        ...setup
+      }
+    )
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)

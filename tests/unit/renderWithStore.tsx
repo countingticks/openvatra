@@ -93,6 +93,8 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView; downloads?: DownloadItem[] }
+  /** The CUDA build's state main reports; default: not installed. */
+  cuda?: 'none' | 'ready' | 'stale'
 }
 
 function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeSetup } {
@@ -202,7 +204,9 @@ export function renderWithStore(
       locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations),
       openFolder,
       pick,
-      bundledLlama: vi.fn<FilesApi['bundledLlama']>().mockResolvedValue({ tag: 'b12078' }),
+      bundledLlama: vi
+        .fn<FilesApi['bundledLlama']>()
+        .mockResolvedValue({ tag: 'b12078', cuda: options.cuda ?? 'none' }),
       useBundledLlama
     },
     appWindow: appWindow.api

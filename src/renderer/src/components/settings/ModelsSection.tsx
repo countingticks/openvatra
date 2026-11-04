@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
+import { CudaEngineOffer } from '@renderer/components/CudaEngineOffer'
 import { InstalledModels } from '@renderer/components/settings/InstalledModels'
 import { ModelList } from '@renderer/components/settings/ModelList'
 import { PathRow } from '@renderer/components/settings/PathRow'
@@ -93,6 +94,8 @@ export function ModelsSection(): React.JSX.Element {
           Get more models…
         </Button>
       </div>
+
+      <CudaEngineOffer variant="row" />
 
       <InstalledModels />
 
