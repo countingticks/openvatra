@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
@@ -31,6 +32,7 @@ var ErrNewer = errors.New("database is newer than this version")
 type Store struct {
 	w, r     *sql.DB
 	readOnly error
+	now      func() time.Time // nil = real clock; tests set it
 }
 
 // Open creates the data folder if needed, opens chats.db inside it and brings it up to date. A database from a newer
