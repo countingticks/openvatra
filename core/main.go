@@ -27,6 +27,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
 	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/store"
 )
 
 const version = "0.1.0"
@@ -59,6 +60,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Both come from Electron main. Without them core still works; it just can't offer the CUDA engine.
 	llamaManifest := fs.String("llama-manifest", "", "llama.json with the pinned llama.cpp builds")
 	enginesDir := fs.String("engines-dir", "", "folder the downloaded llama.cpp engines go into")
+	dataDir := fs.String("data-dir", "", "folder for chats, attachments and documents; created if missing")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -81,6 +83,18 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
 	if err := process.SetupTreeCleanup(); err != nil {
 		logger.Warn("job object setup failed", "err", err)
+	}
+
+	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
+	if *dataDir != "" {
+		if db, err := store.Open(*dataDir); err != nil {
+			logger.Error("open chat database", "err", err)
+		} else {
+			defer db.Close()
+			if ro := db.ReadOnly(); ro != nil {
+				logger.Warn("chat database is read-only", "err", ro)
+			}
+		}
 	}
 
 	// Loopback only: never reachable from other PCs.
