@@ -31,8 +31,11 @@ export interface SetupClientOptions {
   trash: (path: string) => Promise<void>
   models: () => ModelInfo[]
   unload: (id: string) => Promise<void>
+  log: { warn: (message: string, error?: unknown) => void }
   /** Pause between checks while waiting for a model to unload; tests pass 1. */
   pollMs?: number
+  /** Pause before trying the Recycle Bin again; tests pass 1. */
+  retryMs?: number
 }
 
 export interface SetupClient {
@@ -45,9 +48,15 @@ export interface SetupClient {
 }
 
 const unloadWaitMs = 15_000
+const trashAttempts = 3
+
+/** Shown when Windows won't take the folder; Electron's own text ("Operation was aborted") says nothing useful. */
+export const trashFailedMessage =
+  'Windows could not move the model to the Recycle Bin. A file may still be in use, or the model may be too big ' +
+  'for the Recycle Bin. Try again in a moment, or delete its folder in File Explorer.'
 
 export function createSetupClient(options: SetupClientOptions): SetupClient {
-  const { request, modelsDir, makeDir, trash, models, unload, pollMs = 250 } = options
+  const { request, modelsDir, makeDir, trash, models, unload, log, pollMs = 250, retryMs = 2_000 } = options
 
   async function json(path: string, init?: RequestInit): Promise<unknown> {
     const response = await request(path, init)
@@ -113,7 +122,22 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
       await new Promise((done) => setTimeout(done, pollMs))
     }
 
-    await trash(folder)
+    await trashWithRetry(catalogId, folder)
+  }
+
+  // Windows can hold a file for a moment after its process ends, and Defender scans a fresh download; both make the
+  // move fail with "Operation was aborted", so a short wait and another try usually succeeds.
+  async function trashWithRetry(catalogId: string, folder: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await trash(folder)
+        return
+      } catch (error) {
+        log.warn(`setup: Recycle Bin move of ${catalogId} failed (try ${attempt} of ${trashAttempts})`, error)
+        if (attempt >= trashAttempts) throw new Error(trashFailedMessage, { cause: error })
+        await new Promise((done) => setTimeout(done, retryMs))
+      }
+    }
   }
 
   return { hardware, catalog, download, cancel, resume, remove }

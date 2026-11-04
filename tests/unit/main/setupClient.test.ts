@@ -4,6 +4,7 @@ import {
   createSetupClient,
   defaultModelsDir,
   isInside,
+  trashFailedMessage,
   type SetupClient
 } from '../../../src/main/core/setupClient'
 import type { ModelInfo } from '../../../src/shared/core'
@@ -53,6 +54,7 @@ function setUp(
   trash: Mock
   unload: Mock
   makeDir: Mock
+  warn: Mock
 } {
   const request = vi.fn(async (path: string) => {
     if (path.endsWith('/folder')) return json({ folder })
@@ -63,6 +65,7 @@ function setUp(
   const trash = vi.fn().mockResolvedValue(undefined)
   const unload = vi.fn().mockResolvedValue(undefined)
   const makeDir = vi.fn().mockResolvedValue(undefined)
+  const warn = vi.fn()
   const client = createSetupClient({
     request,
     modelsDir: () => modelsDir,
@@ -70,9 +73,11 @@ function setUp(
     trash,
     models,
     unload,
-    pollMs: 1
+    log: { warn },
+    pollMs: 1,
+    retryMs: 1
   })
-  return { client, request, trash, unload, makeDir }
+  return { client, request, trash, unload, makeDir, warn }
 }
 
 describe('setup client: remove', () => {
@@ -111,6 +116,26 @@ describe('setup client: remove', () => {
     expect(unload).toHaveBeenCalledTimes(1)
     expect(unload).toHaveBeenCalledWith('Qwen3-8B-Q4')
     expect(trash).toHaveBeenCalledTimes(1)
+  })
+
+  it('tries the Recycle Bin again when a file is still busy', async () => {
+    const { client, trash, warn } = setUp(`${modelsDir}\\qwen3-8b`)
+    trash.mockRejectedValueOnce(new Error('Operation was aborted'))
+
+    await client.remove('qwen3-8b')
+
+    expect(trash).toHaveBeenCalledTimes(2)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('try 1 of 3'), expect.any(Error))
+  })
+
+  it("gives up with a plain sentence, not Electron's raw error", async () => {
+    const { client, trash, warn } = setUp(`${modelsDir}\\qwen3-8b`)
+    trash.mockRejectedValue(new Error('Operation was aborted'))
+
+    await expect(client.remove('qwen3-8b')).rejects.toThrow(trashFailedMessage)
+
+    expect(trash).toHaveBeenCalledTimes(3)
+    expect(warn).toHaveBeenCalledTimes(3)
   })
 
   it("shows core's own message when core refuses", async () => {

@@ -119,7 +119,8 @@ function start(): void {
       makeDir: async (path) => void (await mkdir(path, { recursive: true })),
       trash: (path) => shell.trashItem(path),
       models: models.list,
-      unload: models.unload
+      unload: models.unload,
+      log
     })
     core = createSupervisor({
       exePath: coreExePath(),
