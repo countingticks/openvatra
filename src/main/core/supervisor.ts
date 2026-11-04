@@ -72,6 +72,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
   const stopTimeoutMs = options.stopTimeoutMs ?? 8_000
 
   let current: CoreState = { status: 'starting' }
+  let restarting = false
   let active: Attempt | null = null
   let stopping = false
   let restartTimer: ReturnType<typeof setTimeout> | undefined
@@ -106,7 +107,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
 
   function start(): void {
     if (stopping) return
-    set({ status: 'starting' })
+    if (!restarting) set({ status: 'starting' }) // restart() announced it already
 
     const token = randomBytes(32).toString('hex')
     let child: ChildProcessWithoutNullStreams
@@ -202,7 +203,6 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     })
   }
 
-  let restarting = false
   async function restart(): Promise<void> {
     // A double click must not launch two cores; after stop() the app is quitting.
     if (stopping || restarting) return
@@ -210,6 +210,9 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     try {
       clearTimeout(restartTimer)
       const attempt = active
+      // Said before the old core goes, not after: while it shuts down, requests must be refused ("not ready")
+      // instead of reaching a core that is exiting, and the UI must not keep treating it as ready.
+      set({ status: 'starting' })
       // Marked failed first, so its exit is not mistaken for a crash (no counting, no automatic restart).
       if (attempt) attempt.failed = true
       await shutDown(attempt)

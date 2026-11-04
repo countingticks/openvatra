@@ -177,6 +177,7 @@ describe('core supervisor', () => {
       await vi.advanceTimersByTimeAsync(1_000)
       expect(spawn).toHaveBeenCalledTimes(2)
       expect(states.at(-1)).toEqual({ status: 'starting' })
+      expect(states.filter((state) => state.status === 'starting')).toHaveLength(2) // first start, one restart
     })
 
     it('forgets crashes older than 2 minutes', async () => {
@@ -304,6 +305,9 @@ describe('core supervisor', () => {
       void supervisor.restart().then(restarted)
       await vi.advanceTimersByTimeAsync(0)
       expect(spawn).toHaveBeenCalledTimes(1) // waits for the old one to be gone
+      // Not ready any more while the old one exits: requests are refused instead of reaching a dying core.
+      expect(supervisor.state()).toEqual({ status: 'starting' })
+      await expect(supervisor.request('/api/catalog')).rejects.toThrow('core is not ready')
 
       children[0].child.emit('exit', 0)
       await vi.advanceTimersByTimeAsync(0)
