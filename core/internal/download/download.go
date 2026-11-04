@@ -51,6 +51,8 @@ type Downloader struct {
 	AllowHost func(host string) bool
 	// Backoff is the wait before each retry; its length is the number of retries.
 	Backoff []time.Duration
+	// AllowLocalHTTP lets plain http through for 127.0.0.1 and localhost. Only the test catalog turns it on.
+	AllowLocalHTTP bool
 }
 
 // New returns a downloader for Hugging Face with the retry waits from the spec (2, 8, 30 s).
@@ -101,7 +103,11 @@ func (d *Downloader) Fetch(ctx context.Context, req Request, onProgress func(Pro
 
 func (d *Downloader) checkURL(raw string) error {
 	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "https" || !d.AllowHost(u.Hostname()) {
+	if err != nil {
+		return fmt.Errorf("%w: %s", ErrNotAllowed, raw)
+	}
+	local := d.AllowLocalHTTP && u.Scheme == "http" && (u.Hostname() == "127.0.0.1" || u.Hostname() == "localhost")
+	if (u.Scheme != "https" && !local) || !d.AllowHost(u.Hostname()) {
 		return fmt.Errorf("%w: %s", ErrNotAllowed, raw)
 	}
 	return nil

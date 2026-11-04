@@ -20,6 +20,8 @@ import (
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/catalog"
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/download"
+	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -52,6 +54,8 @@ func main() {
 func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
+	// For the end-to-end tests only: main passes it solely when unpackaged with OPENVATRA_E2E=1.
+	testCatalog := fs.String("test-catalog", "", "catalog file that replaces the built-in list and may name a local server")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -116,12 +120,33 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
 	}
+	dler := download.New()
+	if *testCatalog != "" {
+		data, err := os.ReadFile(*testCatalog)
+		if err != nil {
+			return fmt.Errorf("test catalog: %w", err)
+		}
+		if entries, err = catalog.ParseTest(data); err != nil {
+			return fmt.Errorf("test catalog: %w", err)
+		}
+		dler.AllowLocalHTTP = true
+		dler.AllowHost = func(h string) bool { return download.HuggingFaceHost(h) || h == "127.0.0.1" || h == "localhost" }
+		logger.Warn("using a test catalog", "file", *testCatalog)
+	}
 	cat := catalog.New(entries, hardware.Get, func() string { return cfg.Get().ModelsDir })
+	// A finished download changes what is on disk: tell every listener to re-read the models.
+	dl := downloads.New(downloads.Config{
+		Downloader: dler,
+		Entries:    entries,
+		ModelsDir:  func() string { return cfg.Get().ModelsDir },
+		OnFinish:   rt.Notify,
+	})
+	defer dl.Close()
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)

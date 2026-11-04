@@ -210,3 +210,18 @@ func TestFetchStopsOnCancel(t *testing.T) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 }
+
+func TestPlainHTTPOnlyForLocalWhenAllowed(t *testing.T) {
+	d := New()
+	if err := d.checkURL("http://127.0.0.1:9/x"); err == nil {
+		t.Fatal("plain http accepted by default")
+	}
+	d.AllowLocalHTTP = true
+	d.AllowHost = func(string) bool { return true }
+	if err := d.checkURL("http://127.0.0.1:9/x"); err != nil {
+		t.Fatalf("local http refused: %v", err)
+	}
+	if err := d.checkURL("http://example.com/x"); err == nil {
+		t.Fatal("remote plain http accepted")
+	}
+}

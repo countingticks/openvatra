@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,5 +150,19 @@ func TestServerArgsProjector(t *testing.T) {
 				t.Fatalf("args = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
+	t.Setenv(tokenEnv, "t")
+	t.Setenv(logDirEnv, t.TempDir())
+	bad := filepath.Join(t.TempDir(), "bad.json")
+	if err := os.WriteFile(bad, []byte(`[{"id":"x"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{filepath.Join(t.TempDir(), "missing.json"), bad} {
+		if err := run([]string{"--test-catalog", file}, strings.NewReader(""), io.Discard); err == nil {
+			t.Fatalf("run accepted test catalog %s", file)
+		}
 	}
 }

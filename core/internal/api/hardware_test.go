@@ -32,7 +32,7 @@ func TestHardwareEndpoints(t *testing.T) {
 		req.Host = "127.0.0.1:53121"
 		req.Header.Set("Authorization", "Bearer "+testToken)
 		rec := httptest.NewRecorder()
-		NewHandler(testToken, testPort, func() {}, nil, nil, config.NewStore(), stubHardware{}, stubCatalog{}).ServeHTTP(rec, req)
+		NewHandler(testToken, testPort, func() {}, nil, nil, config.NewStore(), stubHardware{}, stubCatalog{}, nil).ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != tt.want {
 			t.Errorf("%s %s: status = %d, body = %s", tt.method, tt.path, rec.Code, rec.Body.String())
 		}

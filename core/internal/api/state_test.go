@@ -35,7 +35,7 @@ func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
 
 func TestEventsSendsStateNowAndAfterEachChange(t *testing.T) {
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
-	srv := httptest.NewServer(eventsHandler(rt, twoModels))
+	srv := httptest.NewServer(eventsHandler(rt, twoModels, nil))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())

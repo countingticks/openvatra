@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
 )
 
 const stateStopped = "stopped"
+
+// downloadsInterval keeps the downloads event to 4 a second.
+const downloadsInterval = 250 * time.Millisecond
 
 // modelState is what the router knows about a model plus facts from disk.
 // The embedded struct's fields are flattened into the same JSON object.
@@ -75,7 +79,7 @@ func stateHandler(rt Router, list func() ([]models.Model, error)) http.HandlerFu
 // eventsHandler streams Server-Sent Events: the current state at once, then a new
 // one after every change, so Electron main never has to poll. An SSE message is
 // plain text, "event: <name>", "data: <one line>", and a blank line to end it.
-func eventsHandler(rt Router, list func() ([]models.Model, error)) http.HandlerFunc {
+func eventsHandler(rt Router, list func() ([]models.Model, error), dl Downloads) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -106,10 +110,47 @@ func eventsHandler(rt Router, list func() ([]models.Model, error)) http.HandlerF
 		if !send() {
 			return
 		}
+		// A nil channel never fires, so without a downloads source its cases below simply never run.
+		var dlChanged <-chan struct{}
+		var sendDL func() bool
+		var dlTimer <-chan time.Time
+		var lastDL time.Time
+		if dl != nil {
+			var cancelDL func()
+			dlChanged, cancelDL = dl.Subscribe()
+			defer cancelDL()
+			sendDL = func() bool {
+				lastDL = time.Now()
+				data, _ := json.Marshal(map[string]any{"items": dl.Items()})
+				if _, err := fmt.Fprintf(w, "event: downloads\ndata: %s\n\n", data); err != nil {
+					return false
+				}
+				flusher.Flush()
+				return true
+			}
+			if !sendDL() {
+				return
+			}
+		}
 		for {
 			select {
 			case <-changed:
 				if !send() {
+					return
+				}
+			case <-dlChanged:
+				// At most 4 a second: progress changes with every chunk. A change inside the pause is not
+				// dropped, the timer sends the newest state when the pause is over.
+				if wait := downloadsInterval - time.Since(lastDL); wait > 0 {
+					if dlTimer == nil {
+						dlTimer = time.After(wait)
+					}
+				} else if !sendDL() {
+					return
+				}
+			case <-dlTimer:
+				dlTimer = nil
+				if !sendDL() {
 					return
 				}
 			case <-r.Context().Done():
