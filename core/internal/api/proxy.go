@@ -24,6 +24,7 @@ type Router interface {
 	Subscribe() (<-chan struct{}, func())
 	Load(ctx context.Context, id string) error
 	Unload(id string) bool
+	Notify()
 }
 
 // proxy forwards a request to the llama-server the router picks. Chat requests

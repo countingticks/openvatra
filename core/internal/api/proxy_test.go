@@ -27,6 +27,7 @@ type stubRouter struct {
 	loaded   string
 	unloaded string
 	unloadOK bool
+	notified int
 }
 
 func (s *stubRouter) Snapshot() []router.ModelState { return s.snapshot }
@@ -35,6 +36,7 @@ func (s *stubRouter) Subscribe() (<-chan struct{}, func()) {
 }
 func (s *stubRouter) Load(_ context.Context, id string) error { s.loaded = id; return s.err }
 func (s *stubRouter) Unload(id string) bool                   { s.unloaded = id; return s.unloadOK }
+func (s *stubRouter) Notify()                                 { s.notified++ }
 
 func (s *stubRouter) Acquire(_ context.Context, kind router.Kind, model string) (string, func(), error) {
 	s.kind, s.model = kind, model

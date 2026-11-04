@@ -13,8 +13,9 @@ export type TabId = (typeof tabIds)[number]
  * (src/main/settings.ts). 2: `lastTab` can no longer be 'settings'. 3: added `models`.
  * 4: model options became llama-swap style argument text (`sharedArgs`, `options[id].args`).
  * 5: `sharedArgs` and the per-model unload time and projector switch were removed.
+ * 6: added `models.engine`, `showAdvanced` and `cudaOfferDismissed` (model setup).
  */
-export const settingsSchemaVersion = 5
+export const settingsSchemaVersion = 6
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -56,15 +57,25 @@ export const modelOptionsSchema = z.strictObject({
 })
 const modelOptionsById = z.record(modelId, modelOptionsSchema)
 
+/** Which llama.cpp build runs the models: the one shipped with the app, or the faster NVIDIA (CUDA) one. */
+export const engines = ['bundled', 'cuda'] as const
+const engine = z.enum(engines)
+
 /** What core needs to run models. main sends it to core.exe (POST /api/config) on start and on every change. */
 export const modelsSettingsSchema = z.object({
   /** Full path to llama-server.exe; null until chosen. */
   llamaServerPath: z.string().min(1).nullable().default(null),
+  /** null = the default folder (`%USERPROFILE%\OpenVatra\Models`), resolved by main, never written here. */
   modelsDir: z.string().min(1).nullable().default(null),
   /** A model id (its file name without .gguf). */
   embeddingModel: modelId.nullable().default(null),
   idleUnloadMinutes: idleUnloadMinutes.default(15),
-  options: modelOptionsById.default({})
+  options: modelOptionsById.default({}),
+  engine: engine.default('bundled'),
+  /** Show the full model list and technical details instead of the simple view. */
+  showAdvanced: z.boolean().default(false),
+  /** The user said "no thanks" to the faster NVIDIA engine offer. */
+  cudaOfferDismissed: z.boolean().default(false)
 })
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
@@ -119,7 +130,10 @@ export const settingsPatchSchema = z.strictObject({
       embeddingModel: modelId.nullable().optional(),
       idleUnloadMinutes: idleUnloadMinutes.optional(),
       /** The whole map: the UI sends every model's options, not one model's. */
-      options: modelOptionsById.optional()
+      options: modelOptionsById.optional(),
+      engine: engine.optional(),
+      showAdvanced: z.boolean().optional(),
+      cudaOfferDismissed: z.boolean().optional()
     })
     .optional()
 })

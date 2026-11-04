@@ -29,6 +29,8 @@ export interface SupervisorOptions {
   log: { info: (message: string) => void; warn: (message: string) => void }
   // Injected so tests can use a fake child process and a fake network.
   spawn?: (exePath: string, env: NodeJS.ProcessEnv) => ChildProcessWithoutNullStreams
+  /** Extra command-line arguments for core.exe (the e2e tests' --test-catalog). */
+  extraArgs?: string[]
   fetch?: typeof fetch
   /** How long core may take to print its ready line. */
   readyTimeoutMs?: number
@@ -59,17 +61,18 @@ interface Attempt {
   onExit?: () => void
 }
 
-const defaultSpawn: NonNullable<SupervisorOptions['spawn']> = (exePath, env) =>
-  nodeSpawn(exePath, ['--port', '0'], { env, windowsHide: true })
-
 export function createSupervisor(options: SupervisorOptions): Supervisor {
   const { exePath, logsDir, onState, log } = options
-  const spawn = options.spawn ?? defaultSpawn
+  const spawn =
+    options.spawn ??
+    ((exe: string, env: NodeJS.ProcessEnv) =>
+      nodeSpawn(exe, ['--port', '0', ...(options.extraArgs ?? [])], { env, windowsHide: true }))
   const doFetch = options.fetch ?? fetch
   const readyTimeoutMs = options.readyTimeoutMs ?? 15_000
   const stopTimeoutMs = options.stopTimeoutMs ?? 8_000
 
   let current: CoreState = { status: 'starting' }
+  let restarting = false
   let active: Attempt | null = null
   let stopping = false
   let restartTimer: ReturnType<typeof setTimeout> | undefined
@@ -104,7 +107,7 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
 
   function start(): void {
     if (stopping) return
-    set({ status: 'starting' })
+    if (!restarting) set({ status: 'starting' }) // restart() announced it already
 
     const token = randomBytes(32).toString('hex')
     let child: ChildProcessWithoutNullStreams
@@ -200,7 +203,6 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     })
   }
 
-  let restarting = false
   async function restart(): Promise<void> {
     // A double click must not launch two cores; after stop() the app is quitting.
     if (stopping || restarting) return
@@ -208,6 +210,9 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
     try {
       clearTimeout(restartTimer)
       const attempt = active
+      // Said before the old core goes, not after: while it shuts down, requests must be refused ("not ready")
+      // instead of reaching a core that is exiting, and the UI must not keep treating it as ready.
+      set({ status: 'starting' })
       // Marked failed first, so its exit is not mistaken for a crash (no counting, no automatic restart).
       if (attempt) attempt.failed = true
       await shutDown(attempt)

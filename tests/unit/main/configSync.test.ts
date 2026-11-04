@@ -4,6 +4,7 @@ import { createConfigSync, toCoreConfig } from '../../../src/main/core/configSyn
 import { defaultSettings, type Settings } from '../../../src/shared/settings'
 
 const bundled = 'C:/app/resources/llama/llama-server.exe'
+const defaultDir = 'C:/Users/me/OpenVatra/Models'
 
 const withModels = (models: Partial<Settings['models']>): Settings => ({
   ...defaultSettings,
@@ -17,9 +18,9 @@ describe('toCoreConfig', () => {
       idleUnloadMinutes: null,
       options: { qwen: { args: '-c 4096 --alias "my qwen"' }, gemma: {} }
     }
-    expect(toCoreConfig(models, bundled)).toEqual({
+    expect(toCoreConfig(models, bundled, defaultDir)).toEqual({
       llamaServerPath: bundled,
-      modelsDir: '',
+      modelsDir: defaultDir,
       embeddingModel: '',
       idleUnloadMinutes: 0,
       options: {
@@ -29,11 +30,22 @@ describe('toCoreConfig', () => {
     })
   })
 
+  it('uses the default models folder until the user chose one', () => {
+    const chosen = { ...defaultSettings.models, modelsDir: 'D:/models' }
+
+    expect(toCoreConfig(defaultSettings.models, bundled, defaultDir)).toMatchObject({ modelsDir: defaultDir })
+    expect(toCoreConfig(chosen, bundled, defaultDir)).toMatchObject({ modelsDir: 'D:/models' })
+  })
+
   it('runs the bundled llama-server unless the user chose their own', () => {
     const own = { ...defaultSettings.models, llamaServerPath: 'D:/llama/llama-server.exe' }
 
-    expect(toCoreConfig(defaultSettings.models, bundled)).toMatchObject({ llamaServerPath: bundled })
-    expect(toCoreConfig(own, bundled)).toMatchObject({ llamaServerPath: 'D:/llama/llama-server.exe' })
+    expect(toCoreConfig(defaultSettings.models, bundled, defaultDir)).toMatchObject({
+      llamaServerPath: bundled
+    })
+    expect(toCoreConfig(own, bundled, defaultDir)).toMatchObject({
+      llamaServerPath: 'D:/llama/llama-server.exe'
+    })
   })
 })
 
@@ -44,7 +56,7 @@ describe('config sync', () => {
     const post = vi.fn().mockResolvedValue(undefined)
     const settings = withModels({ modelsDir: 'D:/models', idleUnloadMinutes: 60 })
 
-    await createConfigSync(() => settings, post, log, bundled).sync()
+    await createConfigSync(() => settings, post, log, bundled, defaultDir).sync()
 
     expect(post).toHaveBeenCalledWith(
       '/api/config',
@@ -54,7 +66,7 @@ describe('config sync', () => {
 
   it('syncs when models changed, and ignores other settings changes', async () => {
     const post = vi.fn().mockResolvedValue(undefined)
-    const sync = createConfigSync(() => defaultSettings, post, log, bundled)
+    const sync = createConfigSync(() => defaultSettings, post, log, bundled, defaultDir)
 
     sync.onSettingsChange({ ...defaultSettings, theme: 'dark' }, defaultSettings)
     expect(post).not.toHaveBeenCalled()
@@ -65,7 +77,7 @@ describe('config sync', () => {
 
   it('logs a failure instead of throwing, and keeps working afterwards', async () => {
     const post = vi.fn().mockRejectedValueOnce(new Error('core is not ready')).mockResolvedValue(undefined)
-    const sync = createConfigSync(() => defaultSettings, post, log, bundled)
+    const sync = createConfigSync(() => defaultSettings, post, log, bundled, defaultDir)
 
     await expect(sync.sync()).resolves.toBeUndefined()
     expect(log.warn).toHaveBeenCalled()
@@ -81,7 +93,7 @@ describe('config sync', () => {
       bodies.push(body)
       if (bodies.length === 1) await new Promise<void>((resolve) => (release = resolve))
     })
-    const sync = createConfigSync(() => current, post, log, bundled)
+    const sync = createConfigSync(() => current, post, log, bundled, defaultDir)
 
     const first = sync.sync()
     await vi.waitFor(() => expect(post).toHaveBeenCalledTimes(1))

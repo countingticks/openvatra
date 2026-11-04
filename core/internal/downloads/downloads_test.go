@@ -131,8 +131,8 @@ func TestCancelRunningDeletesPartialFile(t *testing.T) {
 	}
 	f.waitFor(t, "a", "")
 	time.Sleep(20 * time.Millisecond) // the worker removes the files just after the job disappears
-	if _, err := os.Stat(filepath.Join(f.dir, "a", "a.gguf.part")); err == nil {
-		t.Fatal(".part file still there")
+	if _, err := os.Stat(filepath.Join(f.dir, "a")); !os.IsNotExist(err) {
+		t.Fatalf("the model's folder is still there (%v)", err)
 	}
 }
 
@@ -179,11 +179,53 @@ func TestCancelPausedLeftoverDeletesIt(t *testing.T) {
 	if err := f.m.Cancel("a"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(part); err == nil {
-		t.Fatal(".part file still there")
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the model's folder is still there (%v)", err)
 	}
 	if err := f.m.Cancel("a"); !errors.Is(err, ErrNoDownload) {
 		t.Fatalf("second cancel = %v, want ErrNoDownload", err)
+	}
+}
+
+func TestCancelDeletesFinishedFilesOfAnUnfinishedModel(t *testing.T) {
+	f := newFixture(t, false, "a")
+	f.m.cfg.Entries[0].Files = append(f.m.cfg.Entries[0].Files, catalog.File{Name: "mmproj.gguf", SizeBytes: 50})
+	dir := filepath.Join(f.dir, "a")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "a.gguf"), payload, 0o644) // first file done
+	_ = os.WriteFile(filepath.Join(dir, "mmproj.gguf.part"), payload[:10], 0o644)
+	if err := f.m.Cancel("a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the model's folder is still there (%v)", err)
+	}
+}
+
+func TestCancelKeepsAFolderWithOtherFiles(t *testing.T) {
+	f := newFixture(t, false, "a")
+	dir := filepath.Join(f.dir, "a")
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "a.gguf.part"), payload[:10], 0o644)
+	mine := filepath.Join(dir, "notes.txt")
+	_ = os.WriteFile(mine, []byte("mine"), 0o644)
+	if err := f.m.Cancel("a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(mine); err != nil {
+		t.Fatalf("a file that is not the download's was deleted: %v", err)
+	}
+}
+
+func TestDismissingAFinishedDownloadKeepsTheModel(t *testing.T) {
+	f := newFixture(t, false, "a")
+	_ = f.m.Start("a")
+	f.waitFor(t, "a", Done)
+	if err := f.m.Cancel("a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "a", "a.gguf")); err != nil {
+		t.Fatalf("dismissing deleted the installed model: %v", err)
 	}
 }
 

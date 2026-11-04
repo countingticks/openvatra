@@ -44,7 +44,9 @@ const migrations: Readonly<Record<number, Migration>> = {
         )
       : undefined
     return { ...old, models: { ...rest, ...(options && { options }) } }
-  }
+  },
+  // 5 → 6: `engine`, `showAdvanced` and `cudaOfferDismissed` are new; the schema fills in their defaults.
+  5: (old) => old
 }
 
 /** `{ contextSize, gpuLayers, extraArgs }` → `{ args: '-c … -ngl … …' }`; `{}` if nothing was set. */

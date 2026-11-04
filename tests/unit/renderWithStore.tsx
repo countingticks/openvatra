@@ -14,8 +14,10 @@ import type {
   CoreApi,
   FileLocations,
   FilesApi,
-  SettingsApi
+  SettingsApi,
+  SetupApi
 } from '../../src/shared/ipc'
+import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
 
 export const exampleLocations: FileLocations = {
@@ -33,6 +35,26 @@ export interface FakeCore {
   emitState(state: CoreState): void
   /** Report a new model list, as main does on every change. */
   emitModels(models: ModelInfo[]): void
+}
+
+/** The fake first-run setup API, plus a way to play main's part. */
+export interface FakeSetup {
+  download: Mock<SetupApi['download']>
+  cancel: Mock<SetupApi['cancel']>
+  resume: Mock<SetupApi['resume']>
+  remove: Mock<SetupApi['remove']>
+  /** Report a new download queue, as main does on every change. */
+  emitDownloads(items: DownloadItem[]): void
+}
+
+export const exampleHardware: HardwareReport = {
+  gpu: {
+    name: 'NVIDIA GeForce RTX 4070',
+    vendor: 'nvidia',
+    totalBytes: 12 * 1024 ** 3,
+    freeBytes: 11 * 1024 ** 3
+  },
+  ramBytes: 32 * 1024 ** 3
 }
 
 /** The fake window API, plus a way to play main's part. */
@@ -58,6 +80,7 @@ interface Rendered extends RenderResult {
   appWindow: FakeAppWindow
   quit: Mock<AppApi['quit']>
   core: FakeCore
+  setup: FakeSetup
 }
 
 interface Options {
@@ -67,6 +90,35 @@ interface Options {
   coreState?: CoreState
   /** The model list when the UI first asks; default: none. */
   models?: ModelInfo[]
+  /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
+  setup?: { hardware?: HardwareReport; catalog?: CatalogView; downloads?: DownloadItem[] }
+}
+
+function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeSetup } {
+  const listeners = new Set<(items: DownloadItem[]) => void>()
+  const fake: FakeSetup = {
+    download: vi.fn<SetupApi['download']>().mockResolvedValue(undefined),
+    cancel: vi.fn<SetupApi['cancel']>().mockResolvedValue(undefined),
+    resume: vi.fn<SetupApi['resume']>().mockResolvedValue(undefined),
+    remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
+    emitDownloads: (items) => act(() => listeners.forEach((listener) => listener(items)))
+  }
+  const api: SetupApi = {
+    hardware: vi.fn<SetupApi['hardware']>().mockResolvedValue(options.hardware ?? exampleHardware),
+    catalog: vi
+      .fn<SetupApi['catalog']>()
+      .mockResolvedValue(options.catalog ?? { entries: [], diskFreeBytes: null, recommended: null }),
+    download: fake.download,
+    cancel: fake.cancel,
+    resume: fake.resume,
+    remove: fake.remove,
+    downloads: vi.fn<SetupApi['downloads']>().mockResolvedValue(options.downloads ?? []),
+    onDownloads: (callback) => {
+      listeners.add(callback)
+      return () => listeners.delete(callback)
+    }
+  }
+  return { api, fake }
 }
 
 function fakeCore(start: CoreState, models: ModelInfo[]): { api: CoreApi; fake: FakeCore } {
@@ -138,7 +190,9 @@ export function renderWithStore(
     .fn<FilesApi['useBundledLlama']>()
     .mockImplementation(async () => ({ ...current, models: { ...current.models, llamaServerPath: null } }))
   const core = fakeCore(options.coreState ?? { status: 'starting' }, options.models ?? [])
-  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
+  const setup = fakeSetup(options.setup)
+  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core' | 'setup'> = {
+    setup: setup.api,
     app: { quit },
     core: core.api,
     files: {
@@ -162,6 +216,7 @@ export function renderWithStore(
     appWindow: appWindow.fake,
     quit,
     core: core.fake,
+    setup: setup.fake,
     ...render(<Provider store={store}>{ui}</Provider>)
   }
 }

@@ -49,12 +49,56 @@ function fakeCore(): {
 function setUp(request: Request): {
   client: ReturnType<typeof createModelsClient>
   onModels: ReturnType<typeof vi.fn>
+  onDownloads: ReturnType<typeof vi.fn>
   warn: ReturnType<typeof vi.fn>
 } {
   const onModels = vi.fn()
+  const onDownloads = vi.fn()
   const warn = vi.fn()
-  return { client: createModelsClient({ request, onModels, log: { warn } }), onModels, warn }
+  return {
+    client: createModelsClient({ request, onModels, onDownloads, log: { warn } }),
+    onModels,
+    onDownloads,
+    warn
+  }
 }
+
+const downloadsEvent = (items: unknown): string => `event: downloads
+data: ${JSON.stringify({ items })}
+
+`
+
+describe('models client: downloads', () => {
+  const running = { id: 'qwen3-8b', state: 'downloading', bytes: 10, total: 100, speed: 5 }
+
+  it('reports the download queue from the same stream and keeps the latest for late windows', async () => {
+    const core = fakeCore()
+    const { client, onDownloads } = setUp(core.request)
+    client.start()
+    await vi.waitFor(() => expect(core.streams).toHaveLength(1))
+
+    core.streams[0].send(downloadsEvent([running]))
+
+    await vi.waitFor(() => expect(onDownloads).toHaveBeenCalledWith([running]))
+    expect(client.downloads()).toEqual([running])
+  })
+
+  it('ignores a malformed queue, and empties it on stop', async () => {
+    const core = fakeCore()
+    const { client, onDownloads, warn } = setUp(core.request)
+    client.start()
+    await vi.waitFor(() => expect(core.streams).toHaveLength(1))
+
+    core.streams[0].send(downloadsEvent([{ id: 'x', state: 'exploded' }]))
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledTimes(1))
+    expect(onDownloads).not.toHaveBeenCalled()
+
+    core.streams[0].send(downloadsEvent([running]))
+    await vi.waitFor(() => expect(client.downloads()).toEqual([running]))
+    client.stop()
+    expect(client.downloads()).toEqual([])
+  })
+})
 
 describe('models client: following core', () => {
   afterEach(() => vi.useRealTimers())

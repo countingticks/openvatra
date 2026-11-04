@@ -1,4 +1,5 @@
-import { app, Menu, type BrowserWindow } from 'electron'
+import { app, Menu, shell, type BrowserWindow } from 'electron'
+import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -8,6 +9,7 @@ import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { bundledLlamaDir, bundledLlamaExe } from './bundledLlama'
 import { createConfigSync } from './core/configSync'
 import { createModelsClient } from './core/modelsClient'
+import { createSetupClient, defaultModelsDir } from './core/setupClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -29,6 +31,12 @@ function coreExePath(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'core', 'core.exe')
     : join(app.getAppPath(), 'resources', 'core', 'core.exe')
+}
+
+// Test seam: a catalog file that may name a local server. Never reachable in an installed app.
+function coreExtraArgs(): string[] {
+  const file = process.env['OPENVATRA_TEST_CATALOG']
+  return !app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && file ? ['--test-catalog', file] : []
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -87,11 +95,13 @@ function start(): void {
     // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
     const llamaDir = bundledLlamaDir(app.isPackaged, process.resourcesPath, app.getAppPath())
+    const userModelsDir = defaultModelsDir(app.getPath('home'))
     const configSync = createConfigSync(
       store.get,
       (path, body) => core?.post(path, body) ?? Promise.reject(),
       log,
-      bundledLlamaExe(llamaDir)
+      bundledLlamaExe(llamaDir),
+      userModelsDir
     )
     store.onChange(configSync.onSettingsChange)
     const sendToWindow = (channel: string, value: unknown): void => {
@@ -100,10 +110,22 @@ function start(): void {
     const models = createModelsClient({
       request: (path, init) => core?.request(path, init) ?? Promise.reject(new Error('core is not running')),
       onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
+      onDownloads: (items) => sendToWindow(ipcChannels.setupDownloadsChanged, items),
+      log
+    })
+    const setup = createSetupClient({
+      request: (path, init) => core?.request(path, init) ?? Promise.reject(new Error('core is not running')),
+      modelsDir: () => store.get().models.modelsDir ?? userModelsDir,
+      makeDir: async (path) => void (await mkdir(path, { recursive: true })),
+      trash: (path) => shell.trashItem(path),
+      models: models.list,
+      unload: models.unload,
+      downloads: models.downloads,
       log
     })
     core = createSupervisor({
       exePath: coreExePath(),
+      extraArgs: coreExtraArgs(),
       logsDir: logsFolder(),
       onState: (state) => {
         // The list only means something while core is up; a new one arrives once it is ready again.
@@ -123,7 +145,9 @@ function start(): void {
       restart: core.restart,
       list: models.list,
       load: models.load,
-      unload: models.unload
+      unload: models.unload,
+      downloads: models.downloads,
+      ...setup
     })
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
