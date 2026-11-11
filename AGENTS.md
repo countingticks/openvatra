@@ -47,7 +47,7 @@ npm run test:e2e     # build, then launch the real app with Playwright (tests/e2
                      # (quiet: npm run check -- --e2e, or -- tests/e2e/<name>.spec.ts for some specs)
 ```
 
-Run `typecheck`, `lint`, `format:check` and `test` before every commit.
+Run `npm run check` before every commit: it covers typecheck, lint, format check and the tests in one short report.
 
 UI components come from shadcn/ui: add them with `npx shadcn@latest add <name>` (config in `components.json`);
 they land in `src/renderer/src/components/ui/` and are ours to edit.

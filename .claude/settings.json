@@ -10,7 +10,13 @@
       "Read(./release/**)",
       "Read(./coverage/**)",
       "Read(./test-results/**)",
-      "Read(./playwright-report/**)"
+      "Read(./playwright-report/**)",
+      "Bash(npm test*)",
+      "Bash(npm run test:e2e*)",
+      "Bash(npx playwright test*)",
+      "PowerShell(npm test*)",
+      "PowerShell(npm run test:e2e*)",
+      "PowerShell(npx playwright test*)"
     ]
   },
   "hooks": {
