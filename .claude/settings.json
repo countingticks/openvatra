@@ -2,6 +2,9 @@
   "permissions": {
     "deny": [
       "Read(./package-lock.json)",
+      "Read(./core/go.sum)",
+      "Read(./vendor/**)",
+      "Read(./private/brand/**/frames.json)",
       "Read(./out/**)",
       "Read(./dist/**)",
       "Read(./release/**)",
