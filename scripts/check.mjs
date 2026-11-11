@@ -42,7 +42,13 @@ for (const [name, command, options = {}] of steps) {
     continue
   }
   const started = Date.now()
-  const result = spawnSync(command, { shell: true, encoding: 'utf8', cwd: options.cwd ?? process.cwd() })
+  const result = spawnSync(command, {
+    shell: true,
+    encoding: 'utf8',
+    cwd: options.cwd ?? process.cwd(),
+    // Tells tests/setup.ts to keep failed-query errors short (see there).
+    env: { ...process.env, CHECK_QUIET: '1' }
+  })
   const seconds = ((Date.now() - started) / 1000).toFixed(1)
   if (result.status === 0 && !(options.failsOnOutput && result.stdout.trim())) {
     console.log(`ok   ${name} (${seconds}s)`)
