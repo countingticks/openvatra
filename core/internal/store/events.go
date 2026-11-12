@@ -170,3 +170,15 @@ func (l storeLog) Info(ctx context.Context) (event.Info, error) {
 	}
 	return info, nil
 }
+
+// TrimSystem deletes system events older than before and returns how many went. Other streams are never trimmed.
+func (s *Store) TrimSystem(ctx context.Context, before time.Time) (int64, error) {
+	if s.readOnly != nil {
+		return 0, ErrReadOnly
+	}
+	res, err := s.writer().ExecContext(ctx, "DELETE FROM events WHERE stream = 'system' AND time < ?", before.UnixMilli())
+	if err != nil {
+		return 0, fmt.Errorf("trim system events: %w", err)
+	}
+	return res.RowsAffected()
+}

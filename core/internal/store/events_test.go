@@ -240,7 +240,7 @@ func TestLogIDIsRandomHexAndSurvivesReopen(t *testing.T) {
 	}
 }
 
-func TestReadOnlyStoreReadsButDoesNotAppend(t *testing.T) {
+func TestReadOnlyStoreReadsButDoesNotWrite(t *testing.T) {
 	dir := t.TempDir()
 	newer, err := open(dir, event.NewBus(16), embeddedMigrations(t, -1, "CREATE TABLE z(x)"), "m")
 	if err != nil {
@@ -265,6 +265,9 @@ func TestReadOnlyStoreReadsButDoesNotAppend(t *testing.T) {
 	}
 	if info, err := s.Log().Info(ctx); err != nil || info.Head != 1 || info.ID == "" {
 		t.Fatalf("info = %+v, %v", info, err)
+	}
+	if n, err := s.TrimSystem(ctx, time.Now()); n != 0 || !errors.Is(err, ErrReadOnly) {
+		t.Fatalf("trim = %d, %v", n, err)
 	}
 }
 
@@ -313,4 +316,27 @@ func TestConcurrentAppendsArriveInSeqOrder(t *testing.T) {
 		}
 	}
 	wg.Wait()
+}
+
+func TestTrimSystemDeletesOnlyOldSystemEvents(t *testing.T) {
+	s, _ := newEventStore(t)
+	log := s.Log()
+	base := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
+	at := base
+	s.now = func() time.Time { return at }
+	must(log.Append(ctx, "system", changed(1))) // seq 1: old, goes
+	must(log.Append(ctx, "chat:a", changed(1))) // seq 2: old, but not system
+	at = base.Add(40 * 24 * time.Hour)
+	must(log.Append(ctx, "system", changed(2))) // seq 3: new
+
+	if n, err := s.TrimSystem(ctx, base.Add(10*24*time.Hour)); n != 1 || err != nil {
+		t.Fatalf("trim = %d, %v", n, err)
+	}
+	got := must(log.Read(ctx, 0, event.Filter{}, 10))
+	if len(got) != 2 || got[0].Seq != 2 || got[1].Seq != 3 {
+		t.Fatalf("left %+v", got)
+	}
+	if info := must(log.Info(ctx)); info.Head != 3 {
+		t.Fatalf("head = %d", info.Head)
+	}
 }
