@@ -4,11 +4,67 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
+	"github.com/countingticks/openvatra/core/internal/api/openapi"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/feed"
 )
+
+// Hello is the first frame of the event stream.
+type Hello struct {
+	Log   string `json:"log"`
+	Head  int64  `json:"head"`
+	Reset bool   `json:"reset"`
+}
+
+// EventsQuery documents the stream's query; eventsHandler parses the query itself.
+type EventsQuery struct {
+	After  *int64 `query:"after"`
+	Stream string `query:"stream"`
+	Log    string `query:"log"`
+}
+
+type eventDoc struct {
+	Type event.Type
+	Data reflect.Type // the schema of the envelope's data
+}
+
+var eventDocs = []eventDoc{
+	{event.ConfigChanged{}.EventType(), reflect.TypeFor[event.ConfigChanged]()},
+	{event.ModelState{}.EventType(), reflect.TypeFor[feed.StateBody]()},
+	{event.DownloadProgress{}.EventType(), reflect.TypeFor[feed.DownloadsBody]()},
+}
+
+// eventStreamSchema is the schema of one stream frame's data: the hello, or an event of any type.
+func eventStreamSchema(r *openapi.Reflector) *openapi.Schema {
+	var envelopes []*openapi.Schema
+	for _, d := range eventDocs {
+		var name strings.Builder
+		for _, part := range strings.Split(d.Type.Name, ".") {
+			name.WriteString(string(unicode.ToUpper(rune(part[0]))) + part[1:])
+		}
+		name.WriteString("Event")
+		envelopes = append(envelopes, r.Define(name.String(), &openapi.Schema{
+			Type: "object",
+			Properties: map[string]*openapi.Schema{
+				"seq":    {Type: "integer", Description: "durable events only"},
+				"time":   {Type: "integer"},
+				"stream": {Type: "string"},
+				"type":   {Type: "string", Enum: []string{d.Type.Name}},
+				"v":      {Type: "integer"},
+				"data":   r.Schema(d.Data),
+			},
+			Required: []string{"time", "stream", "type", "v", "data"},
+		}))
+	}
+	ev := r.Define("Event", &openapi.Schema{OneOf: envelopes})
+	return &openapi.Schema{OneOf: []*openapi.Schema{r.Schema(reflect.TypeFor[Hello]()), ev}}
+}
 
 // keepaliveInterval is how often an idle stream sends a comment line, so proxies and clients see it is alive.
 const keepaliveInterval = 15 * time.Second
@@ -78,11 +134,7 @@ func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
 		}
 
 		reset := (logID != "" && logID != info.ID) || (hasAfter && after > info.Head)
-		hello, _ := json.Marshal(struct {
-			Log   string `json:"log"`
-			Head  int64  `json:"head"`
-			Reset bool   `json:"reset"`
-		}{info.ID, info.Head, reset})
+		hello, _ := json.Marshal(Hello{info.ID, info.Head, reset})
 		if !write(fmt.Sprintf("event: hello\ndata: %s\n\n", hello)) {
 			return
 		}

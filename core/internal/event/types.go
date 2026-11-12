@@ -25,3 +25,6 @@ type DownloadProgress struct {
 func (DownloadProgress) EventType() Type {
 	return Type{Name: "download.progress", V: 1, Class: Retained}
 }
+
+// Types lists every payload type. A new type is added here and to api's eventDocs (a test checks both).
+var Types = []Payload{ConfigChanged{}, ModelState{}, DownloadProgress{}}
