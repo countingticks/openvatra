@@ -4,71 +4,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/countingticks/openvatra/core/internal/feed"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
 )
 
-const stateStopped = "stopped"
-
 // downloadsInterval keeps the downloads event to 4 a second.
 const downloadsInterval = 250 * time.Millisecond
 
-// modelState is what the router knows about a model plus facts from disk.
-// The embedded struct's fields are flattened into the same JSON object.
-type modelState struct {
-	router.ModelState
-	SizeBytes int64 `json:"sizeBytes"`
-	// Projector is the detected vision projector's file name (never its path); left out when there is none.
-	Projector string `json:"projector,omitempty"`
-	// Kind is chat, embedding or unreadable, read from the GGUF header; Error says why a file is unreadable.
-	Kind  models.Kind `json:"kind"`
-	Error string      `json:"error,omitempty"`
-}
-
-// stateBody is the JSON of GET /api/state and of every "state" event.
-type stateBody struct {
-	Models []modelState `json:"models"`
-}
-
-// currentState lists every model on disk: what the router knows about it, or
-// "stopped" when it has never been touched or has been unloaded.
-func currentState(rt Router, list func() ([]models.Model, error)) (stateBody, error) {
-	found, err := list()
-	if err != nil {
-		return stateBody{}, err
-	}
-	known := map[string]router.ModelState{}
-	for _, m := range rt.Snapshot() {
-		known[m.ID] = m
-	}
-	out := make([]modelState, 0, len(found)) // [] rather than null when empty
-	for _, m := range found {
-		st, ok := known[m.ID]
-		if !ok {
-			st = router.ModelState{ID: m.ID, State: stateStopped}
-		}
-		projector := ""
-		if m.MMProj != "" {
-			projector = filepath.Base(m.MMProj)
-		}
-		// Both the router and the header can have an error; the outer field shadows the embedded one in JSON, so merge.
-		errText := st.Error
-		if errText == "" {
-			errText = m.Error
-		}
-		out = append(out, modelState{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector, Kind: m.Kind, Error: errText})
-	}
-	return stateBody{Models: out}, nil
-}
-
 func stateHandler(rt Router, list func() ([]models.Model, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		body, err := currentState(rt, list)
+		body, err := feed.State(rt, list)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "models_unreadable", "could not read the models folder")
 			return
@@ -139,7 +89,7 @@ func eventsHandler(rt Router, list func() ([]models.Model, error), dl Downloads,
 		w.WriteHeader(http.StatusOK)
 
 		send := func() bool {
-			body, err := currentState(rt, list)
+			body, err := feed.State(rt, list)
 			if err != nil {
 				return true // keep the stream; the next change may succeed
 			}
@@ -241,6 +191,6 @@ func unloadHandler(rt Router) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": stateStopped})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": feed.StateStopped})
 	}
 }
