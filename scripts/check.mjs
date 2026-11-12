@@ -1,7 +1,8 @@
 // Runs the pre-commit checks and prints one line per passing step; only a failing step prints its output.
 // Short output keeps the terminal readable and costs an AI agent far fewer tokens than the full logs.
 //
-//   npm run check                         format check, Go format/vet/tests, typecheck, lint, all unit tests
+//   npm run check                         format check, Go format/vet/tests, the generated client being current
+//                                         (contract), typecheck, lint, all unit tests
 //   npm run check -- tests/unit/foo       same, but only the unit tests under the given paths
 //   npm run check -- --e2e                all of the above, then build the app and run every end-to-end test
 //   npm run check -- tests/e2e/a.spec.ts  the checks, then build and run only the given end-to-end specs
@@ -20,6 +21,7 @@ const steps = [
   ['gofmt', 'gofmt -l core', { failsOnOutput: true }],
   ['govet', 'go vet ./...', { cwd: 'core' }],
   ['gotest', 'go test ./...', { cwd: 'core' }],
+  ['contract', 'node scripts/genApi.mjs --check'],
   ['test', `npx vitest run --reporter=dot ${testPaths.join(' ')}`.trim()]
 ]
 if (withE2e) {
