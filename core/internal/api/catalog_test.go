@@ -15,7 +15,7 @@ type stubCatalog struct{}
 func (stubCatalog) View() catalog.View {
 	id := "qwen"
 	return catalog.View{
-		Entries:     []catalog.Item{{Entry: catalog.Entry{ID: id, Tags: []string{"chat"}}, Fit: catalog.FitFits}},
+		Entries:     []catalog.Item{{Entry: catalog.Entry{ID: id, Tags: []string{"chat"}, Files: []catalog.File{}}, Fit: catalog.FitFits}},
 		Recommended: &id,
 	}
 }
@@ -33,7 +33,7 @@ func getCatalog(t *testing.T, path string) *httptest.ResponseRecorder {
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	testHandler(Deps{}).ServeHTTP(rec, req)
+	testHandler(t, Deps{}).ServeHTTP(rec, req)
 	return rec
 }
 

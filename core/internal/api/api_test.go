@@ -17,7 +17,8 @@ const (
 )
 
 // testHandler is NewHandler with the test token and port, and stubs for what d leaves out.
-func testHandler(d Deps) http.Handler {
+func testHandler(t *testing.T, d Deps) http.Handler {
+	t.Helper()
 	d.Token = testToken
 	if d.Port == 0 {
 		d.Port = testPort
@@ -34,7 +35,7 @@ func testHandler(d Deps) http.Handler {
 	if d.Log == nil {
 		d.Log = event.MemoryLog(event.NewBus(16))
 	}
-	return NewHandler(d)
+	return checked(t, d)
 }
 
 // do sends a request through the full handler; host and auth override the defaults when non-empty.
@@ -58,7 +59,7 @@ func doMethod(t *testing.T, method, path, host, auth string, shutdown func()) *h
 	if method == http.MethodGet && path == "/v1/models?fail" {
 		list = func() ([]models.Model, error) { return nil, errors.New("boom") }
 	}
-	testHandler(Deps{Shutdown: shutdown, ListModels: list}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Shutdown: shutdown, ListModels: list}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -80,7 +81,7 @@ func TestModelsListEmptyIsArrayAndErrorIs500(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	testHandler(Deps{ListModels: func() ([]models.Model, error) { return nil, nil }}).ServeHTTP(rec, req)
+	testHandler(t, Deps{ListModels: func() ([]models.Model, error) { return nil, nil }}).ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"data":[]`) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
@@ -107,7 +108,7 @@ func TestVersion(t *testing.T) {
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	testHandler(Deps{Version: "0.4.0"}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Version: "0.4.0"}).ServeHTTP(rec, req)
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != `{"version":"0.4.0","api":1}` {
 		t.Fatalf("status = %d, body = %s", rec.Code, got)
 	}
@@ -191,7 +192,7 @@ func TestPostConfigIsNoLongerARoute(t *testing.T) {
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	testHandler(Deps{}).ServeHTTP(rec, req)
+	testHandler(t, Deps{}).ServeHTTP(rec, req)
 	if rec.Code >= 200 && rec.Code < 300 {
 		t.Fatalf("status = %d, want a non-2xx", rec.Code)
 	}

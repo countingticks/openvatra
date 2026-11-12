@@ -66,7 +66,16 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	dataDir := fs.String("data-dir", "", "folder for chats, attachments and documents; created if missing")
 	// Without it core knows no default engine and runs no model until a path is chosen.
 	llamaDir := fs.String("llama-dir", "", "folder holding the bundled llama-server.exe")
+	openapi := fs.Bool("openapi", false, "print the OpenAPI document to stdout and exit")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// Nothing is opened or read: the document comes from the route table alone, so it needs no token.
+	if *openapi {
+		cfg := config.New(nil, nil)
+		registerSections(cfg, config.Env{})
+		_, err := stdout.Write(api.Document(api.Deps{Version: version, Config: cfg}))
 		return err
 	}
 
@@ -150,7 +159,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// The models section lives in openvatra.db and is the only model config. Every use reads the live value, so a
 	// change in Settings applies without restarting core.
 	cfg := config.New(cfgDB, logger)
-	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
+	registerSections(cfg, env)
 	resolve := func() config.Resolved { return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env) }
 	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	rt := router.New(router.Config{
@@ -233,6 +242,11 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// registerSections registers every config section on cfg; run and --openapi share it.
+func registerSections(cfg *config.Store, env config.Env) {
+	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
 }
 
 // effectiveModels is the models section's read-only view: the paths core really uses when none is chosen.

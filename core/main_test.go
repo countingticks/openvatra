@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -362,5 +363,63 @@ func TestTrimSystemEventsRunsAtOnceThenOnSchedule(t *testing.T) {
 	}
 	if got := log.String(); strings.Count(got, "trimmed old system events") != 1 || !strings.Contains(got, "count=3") {
 		t.Fatalf("log = %q", got)
+	}
+}
+
+var update = flag.Bool("update", false, "rewrite api/openapi.json")
+
+const openapiFile = "api/openapi.json"
+
+func printOpenAPI(t *testing.T, args ...string) []byte {
+	t.Helper()
+	t.Setenv(tokenEnv, "")
+	var buf bytes.Buffer
+	if err := run(append([]string{"--openapi"}, args...), strings.NewReader(""), &buf); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestOpenAPIIsCurrent(t *testing.T) {
+	got := printOpenAPI(t)
+	if *update {
+		if err := os.MkdirAll(filepath.Dir(openapiFile), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(openapiFile, got, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(openapiFile)
+	if err != nil {
+		t.Fatalf("%v\nrun: go -C core test . -run TestOpenAPI -update", err)
+	}
+	norm := func(b []byte) string { return strings.ReplaceAll(string(b), "\r\n", "\n") }
+	if norm(got) != norm(want) {
+		t.Error("core/api/openapi.json is stale\nrun: go -C core test . -run TestOpenAPI -update")
+	}
+}
+
+func TestOpenAPIOpensNothing(t *testing.T) {
+	data := filepath.Join(t.TempDir(), "data")
+	printOpenAPI(t, "--data-dir", data)
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Errorf("the data folder exists after --openapi (stat error: %v)", err)
+	}
+}
+
+func TestOpenAPIOutputIsADocument(t *testing.T) {
+	var doc struct {
+		OpenAPI string `json:"openapi"`
+		Info    struct {
+			Version string `json:"version"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(printOpenAPI(t), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.OpenAPI != "3.1.0" || doc.Info.Version != version {
+		t.Errorf("openapi %q, info.version %q", doc.OpenAPI, doc.Info.Version)
 	}
 }

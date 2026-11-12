@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"reflect"
+	"sync"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/event"
@@ -52,9 +54,12 @@ func Routes(d Deps) []Route {
 			func(context.Context, struct{}) (VersionBody, error) { return VersionBody{d.Version, apiVersion}, nil }),
 		Raw(http.MethodGet, "/api/events", UI, "streamEvents", "Stream the event log as Server-Sent Events",
 			eventsHandler(d.Log, keepaliveInterval)).
-			WithStream(StreamDoc{}).
+			WithDoc(reflect.TypeFor[EventsQuery](), nil, "").
+			WithStream(StreamDoc{Schema: eventStreamSchema}).
 			WithErrors("invalid_after", "invalid_filter", "no_streaming", "event_log_failed"),
 	}
+	routes = append(routes, Raw(http.MethodGet, "/api/openapi.json", UI, "getOpenapi",
+		"Core's OpenAPI document", openapiHandler(d)))
 	routes = append(routes, modelRoutes(d)...)
 	routes = append(routes, hardwareRoutes(d.Hardware)...)
 	routes = append(routes, catalogRoutes(d.Catalog)...)
@@ -80,6 +85,17 @@ func Routes(d Deps) []Route {
 // NewHandler serves every route behind the token and Host checks.
 func NewHandler(d Deps) http.Handler {
 	return guard(d.Token, d.Port, newMux(Routes(d), d.Logger))
+}
+
+// openapiHandler serves Document(d), built on the first request.
+func openapiHandler(d Deps) http.HandlerFunc {
+	var once sync.Once
+	var doc []byte
+	return func(w http.ResponseWriter, _ *http.Request) {
+		once.Do(func() { doc = Document(d) })
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(doc)
+	}
 }
 
 func shutdownHandler(shutdown func()) http.HandlerFunc {
