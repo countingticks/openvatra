@@ -40,6 +40,8 @@ export interface ModelsClientOptions {
   onModels: (models: ModelInfo[]) => void
   /** The whole download queue, on every change (core sends it at most 4 times a second). */
   onDownloads: (items: DownloadItem[]) => void
+  /** `event: config` from core: which section changed and its new rev. */
+  onConfig?: (section: string, rev: number) => void
   log: { warn: (message: string, error?: unknown) => void }
 }
 
@@ -59,6 +61,7 @@ export function createModelsClient({
   request,
   onModels,
   onDownloads,
+  onConfig,
   log
 }: ModelsClientOptions): ModelsClient {
   let models: ModelInfo[] = []
@@ -98,6 +101,7 @@ export function createModelsClient({
         for (const { event, data } of events) {
           if (event === 'state') receive(data)
           else if (event === 'downloads') receiveDownloads(data)
+          else if (event === 'config') receiveConfig(data)
         }
       }
     } catch (error) {
@@ -129,6 +133,21 @@ export function createModelsClient({
     } catch (error) {
       log.warn('core: ignored a download event that is not JSON', error)
     }
+  }
+
+  function receiveConfig(data: string): void {
+    let body: unknown = null
+    try {
+      body = JSON.parse(data)
+    } catch {
+      // not JSON: dropped below
+    }
+    const { section, rev } = (body ?? {}) as { section?: unknown; rev?: unknown }
+    if (typeof section !== 'string' || typeof rev !== 'number' || !Number.isInteger(rev)) {
+      log.warn('core: ignored a malformed config event')
+      return
+    }
+    onConfig?.(section, rev)
   }
 
   function stop(): void {

@@ -50,15 +50,18 @@ function setUp(request: Request): {
   client: ReturnType<typeof createModelsClient>
   onModels: ReturnType<typeof vi.fn>
   onDownloads: ReturnType<typeof vi.fn>
+  onConfig: ReturnType<typeof vi.fn>
   warn: ReturnType<typeof vi.fn>
 } {
   const onModels = vi.fn()
   const onDownloads = vi.fn()
+  const onConfig = vi.fn()
   const warn = vi.fn()
   return {
-    client: createModelsClient({ request, onModels, onDownloads, log: { warn } }),
+    client: createModelsClient({ request, onModels, onDownloads, onConfig, log: { warn } }),
     onModels,
     onDownloads,
+    onConfig,
     warn
   }
 }
@@ -97,6 +100,38 @@ describe('models client: downloads', () => {
     await vi.waitFor(() => expect(client.downloads()).toEqual([running]))
     client.stop()
     expect(client.downloads()).toEqual([])
+  })
+})
+
+describe('models client: config events', () => {
+  it('a config event reaches onConfig', async () => {
+    const core = fakeCore()
+    const { client, onConfig } = setUp(core.request)
+    client.start()
+    await vi.waitFor(() => expect(core.streams).toHaveLength(1))
+
+    core.streams[0].send('event: config\ndata: {"section":"models","rev":3}\n\n')
+
+    await vi.waitFor(() => expect(onConfig).toHaveBeenCalledWith('models', 3))
+    client.stop()
+  })
+
+  it.each([
+    ['not JSON', 'nope'],
+    ['no section', '{"rev":3}'],
+    ['a rev that is not an integer', '{"section":"models","rev":1.5}'],
+    ['a rev that is text', '{"section":"models","rev":"3"}']
+  ])('a malformed config event is dropped with a warning (%s)', async (_case, data) => {
+    const core = fakeCore()
+    const { client, onConfig, warn } = setUp(core.request)
+    client.start()
+    await vi.waitFor(() => expect(core.streams).toHaveLength(1))
+
+    core.streams[0].send(`event: config\ndata: ${data}\n\n`)
+
+    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith('core: ignored a malformed config event'))
+    expect(onConfig).not.toHaveBeenCalled()
+    client.stop()
   })
 })
 
