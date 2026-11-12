@@ -23,6 +23,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/feed"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -94,12 +95,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
 	var chatStore *store.Store
 	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
+	eventLog := event.MemoryLog(bus)
 	if *dataDir != "" {
 		if db, err := store.Open(*dataDir, bus); err != nil {
 			logger.Error("open chat database", "err", err)
 		} else {
 			defer db.Close()
-			chatStore, cfgDB = db, db
+			chatStore, cfgDB, eventLog = db, db, db.Log()
 			if err := db.RenameErr(); err != nil {
 				logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
 			}
@@ -201,6 +203,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		Engine:        engine,
 	})
 	defer dl.Close()
+	feed.Start(ctx, eventLog, rt, listModels, dl)
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
