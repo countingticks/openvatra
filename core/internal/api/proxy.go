@@ -34,7 +34,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 		if err != nil {
-			writeError(w, http.StatusRequestEntityTooLarge, "body_unreadable", "request body too large or unreadable")
+			writeCode(w, http.StatusRequestEntityTooLarge, "body_unreadable", "request body too large or unreadable")
 			return
 		}
 
@@ -44,7 +44,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 				Model string `json:"model"`
 			}
 			if err := json.Unmarshal(body, &req); err != nil || req.Model == "" {
-				writeError(w, http.StatusBadRequest, "bad_request", `body must be JSON with a "model" field`)
+				writeCode(w, http.StatusBadRequest, "bad_request", `body must be JSON with a "model" field`)
 				return
 			}
 			model = req.Model
@@ -60,7 +60,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 
 		target, err := url.Parse(base)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "bad_backend", "invalid model server address")
+			writeCode(w, http.StatusInternalServerError, "bad_backend", "invalid model server address")
 			return
 		}
 		(&httputil.ReverseProxy{
@@ -74,7 +74,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 			// (stream: true) arriving token by token instead of in one lump at the end.
 			FlushInterval: -1,
 			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-				writeError(w, http.StatusBadGateway, "backend_failed", "the model server did not answer")
+				writeCode(w, http.StatusBadGateway, "backend_failed", "the model server did not answer")
 			},
 		}).ServeHTTP(w, r)
 	}
@@ -83,12 +83,12 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 func writeAcquireError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, router.ErrUnknownModel):
-		writeError(w, http.StatusNotFound, "model_not_found", "no model with that name in the models folder")
+		writeCode(w, http.StatusNotFound, "model_not_found", "no model with that name in the models folder")
 	case errors.Is(err, router.ErrNoEmbeddingModel):
-		writeError(w, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen")
+		writeCode(w, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen")
 	case r.Context().Err() != nil:
 		// The client left while waiting for the model; nobody is listening for a reply.
 	default:
-		writeError(w, http.StatusServiceUnavailable, "model_load_failed", err.Error())
+		writeCode(w, http.StatusServiceUnavailable, "model_load_failed", err.Error())
 	}
 }

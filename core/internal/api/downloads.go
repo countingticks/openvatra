@@ -22,19 +22,19 @@ type Downloads interface {
 func writeDownloadError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, downloads.ErrUnknown):
-		writeError(w, http.StatusNotFound, "unknown_model", "not a catalog model")
+		writeCode(w, http.StatusNotFound, "unknown_model", "not a catalog model")
 	case errors.Is(err, downloads.ErrNoDownload):
-		writeError(w, http.StatusNotFound, "no_download", "there is no such download")
+		writeCode(w, http.StatusNotFound, "no_download", "there is no such download")
 	case errors.Is(err, downloads.ErrNoFolder):
-		writeError(w, http.StatusConflict, "no_models_folder", "no models folder is set")
+		writeCode(w, http.StatusConflict, "no_models_folder", "no models folder is set")
 	case errors.Is(err, downloads.ErrInstalled):
-		writeError(w, http.StatusConflict, "already_installed", "that model is already installed")
+		writeCode(w, http.StatusConflict, "already_installed", "that model is already installed")
 	case errors.Is(err, downloads.ErrNoSpace):
-		writeError(w, http.StatusConflict, "not_enough_space", "not enough disk space")
+		writeCode(w, http.StatusConflict, "not_enough_space", "not enough disk space")
 	case errors.Is(err, downloads.ErrNotResumable):
-		writeError(w, http.StatusConflict, "not_paused", "only a paused or failed download can be resumed")
+		writeCode(w, http.StatusConflict, "not_paused", "only a paused or failed download can be resumed")
 	default:
-		writeError(w, http.StatusInternalServerError, "download_failed", "could not start the download")
+		writeCode(w, http.StatusInternalServerError, "download_failed", "could not start the download")
 	}
 }
 
@@ -54,13 +54,13 @@ func startDownloadHandler(dl Downloads) http.HandlerFunc {
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&body); err != nil || (body.CatalogID == "") == (body.Engine == "") {
-			writeError(w, http.StatusBadRequest, "bad_request", `send exactly one of "catalogId" or "engine"`)
+			writeCode(w, http.StatusBadRequest, "bad_request", `send exactly one of "catalogId" or "engine"`)
 			return
 		}
 		start := func() error { return dl.Start(body.CatalogID) }
 		if body.Engine != "" {
 			if body.Engine != "cuda" {
-				writeError(w, http.StatusBadRequest, "bad_request", `the only engine is "cuda"`)
+				writeCode(w, http.StatusBadRequest, "bad_request", `the only engine is "cuda"`)
 				return
 			}
 			start = dl.StartEngine

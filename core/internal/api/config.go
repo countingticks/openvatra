@@ -23,7 +23,7 @@ func registerConfig(mux *http.ServeMux, cfg Config) {
 }
 
 func writeUnavailable(w http.ResponseWriter) {
-	writeError(w, http.StatusServiceUnavailable, "config_unavailable", "config storage is not available")
+	writeCode(w, http.StatusServiceUnavailable, "config_unavailable", "config storage is not available")
 }
 
 func getAllConfig(cfg Config) http.HandlerFunc {
@@ -66,7 +66,7 @@ func putConfigSection(cfg Config) http.HandlerFunc {
 		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&body); err != nil || body.Rev == nil || *body.Rev < 0 || len(body.Value) == 0 {
-			writeError(w, http.StatusBadRequest, "invalid_config", `the body must be {"rev": n, "value": {…}}`)
+			writeCode(w, http.StatusBadRequest, "invalid_config", `the body must be {"rev": n, "value": {…}}`)
 			return
 		}
 		entry, err := cfg.Put(name, *body.Rev, body.Value)
@@ -83,15 +83,15 @@ func writeConfigError(w http.ResponseWriter, cfg Config, name string, err error)
 	var invalid *config.InvalidError
 	switch {
 	case errors.As(err, &invalid):
-		writeError(w, http.StatusBadRequest, "invalid_config", invalid.Message)
+		writeCode(w, http.StatusBadRequest, "invalid_config", invalid.Message)
 	case errors.Is(err, config.ErrUnknownSection):
-		writeError(w, http.StatusNotFound, "unknown_section", `no config section "`+name+`"`)
+		writeCode(w, http.StatusNotFound, "unknown_section", `no config section "`+name+`"`)
 	case errors.Is(err, config.ErrConflict):
 		current, _ := cfg.Section(name)
 		writeConflict(w, "the section changed since it was read", current)
 	case errors.Is(err, config.ErrUnavailable):
 		writeUnavailable(w)
 	default:
-		writeError(w, http.StatusInternalServerError, "config_failed", "could not save the config")
+		writeCode(w, http.StatusInternalServerError, "config_failed", "could not save the config")
 	}
 }

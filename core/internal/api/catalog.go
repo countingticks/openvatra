@@ -28,10 +28,10 @@ func catalogFolderHandler(c Catalog) http.HandlerFunc {
 		folder, err := c.Folder(r.PathValue("id"))
 		switch {
 		case errors.Is(err, catalog.ErrUnknown):
-			writeError(w, http.StatusNotFound, "unknown_model", "not a catalog model")
+			writeCode(w, http.StatusNotFound, "unknown_model", "not a catalog model")
 			return
 		case err != nil:
-			writeError(w, http.StatusConflict, "no_models_folder", "no models folder is set")
+			writeCode(w, http.StatusConflict, "no_models_folder", "no models folder is set")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")

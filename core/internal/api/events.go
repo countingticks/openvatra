@@ -27,21 +27,21 @@ func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
 		if hasAfter {
 			n, err := strconv.ParseInt(q.Get("after"), 10, 64)
 			if err != nil || n < 0 {
-				writeError(w, http.StatusBadRequest, "invalid_after", "after must be an integer of 0 or more")
+				writeCode(w, http.StatusBadRequest, "invalid_after", "after must be an integer of 0 or more")
 				return
 			}
 			after = n
 		}
 		filter, err := event.ParseFilter(q.Get("stream"))
 		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_filter", err.Error())
+			writeCode(w, http.StatusBadRequest, "invalid_filter", err.Error())
 			return
 		}
 		logID := q.Get("log")
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			writeError(w, http.StatusInternalServerError, "no_streaming", "streaming is not supported")
+			writeCode(w, http.StatusInternalServerError, "no_streaming", "streaming is not supported")
 			return
 		}
 		// Subscribe before Info: an event appended in between is then both at or below head and in the channel,
@@ -51,7 +51,7 @@ func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
 		ctx := r.Context()
 		info, err := log.Info(ctx)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "event_log_failed", "could not read the event log")
+			writeCode(w, http.StatusInternalServerError, "event_log_failed", "could not read the event log")
 			return
 		}
 

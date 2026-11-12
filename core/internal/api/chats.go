@@ -19,7 +19,7 @@ func registerChats(mux *http.ServeMux, svc *chat.Service) {
 	h := func(f func(*chat.Service, http.ResponseWriter, *http.Request)) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			if svc == nil || svc.Store == nil {
-				writeError(w, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available")
+				writeCode(w, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available")
 				return
 			}
 			f(svc, w, r)
@@ -43,7 +43,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody)).Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "bad_request", "the request body is not valid JSON")
+		writeCode(w, http.StatusBadRequest, "bad_request", "the request body is not valid JSON")
 		return false
 	}
 	return true
@@ -53,11 +53,11 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusNotFound, "chat_not_found", "no chat with that id")
+		writeCode(w, http.StatusNotFound, "chat_not_found", "no chat with that id")
 	case errors.Is(err, chat.ErrBadInput):
-		writeError(w, http.StatusBadRequest, "bad_request", err.Error())
+		writeCode(w, http.StatusBadRequest, "bad_request", err.Error())
 	default:
-		writeError(w, http.StatusInternalServerError, "chat_failed", "chat storage failed")
+		writeCode(w, http.StatusInternalServerError, "chat_failed", "chat storage failed")
 	}
 }
 
@@ -79,7 +79,7 @@ func createChat(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Model == "" {
-		writeError(w, http.StatusBadRequest, "bad_request", `"model" is required`)
+		writeCode(w, http.StatusBadRequest, "bad_request", `"model" is required`)
 		return
 	}
 	c, err := svc.Store.CreateChat(r.Context(), req.Model, req.WebSearch)
@@ -170,7 +170,7 @@ func regenerate(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
 func streamTurn(w http.ResponseWriter, r *http.Request, run func(emit func(chat.Event)) error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeError(w, http.StatusInternalServerError, "no_streaming", "streaming is not supported here")
+		writeCode(w, http.StatusInternalServerError, "no_streaming", "streaming is not supported here")
 		return
 	}
 	began := false

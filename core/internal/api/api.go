@@ -59,7 +59,7 @@ func modelList(list func() ([]models.Model, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		found, err := list()
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "models_unreadable", "could not read the models folder")
+			writeCode(w, http.StatusInternalServerError, "models_unreadable", "could not read the models folder")
 			return
 		}
 		data := make([]entry, 0, len(found)) // [] rather than null when empty

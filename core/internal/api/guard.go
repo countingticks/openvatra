@@ -2,7 +2,6 @@ package api
 
 import (
 	"crypto/subtle"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -19,28 +18,15 @@ func guard(token string, port int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A rebinding page reaches us under its own domain name, so the Host differs.
 		if r.Host != wantHost {
-			writeError(w, http.StatusForbidden, "forbidden_host", "unexpected Host header")
+			writeError(w, r, &Error{Status: http.StatusForbidden, Code: "forbidden_host", Message: "unexpected Host header"})
 			return
 		}
 		// Constant-time compare so response timing cannot leak the token.
 		got := []byte(strings.TrimSpace(r.Header.Get("Authorization")))
 		if subtle.ConstantTimeCompare(got, wantAuth) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "missing or wrong token")
+			writeError(w, r, &Error{Status: http.StatusUnauthorized, Code: "unauthorized", Message: "missing or wrong token"})
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "message": message})
-}
-
-// writeConflict is writeError plus the section as it is now, so the client can merge and retry.
-func writeConflict(w http.ResponseWriter, message string, current any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusConflict)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": "config_conflict", "message": message, "current": current})
 }

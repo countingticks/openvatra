@@ -13,7 +13,7 @@ func stateHandler(rt Router, list func() ([]models.Model, error)) http.HandlerFu
 	return func(w http.ResponseWriter, _ *http.Request) {
 		body, err := feed.State(rt, list)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "models_unreadable", "could not read the models folder")
+			writeCode(w, http.StatusInternalServerError, "models_unreadable", "could not read the models folder")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -49,7 +49,7 @@ func refreshHandler(rt Router) http.HandlerFunc {
 func unloadHandler(rt Router) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !rt.Unload(r.PathValue("id")) {
-			writeError(w, http.StatusNotFound, "model_not_loaded", "that model is not loaded")
+			writeCode(w, http.StatusNotFound, "model_not_loaded", "that model is not loaded")
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
