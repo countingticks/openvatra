@@ -208,7 +208,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl, chats, eventLog),
+		Handler: api.NewHandler(api.Deps{
+			Token: token, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: rt,
+			Config: cfg, Hardware: hardware, Catalog: cat, Downloads: dl, Chats: chats, Log: eventLog, Logger: logger,
+		}),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)

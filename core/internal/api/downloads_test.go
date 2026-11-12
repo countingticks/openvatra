@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
-	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 // stubDownloads records calls and answers with err.
@@ -42,7 +41,7 @@ func callDownloads(dl Downloads, method, path, body string) *httptest.ResponseRe
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, dl, nil, event.MemoryLog(event.NewBus(16))).ServeHTTP(rec, req)
+	testHandler(Deps{Downloads: dl}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -91,5 +90,39 @@ func TestStartRejectsBadBodies(t *testing.T) {
 		if rec := callDownloads(dl, "POST", "/api/downloads", body); rec.Code != http.StatusBadRequest || len(dl.calls) != 0 {
 			t.Fatalf("body %q -> %d, calls %v", body, rec.Code, dl.calls)
 		}
+	}
+}
+
+func TestListDownloads(t *testing.T) {
+	if rec := callDownloads(&stubDownloads{}, "GET", "/api/downloads", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
+		t.Fatalf("empty queue: %d %s", rec.Code, rec.Body)
+	}
+	dl := &stubDownloads{items: []downloads.DownloadItem{{ID: "qwen", State: downloads.Downloading, Bytes: 5, Total: 10}}}
+	rec := callDownloads(dl, "GET", "/api/downloads", "")
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `{"items":[{"id":"qwen","state":"downloading"`) {
+		t.Fatalf("one item: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestStartErrorCodes(t *testing.T) {
+	cases := []struct{ body, code string }{
+		{`{"engine":"vulkan"}`, "invalid_request"},
+		{`{"catalogId":"a","x":1}`, "invalid_request"},
+		{`{"catalogId":"a","engine":"cuda"}`, "bad_request"},
+		{`{}`, "bad_request"},
+	}
+	for _, c := range cases {
+		rec := callDownloads(&stubDownloads{}, "POST", "/api/downloads", c.body)
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"error":"`+c.code+`"`) {
+			t.Errorf("body %s -> %d %s, want 400 %s", c.body, rec.Code, rec.Body, c.code)
+		}
+	}
+}
+
+func TestStartAcceptsBodiesUpTo1MiB(t *testing.T) {
+	dl := &stubDownloads{}
+	body := `{"catalogId":"qwen"` + strings.Repeat(" ", 4<<10) + `}`
+	if rec := callDownloads(dl, "POST", "/api/downloads", body); rec.Code != http.StatusAccepted {
+		t.Fatalf("a 4 KiB body: %d %s", rec.Code, rec.Body)
 	}
 }

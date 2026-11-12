@@ -2,7 +2,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
@@ -11,42 +13,85 @@ import (
 	"github.com/countingticks/openvatra/core/internal/router"
 )
 
-// NewHandler returns the router for every core endpoint, behind the token and
-// Host checks. port is the one core listens on; shutdown is called (once the
-// reply is sent) when a client asks core to stop; listModels reports the models
-// currently on disk (a function, because the folder will change at runtime); rt
-// picks the model server for the chat and embedding endpoints; cfg is the stored config behind /api/config/... (nil
-// only in tests); hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened); log is
-// the event log behind /api/events.
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg Config, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service, log event.Log) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", health)
-	mux.HandleFunc("GET /v1/models", modelList(listModels))
-	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
-	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
-	mux.HandleFunc("GET /api/state", stateHandler(rt, listModels))
-	mux.HandleFunc("GET /api/events", eventsHandler(log, keepaliveInterval))
-	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
-	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
-	mux.HandleFunc("POST /api/models/refresh", refreshHandler(rt))
-	registerConfig(mux, cfg)
-	mux.HandleFunc("GET /api/hardware", hardwareHandler(hardware.Get))
-	mux.HandleFunc("POST /api/hardware/refresh", hardwareHandler(hardware.Refresh))
-	mux.HandleFunc("GET /api/catalog", catalogHandler(cat))
-	mux.HandleFunc("GET /api/catalog/{id}/folder", catalogFolderHandler(cat))
-	mux.HandleFunc("POST /api/downloads", startDownloadHandler(dl))
-	mux.HandleFunc("DELETE /api/downloads/{id}", cancelDownloadHandler(dl))
-	mux.HandleFunc("POST /api/downloads/{id}/resume", resumeDownloadHandler(dl))
-	registerChats(mux, chats)
-	mux.HandleFunc("POST /shutdown", func(w http.ResponseWriter, _ *http.Request) {
+// Deps is everything the routes reach.
+type Deps struct {
+	Token    string
+	Port     int
+	Version  string
+	Shutdown func() // called once the reply is sent, when a client asks core to stop
+	// ListModels reports the models on disk now (a function: the folder changes at runtime).
+	ListModels func() ([]models.Model, error)
+	Router     Router
+	Config     Config // nil only in tests: the config routes answer 503
+	Hardware   Hardware
+	Catalog    Catalog
+	Downloads  Downloads
+	Chats      *chat.Service // nil when the chat database could not be opened
+	Log        event.Log
+	Logger     *slog.Logger // nil = discard
+}
+
+// apiVersion is the contract's major version; it changes only when a change breaks existing clients.
+const apiVersion = 1
+
+type StatusBody struct {
+	Status string `json:"status"`
+}
+
+type VersionBody struct {
+	Version string `json:"version"`
+	API     int    `json:"api"`
+}
+
+// Routes builds the table. Dependencies are captured, never called here, so nil ones are fine for the document.
+func Routes(d Deps) []Route {
+	routes := []Route{
+		JSON(http.MethodGet, "/health", None, "health", "Report that core is up",
+			func(context.Context, struct{}) (StatusBody, error) { return StatusBody{"ok"}, nil }),
+		JSON(http.MethodGet, "/api/version", UI, "getVersion", "Core's version and the contract's version",
+			func(context.Context, struct{}) (VersionBody, error) { return VersionBody{d.Version, apiVersion}, nil }),
+		Raw(http.MethodGet, "/api/events", UI, "streamEvents", "Stream the event log as Server-Sent Events",
+			eventsHandler(d.Log, keepaliveInterval)).
+			WithStream(StreamDoc{}).
+			WithErrors("invalid_after", "invalid_filter", "no_streaming", "event_log_failed"),
+	}
+	routes = append(routes, modelRoutes(d)...)
+	routes = append(routes, hardwareRoutes(d.Hardware)...)
+	routes = append(routes, catalogRoutes(d.Catalog)...)
+	routes = append(routes, downloadRoutes(d.Downloads)...)
+	return append(routes,
+		Raw(http.MethodGet, "/v1/models", UI, "openaiModels", "List the models on disk, OpenAI style",
+			modelList(d.ListModels)).
+			WithErrors("models_unreadable"),
+		Raw(http.MethodPost, "/v1/chat/completions", UI, "openaiChatCompletions", "Chat with a model, OpenAI style",
+			proxy(d.Router, router.Chat)).
+			WithErrors("body_unreadable", "bad_request", "model_not_found", "model_load_failed", "bad_backend",
+				"backend_failed"),
+		Raw(http.MethodPost, "/v1/embeddings", UI, "openaiEmbeddings", "Embed text with the embedding model, OpenAI style",
+			proxy(d.Router, router.Embedding)).
+			WithErrors("body_unreadable", "no_embedding_model", "model_load_failed", "bad_backend", "backend_failed"),
+		Raw(http.MethodPost, "/shutdown", Shell, "shutdown", "Stop core", shutdownHandler(d.Shutdown)).
+			WithStatus(http.StatusAccepted),
+	)
+}
+
+// NewHandler serves every route behind the token and Host checks.
+func NewHandler(d Deps) http.Handler {
+	mux := newMux(Routes(d), d.Logger)
+	registerConfig(mux, d.Config)
+	registerChats(mux, d.Chats)
+	return guard(d.Token, d.Port, mux)
+}
+
+func shutdownHandler(shutdown func()) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "shutting_down"})
-		// Only signal; the caller stops the server after this handler returns,
-		// so the 202 above still reaches the client.
+		// Only signal; the caller stops the server after this handler returns, so the 202 above still reaches the
+		// client.
 		shutdown()
-	})
-	return guard(token, port, mux)
+	}
 }
 
 // modelList answers in the shape OpenAI clients (Open WebUI, OpenCode) expect.
@@ -56,10 +101,10 @@ func modelList(list func() ([]models.Model, error)) http.HandlerFunc {
 		Object  string `json:"object"`
 		OwnedBy string `json:"owned_by"`
 	}
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		found, err := list()
 		if err != nil {
-			writeCode(w, http.StatusInternalServerError, "models_unreadable", "could not read the models folder")
+			writeError(w, r, errModelsUnreadable)
 			return
 		}
 		data := make([]entry, 0, len(found)) // [] rather than null when empty
@@ -69,9 +114,4 @@ func modelList(list func() ([]models.Model, error)) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
 	}
-}
-
-func health(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

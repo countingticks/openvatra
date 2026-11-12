@@ -27,21 +27,21 @@ func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
 		if hasAfter {
 			n, err := strconv.ParseInt(q.Get("after"), 10, 64)
 			if err != nil || n < 0 {
-				writeCode(w, http.StatusBadRequest, "invalid_after", "after must be an integer of 0 or more")
+				writeError(w, r, &Error{Status: http.StatusBadRequest, Code: "invalid_after", Message: "after must be an integer of 0 or more"})
 				return
 			}
 			after = n
 		}
 		filter, err := event.ParseFilter(q.Get("stream"))
 		if err != nil {
-			writeCode(w, http.StatusBadRequest, "invalid_filter", err.Error())
+			writeError(w, r, &Error{Status: http.StatusBadRequest, Code: "invalid_filter", Message: err.Error()})
 			return
 		}
 		logID := q.Get("log")
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
-			writeCode(w, http.StatusInternalServerError, "no_streaming", "streaming is not supported")
+			writeError(w, r, &Error{Status: http.StatusInternalServerError, Code: "no_streaming", Message: "streaming is not supported"})
 			return
 		}
 		// Subscribe before Info: an event appended in between is then both at or below head and in the channel,
@@ -51,7 +51,7 @@ func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
 		ctx := r.Context()
 		info, err := log.Info(ctx)
 		if err != nil {
-			writeCode(w, http.StatusInternalServerError, "event_log_failed", "could not read the event log")
+			writeError(w, r, &Error{Status: http.StatusInternalServerError, Code: "event_log_failed", Message: "could not read the event log"})
 			return
 		}
 

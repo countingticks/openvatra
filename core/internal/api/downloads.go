@@ -1,11 +1,11 @@
 package api
 
 import (
-	"encoding/json"
-	"errors"
+	"context"
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/feed"
 )
 
 // Downloads is what the download endpoints and the event need; *downloads.Manager in production, a stub in tests.
@@ -18,77 +18,52 @@ type Downloads interface {
 	Cancel(id string) error
 }
 
-// writeDownloadError turns the queue's errors into answers the UI can act on.
-func writeDownloadError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, downloads.ErrUnknown):
-		writeCode(w, http.StatusNotFound, "unknown_model", "not a catalog model")
-	case errors.Is(err, downloads.ErrNoDownload):
-		writeCode(w, http.StatusNotFound, "no_download", "there is no such download")
-	case errors.Is(err, downloads.ErrNoFolder):
-		writeCode(w, http.StatusConflict, "no_models_folder", "no models folder is set")
-	case errors.Is(err, downloads.ErrInstalled):
-		writeCode(w, http.StatusConflict, "already_installed", "that model is already installed")
-	case errors.Is(err, downloads.ErrNoSpace):
-		writeCode(w, http.StatusConflict, "not_enough_space", "not enough disk space")
-	case errors.Is(err, downloads.ErrNotResumable):
-		writeCode(w, http.StatusConflict, "not_paused", "only a paused or failed download can be resumed")
-	default:
-		writeCode(w, http.StatusInternalServerError, "download_failed", "could not start the download")
+// StartDownload queues a catalog model, or the CUDA engine.
+type StartDownload struct {
+	CatalogID string `json:"catalogId,omitempty"`
+	Engine    string `json:"engine,omitempty" enum:"cuda"`
+}
+
+func (s StartDownload) Validate() error {
+	if (s.CatalogID == "") == (s.Engine == "") {
+		return &Error{Status: http.StatusBadRequest, Code: "bad_request",
+			Message: `send exactly one of "catalogId" or "engine"`}
 	}
+	return nil
 }
 
-func accepted(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusAccepted)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
-}
-
-// startDownloadHandler queues a catalog model, or the CUDA engine for {"engine":"cuda"}.
-func startDownloadHandler(dl Downloads) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			CatalogID string `json:"catalogId"`
-			Engine    string `json:"engine"`
-		}
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<10))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil || (body.CatalogID == "") == (body.Engine == "") {
-			writeCode(w, http.StatusBadRequest, "bad_request", `send exactly one of "catalogId" or "engine"`)
-			return
-		}
-		start := func() error { return dl.Start(body.CatalogID) }
-		if body.Engine != "" {
-			if body.Engine != "cuda" {
-				writeCode(w, http.StatusBadRequest, "bad_request", `the only engine is "cuda"`)
-				return
-			}
-			start = dl.StartEngine
-		}
-		if err := start(); err != nil {
-			writeDownloadError(w, err)
-			return
-		}
-		accepted(w)
-	}
-}
-
-func cancelDownloadHandler(dl Downloads) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := dl.Cancel(r.PathValue("id")); err != nil {
-			writeDownloadError(w, err)
-			return
-		}
-		accepted(w)
-	}
-}
-
-func resumeDownloadHandler(dl Downloads) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if err := dl.Resume(r.PathValue("id")); err != nil {
-			writeDownloadError(w, err)
-			return
-		}
-		accepted(w)
+func downloadRoutes(dl Downloads) []Route {
+	accepted := StatusBody{"accepted"}
+	return []Route{
+		JSON(http.MethodGet, "/api/downloads", UI, "listDownloads", "The download queue",
+			func(context.Context, struct{}) (feed.DownloadsBody, error) {
+				var items []downloads.DownloadItem
+				if dl != nil {
+					items = dl.Items()
+				}
+				if items == nil {
+					items = []downloads.DownloadItem{}
+				}
+				return feed.DownloadsBody{Items: items}, nil
+			}),
+		JSON(http.MethodPost, "/api/downloads", UI, "startDownload", "Queue a catalog model or the CUDA engine",
+			func(_ context.Context, in StartDownload) (StatusBody, error) {
+				if in.Engine != "" {
+					return accepted, dl.StartEngine()
+				}
+				return accepted, dl.Start(in.CatalogID)
+			}).
+			WithStatus(http.StatusAccepted).
+			WithErrors("invalid_request", "bad_request", "unknown_model", "no_models_folder", "already_installed",
+				"not_enough_space", "internal"),
+		JSON(http.MethodDelete, "/api/downloads/{id}", UI, "cancelDownload", "Cancel a download and drop its partial files",
+			func(_ context.Context, in ModelPath) (StatusBody, error) { return accepted, dl.Cancel(in.ID) }).
+			WithStatus(http.StatusAccepted).
+			WithErrors("unknown_model", "no_download", "internal"),
+		JSON(http.MethodPost, "/api/downloads/{id}/resume", UI, "resumeDownload", "Resume a paused or failed download",
+			func(_ context.Context, in ModelPath) (StatusBody, error) { return accepted, dl.Resume(in.ID) }).
+			WithStatus(http.StatusAccepted).
+			WithErrors("unknown_model", "no_download", "no_models_folder", "already_installed", "not_enough_space",
+				"not_paused", "internal"),
 	}
 }
