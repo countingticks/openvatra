@@ -16,6 +16,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/models"
+	"github.com/countingticks/openvatra/core/internal/store"
 )
 
 func TestWriteReadyIsOneJSONLine(t *testing.T) {
@@ -112,7 +113,7 @@ func TestRunStopsWhenStdinCloses(t *testing.T) {
 }
 
 func TestModelArgs(t *testing.T) {
-	c := config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "131072"}}}}
+	c := config.Models{Options: map[string]config.ModelOptions{"qwen": {Args: "-c 131072"}}}.Resolve(config.Env{})
 	got := modelArgs(c, "qwen")
 	if want := []string{"-c", "131072"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
@@ -122,9 +123,18 @@ func TestModelArgs(t *testing.T) {
 	}
 	// The list is a copy: writing into it must never change the config.
 	got[1] = "x"
-	if c.Options["qwen"].Args[1] != "131072" {
-		t.Fatalf("config args changed: %v", c.Options["qwen"].Args)
+	if again := modelArgs(c, "qwen"); again[1] != "131072" {
+		t.Fatalf("config args changed: %v", again)
 	}
+}
+
+// resolved builds the effective config for a test from the qwen model's argument text ("" = no options).
+func resolved(qwenArgs string) config.Resolved {
+	m := config.Models{Options: map[string]config.ModelOptions{}}
+	if qwenArgs != "" {
+		m.Options["qwen"] = config.ModelOptions{Args: qwenArgs}
+	}
+	return m.Resolve(config.Env{})
 }
 
 func TestServerArgsProjector(t *testing.T) {
@@ -133,16 +143,16 @@ func TestServerArgsProjector(t *testing.T) {
 	base := append(slices.Clone(core), "-c", "16384")
 	withProjector := append(slices.Clone(base), "--mmproj", m.MMProj)
 	cases := map[string]struct {
-		c         config.Config
+		c         config.Resolved
 		m         models.Model
 		embedding bool
 		want      []string
 	}{
-		"on by default":     {config.Config{}, m, false, withProjector},
-		"no-mmproj in args": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"--no-mmproj"}}}}, m, false, append(slices.Clone(base), "--no-mmproj")},
-		"none found":        {config.Config{}, models.Model{ID: "qwen", Path: m.Path}, false, base},
-		"embedding server":  {config.Config{}, m, true, append(slices.Clone(core), "--embeddings")},
-		"before user's own": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "4096"}}}}, m, false, append(slices.Clone(withProjector), "-c", "4096")},
+		"on by default":     {resolved(""), m, false, withProjector},
+		"no-mmproj in args": {resolved("--no-mmproj"), m, false, append(slices.Clone(base), "--no-mmproj")},
+		"none found":        {resolved(""), models.Model{ID: "qwen", Path: m.Path}, false, base},
+		"embedding server":  {resolved(""), m, true, append(slices.Clone(core), "--embeddings")},
+		"before user's own": {resolved("-c 4096"), m, false, append(slices.Clone(withProjector), "-c", "4096")},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -173,7 +183,7 @@ func TestRunCreatesTheDataFolderAndDatabase(t *testing.T) {
 	stdinR, stdinW := io.Pipe()
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
-	go func() { done <- run([]string{"--data-dir", dir}, stdinR, pw) }()
+	go func() { done <- run([]string{"--data-dir", dir, "--llama-dir", t.TempDir()}, stdinR, pw) }()
 	if err := json.NewDecoder(pr).Decode(&struct{ Port int }{}); err != nil {
 		t.Fatal(err)
 	}
@@ -184,4 +194,45 @@ func TestRunCreatesTheDataFolderAndDatabase(t *testing.T) {
 	}
 	stdinW.Close()
 	waitExit(t, done)
+}
+
+func TestResolveFrom(t *testing.T) {
+	db, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	cfg := config.New(db, nil)
+	env := config.Env{LlamaDir: t.TempDir(), Home: t.TempDir()}
+	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
+	override := config.NewOverride()
+
+	r := resolveFrom(override, cfg, env)
+	if want := filepath.Join(env.LlamaDir, "llama-server.exe"); r.LlamaServerPath != want {
+		t.Errorf("default LlamaServerPath = %q, want %q", r.LlamaServerPath, want)
+	}
+	if want := filepath.Join(env.Home, "OpenVatra", "Models"); r.ModelsDir != want {
+		t.Errorf("default ModelsDir = %q, want %q", r.ModelsDir, want)
+	}
+
+	stored := filepath.Join(t.TempDir(), "stored")
+	section := config.DefaultModels()
+	section.ModelsDir = &stored
+	value, _ := json.Marshal(section)
+	if _, err := cfg.Put(config.ModelsSection, 0, value); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveFrom(override, cfg, env).ModelsDir; got != stored {
+		t.Errorf("after a Put ModelsDir = %q, want %q", got, stored)
+	}
+
+	server, folder := filepath.Join(t.TempDir(), "server.exe"), filepath.Join(t.TempDir(), "override")
+	posted := config.DefaultModels()
+	posted.LlamaServerPath, posted.ModelsDir = &server, &folder
+	if err := override.Set(posted); err != nil {
+		t.Fatal(err)
+	}
+	if got := resolveFrom(override, cfg, env); got.LlamaServerPath != server || got.ModelsDir != folder {
+		t.Errorf("with the override = %q, %q, want %q, %q", got.LlamaServerPath, got.ModelsDir, server, folder)
+	}
 }

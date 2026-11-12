@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"time"
 
@@ -63,6 +62,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	llamaManifest := fs.String("llama-manifest", "", "llama.json with the pinned llama.cpp builds")
 	enginesDir := fs.String("engines-dir", "", "folder the downloaded llama.cpp engines go into")
 	dataDir := fs.String("data-dir", "", "folder for chats, attachments and documents; created if missing")
+	// Without it core knows no default engine and runs no model until a path is chosen.
+	llamaDir := fs.String("llama-dir", "", "folder holding the bundled llama-server.exe")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -89,12 +90,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
 	var chatStore *store.Store
+	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
 	if *dataDir != "" {
 		if db, err := store.Open(*dataDir); err != nil {
 			logger.Error("open chat database", "err", err)
 		} else {
 			defer db.Close()
-			chatStore = db
+			chatStore, cfgDB = db, db
 			if err := db.RenameErr(); err != nil {
 				logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
 			}
@@ -122,28 +124,51 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	defer stop()
 	go watchStdin(stdin, stop)
 
-	// Empty until main sends POST /api/config (right after core is ready). Every use reads the live value, so a
-	// change in Settings applies without restarting core.
-	cfg := config.NewStore()
-	listModels := func() ([]models.Model, error) { return models.Discover(cfg.Get().ModelsDir) }
+	var engine *downloads.Engine
+	if *llamaManifest != "" && *enginesDir != "" {
+		if engine, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
+			logger.Warn("no CUDA engine offered", "err", err) // a build bug at worst: the rest of core is unaffected
+			engine = nil
+		}
+	}
+	env := config.Env{LlamaDir: *llamaDir, EnginesDir: *enginesDir}
+	if engine != nil {
+		env.Tag = engine.Tag
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		env.Home = home
+	}
+
+	// The models section lives in openvatra.db; main's POST /api/config (right after core is ready) overrides it while
+	// set. Every use reads the live value, so a change in Settings applies without restarting core.
+	cfg := config.New(cfgDB, logger)
+	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
+	override := config.NewOverride()
+	resolve := func() config.Resolved { return resolveFrom(override, cfg, env) }
+	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	rt := router.New(router.Config{
-		NewBackend:     newBackendFunc(cfg, logger, logOut),
-		EmbeddingModel: func() string { return resolveEmbedding(cfg.Get()) },
+		NewBackend:     newBackendFunc(resolve, logger, logOut),
+		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
 		IdleTimeout: func(id string) time.Duration {
-			c := cfg.Get()
-			if id == resolveEmbedding(c) {
+			r := resolve()
+			if id == resolveEmbedding(r) {
 				return 0 // the serving embedding model never unloads, whichever way it was chosen
 			}
-			return c.IdleTimeout()
+			return r.IdleTimeout()
 		},
 	})
-	cfg.OnChange(rt.Notify)
+	override.OnChange(rt.Notify)
+	cfg.Subscribe(func(section string, _ int) {
+		if section == config.ModelsSection {
+			rt.Notify() // a new models folder changes the list although no model changed state
+		}
+	})
 	var chats *chat.Service
 	if chatStore != nil {
 		chats = &chat.Service{Store: chatStore, Router: rt, Sizes: &prompt.ContextSizes{}, Logger: logger}
 	}
 	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
-	hardware := hw.NewChecker(func() string { return cfg.Get().LlamaServerPath }, logger)
+	hardware := hw.NewChecker(func() string { return resolve().LlamaServerPath }, logger)
 	entries, err := catalog.Builtin()
 	if err != nil {
 		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
@@ -161,19 +186,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		dler.AllowHost = func(h string) bool { return download.HuggingFaceHost(h) || h == "127.0.0.1" || h == "localhost" }
 		logger.Warn("using a test catalog", "file", *testCatalog)
 	}
-	var engine *downloads.Engine
-	if *llamaManifest != "" && *enginesDir != "" {
-		if engine, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
-			logger.Warn("no CUDA engine offered", "err", err) // a build bug at worst: the rest of core is unaffected
-			engine = nil
-		}
-	}
-	cat := catalog.New(entries, hardware.Get, func() string { return cfg.Get().ModelsDir })
+	cat := catalog.New(entries, hardware.Get, func() string { return resolve().ModelsDir })
 	// A finished download changes what is on disk: tell every listener to re-read the models.
 	dl := downloads.New(downloads.Config{
 		Downloader: dler,
 		Entries:    entries,
-		ModelsDir:  func() string { return cfg.Get().ModelsDir },
+		ModelsDir:  func() string { return resolve().ModelsDir },
 		OnFinish:   rt.Notify,
 		Engine:     engine,
 	})
@@ -182,7 +200,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl, chats),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, override, hardware, cat, dl, chats),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)
@@ -206,9 +224,25 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	return nil
 }
 
+// resolveFrom is the model settings core acts on: main's override while it is set, else the stored section.
+func resolveFrom(o *config.Override, cfg *config.Store, env config.Env) config.Resolved {
+	if m, ok := o.Get(); ok {
+		return m.Resolve(env)
+	}
+	return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env)
+}
+
+// effectiveModels is the models section's read-only view: the paths core really uses when none is chosen.
+func effectiveModels(env config.Env) func(config.Models) any {
+	return func(m config.Models) any {
+		r := m.Resolve(env)
+		return map[string]string{"llamaServerPath": r.LlamaServerPath, "modelsDir": r.ModelsDir}
+	}
+}
+
 // resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,
 // else the first one found (Automatic), else "".
-func resolveEmbedding(c config.Config) string {
+func resolveEmbedding(c config.Resolved) string {
 	found, err := models.Discover(c.ModelsDir)
 	if err != nil {
 		return ""
@@ -219,9 +253,9 @@ func resolveEmbedding(c config.Config) string {
 // newBackendFunc builds the router's server factory: look the model up on disk,
 // give its llama-server a free port, and add --embeddings when asked. Its output
 // goes to core.log, every line prefixed with the model id.
-func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
+func newBackendFunc(resolve func() config.Resolved, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
 	return func(id string, embedding bool) (router.Backend, error) {
-		c := cfg.Get() // one snapshot, so a config change mid-call can't mix old and new values
+		c := resolve() // one snapshot, so a config change mid-call can't mix old and new values
 		found, err := models.Discover(c.ModelsDir)
 		if err != nil {
 			return nil, err
@@ -244,7 +278,7 @@ func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) fu
 }
 
 // serverArgs is one llama-server's full argument list: core's own flags first, then the user's.
-func serverArgs(c config.Config, m models.Model, port int, embedding bool) []string {
+func serverArgs(c config.Resolved, m models.Model, port int, embedding bool) []string {
 	args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
 	if embedding {
 		args = append(args, "--embeddings")
@@ -260,8 +294,8 @@ func serverArgs(c config.Config, m models.Model, port int, embedding bool) []str
 }
 
 // modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.
-func modelArgs(c config.Config, id string) []string {
-	return slices.Clone(c.Options[id].Args)
+func modelArgs(c config.Resolved, id string) []string {
+	return c.Args(id)
 }
 
 // watchStdin blocks until stdin is closed, then calls onClose. Electron never

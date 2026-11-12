@@ -57,6 +57,9 @@ function coreExtraArgs(): string[] {
     llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath()),
     '--engines-dir',
     enginesDir(),
+    // Core resolves the default llama-server from it when no path is chosen.
+    '--llama-dir',
+    bundledLlamaDir(app.isPackaged, process.resourcesPath, app.getAppPath()),
     // Chats, attachments and documents: next to settings.json, so one folder holds the user's data.
     '--data-dir',
     join(app.getPath('userData'), 'data')
