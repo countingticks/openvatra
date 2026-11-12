@@ -4,9 +4,18 @@
 import { randomUUID } from 'crypto'
 import { open, readFile, rename, rm } from 'fs/promises'
 import { joinArgs, splitArgs } from '../shared/args'
-import { defaultSettings, type Settings, settingsSchema, settingsSchemaVersion } from '../shared/settings'
+import {
+  defaultSettingsFile,
+  legacyModelsSchema,
+  type SettingsFile,
+  settingsFileSchema,
+  settingsSchemaVersion
+} from '../shared/settings'
 
 type Migration = (old: Record<string, unknown>) => Record<string, unknown>
+
+/** The `models` keys that moved to core in v7. */
+const legacyModelKeys = Object.keys(legacyModelsSchema.shape)
 
 /** `migrations[n]` turns a version-n file into a version-(n + 1) file; `migrate` sets the new version number. */
 const migrations: Readonly<Record<number, Migration>> = {
@@ -46,7 +55,22 @@ const migrations: Readonly<Record<number, Migration>> = {
     return { ...old, models: { ...rest, ...(options && { options }) } }
   },
   // 5 → 6: `engine`, `showAdvanced` and `cudaOfferDismissed` are new; the schema fills in their defaults.
-  5: (old) => old
+  5: (old) => old,
+  // 6 → 7: core owns the model settings. The two view preferences move to the top level; the rest waits in
+  // `legacyModels` until core has taken it, so a crash before the import loses nothing.
+  6: (old) => {
+    const { models, ...rest } = old
+    if (!isRecord(models)) return rest
+    const legacyModels = Object.fromEntries(
+      legacyModelKeys.filter((key) => key in models).map((key) => [key, models[key]])
+    )
+    return {
+      ...rest,
+      ...('showAdvanced' in models && { showAdvancedModels: models['showAdvanced'] }),
+      ...('cudaOfferDismissed' in models && { cudaOfferDismissed: models['cudaOfferDismissed'] }),
+      legacyModels
+    }
+  }
 }
 
 /** `{ contextSize, gpuLayers, extraArgs }` → `{ args: '-c … -ngl … …' }`; `{}` if nothing was set. */
@@ -69,7 +93,7 @@ export type LoadOutcome =
   | { kind: 'unreadable'; error: unknown }
 
 export interface LoadResult {
-  settings: Settings
+  settings: SettingsFile
   outcome: LoadOutcome
 }
 
@@ -96,8 +120,8 @@ export function migrate(raw: unknown, steps: Readonly<Record<number, Migration>>
   return data
 }
 
-function defaults(): Settings {
-  return structuredClone(defaultSettings)
+function defaults(): SettingsFile {
+  return structuredClone(defaultSettingsFile)
 }
 
 export async function loadSettings(filePath: string): Promise<LoadResult> {
@@ -119,7 +143,7 @@ export async function loadSettings(filePath: string): Promise<LoadResult> {
     return setAside(filePath, 'corrupt')
   }
 
-  const parsed = settingsSchema.safeParse(migrate(raw))
+  const parsed = settingsFileSchema.safeParse(migrate(raw))
   if (!parsed.success) return setAside(filePath, 'invalid')
   return {
     settings: parsed.data,
@@ -164,8 +188,8 @@ export function logLoadOutcome(logger: Logger, filePath: string, outcome: LoadOu
  * Validates, then writes atomically: the full file goes to a temporary file, is flushed to disk, and is renamed
  * over the old one. A rename either happens completely or not at all, so a crash never leaves half a file.
  */
-export async function saveSettings(filePath: string, settings: Settings): Promise<void> {
-  const valid = settingsSchema.parse(settings)
+export async function saveSettings(filePath: string, settings: SettingsFile): Promise<void> {
+  const valid = settingsFileSchema.parse(settings)
   // A unique name, so two saves running at once never write into the same temporary file.
   const tempPath = `${filePath}.${randomUUID()}.tmp`
   try {

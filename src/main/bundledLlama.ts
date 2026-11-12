@@ -1,5 +1,5 @@
-// The llama.cpp build that ships with the app (resources/llama, fetched by scripts/fetch-llama.mjs). Settings keep
-// `llamaServerPath: null` for "use the bundled one"; main turns that into this path before core ever sees it.
+// The llama.cpp build that ships with the app (resources/llama, fetched by scripts/fetch-llama.mjs). core resolves
+// `llamaServerPath: null` to it (`--llama-dir`); main only reports the tag and the CUDA download's status.
 // No Electron imports (the caller passes the folder), so it's unit-testable.
 import { access, readdir, readFile } from 'fs/promises'
 import { join } from 'path'
@@ -74,19 +74,4 @@ export async function cudaStatus(enginesDir: string, tag: string | null): Promis
       return 'stale'
   }
   return 'none'
-}
-
-/**
- * The llama-server to run when the user hasn't picked their own: the CUDA build if they chose it and it matches
- * this app's tag, else the bundled one. (A custom path is applied before this, in configSync, and always wins.)
- */
-export async function defaultLlamaServer(
-  engine: 'bundled' | 'cuda',
-  bundledDir: string,
-  enginesDir: string,
-  tag: string | null
-): Promise<string> {
-  if (engine === 'cuda' && tag && (await cudaStatus(enginesDir, tag)) === 'ready')
-    return bundledLlamaExe(join(enginesDir, cudaFolder(tag)))
-  return bundledLlamaExe(bundledDir)
 }

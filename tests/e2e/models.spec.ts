@@ -4,7 +4,6 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
-import { settingsSchemaVersion } from '../../src/shared/settings'
 import { ggufHeader } from './ggufHeader'
 import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
 
@@ -25,8 +24,9 @@ test.beforeAll(async () => {
   await writeFile(join(modelsDir, 'tiny.gguf'), ggufHeader('llama'))
 
   userDataDir = await createUserDataDir()
+  // A v6 file, imported into core on its first ready.
   const settings = {
-    schemaVersion: settingsSchemaVersion,
+    schemaVersion: 6,
     models: { llamaServerPath: fakeServer, modelsDir }
   }
   await writeFile(join(userDataDir, 'settings.json'), JSON.stringify(settings))

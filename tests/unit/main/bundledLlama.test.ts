@@ -7,7 +7,6 @@ import {
   bundledLlamaDir,
   bundledLlamaExe,
   cudaStatus,
-  defaultLlamaServer,
   llamaManifestPath,
   readBundledTag,
   readPinnedTag
@@ -76,18 +75,6 @@ describe('CUDA engine resolution', () => {
     await install('b2-cuda')
     expect(await cudaStatus(enginesDir, 'b2')).toBe('ready')
     expect(await cudaStatus(join(enginesDir, 'missing'), 'b2')).toBe('none')
-  })
-
-  it('runs CUDA only when chosen and current; stale or unchosen falls back to the bundled build', async () => {
-    const bundled = bundledLlamaExe('C:/app/llama')
-    await install('b1-cuda')
-    expect(await defaultLlamaServer('cuda', 'C:/app/llama', enginesDir, 'b2')).toBe(bundled)
-    await install('b2-cuda')
-    expect(await defaultLlamaServer('bundled', 'C:/app/llama', enginesDir, 'b2')).toBe(bundled)
-    expect(await defaultLlamaServer('cuda', 'C:/app/llama', enginesDir, 'b2')).toBe(
-      join(enginesDir, 'b2-cuda', 'llama-server.exe')
-    )
-    expect(await defaultLlamaServer('cuda', 'C:/app/llama', enginesDir, null)).toBe(bundled)
   })
 
   it('reads the pinned tag from llama.json', async () => {

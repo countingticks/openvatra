@@ -1,6 +1,7 @@
 // core's model endpoints, for the UI: follows core's event stream (GET /api/events) to keep the model list current
 // without polling, and loads or unloads a model on request. No Electron imports, so tests need only a fake fetch.
 import { isModelList, type ModelInfo } from '../../shared/core'
+import { coreErrorMessage } from './coreError'
 import { isDownloadList, type DownloadItem } from '../../shared/setup'
 
 /** Wait before reopening an event stream that ended while core was still ready. */
@@ -39,6 +40,8 @@ export interface ModelsClientOptions {
   onModels: (models: ModelInfo[]) => void
   /** The whole download queue, on every change (core sends it at most 4 times a second). */
   onDownloads: (items: DownloadItem[]) => void
+  /** `event: config` from core: which section changed and its new rev. */
+  onConfig?: (section: string, rev: number) => void
   log: { warn: (message: string, error?: unknown) => void }
 }
 
@@ -58,6 +61,7 @@ export function createModelsClient({
   request,
   onModels,
   onDownloads,
+  onConfig,
   log
 }: ModelsClientOptions): ModelsClient {
   let models: ModelInfo[] = []
@@ -97,6 +101,7 @@ export function createModelsClient({
         for (const { event, data } of events) {
           if (event === 'state') receive(data)
           else if (event === 'downloads') receiveDownloads(data)
+          else if (event === 'config') receiveConfig(data)
         }
       }
     } catch (error) {
@@ -130,6 +135,21 @@ export function createModelsClient({
     }
   }
 
+  function receiveConfig(data: string): void {
+    let body: unknown = null
+    try {
+      body = JSON.parse(data)
+    } catch {
+      // not JSON: dropped below
+    }
+    const { section, rev } = (body ?? {}) as { section?: unknown; rev?: unknown }
+    if (typeof section !== 'string' || typeof rev !== 'number' || !Number.isInteger(rev)) {
+      log.warn('core: ignored a malformed config event')
+      return
+    }
+    onConfig?.(section, rev)
+  }
+
   function stop(): void {
     clearTimeout(reconnectTimer)
     const controller = stream
@@ -143,7 +163,7 @@ export function createModelsClient({
   async function act(id: string, action: 'load' | 'unload'): Promise<void> {
     const response = await request(`/api/models/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
     if (response.ok) return
-    throw new Error(await errorMessage(response))
+    throw new Error(await coreErrorMessage(response))
   }
 
   return {
@@ -154,16 +174,4 @@ export function createModelsClient({
     load: (id) => act(id, 'load'),
     unload: (id) => act(id, 'unload')
   }
-}
-
-/** core's errors are `{ "error": { "code", "message" } }`; anything else gets a generic message. */
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { message?: unknown } }
-    const message = body.error?.message
-    if (typeof message === 'string' && message) return message.slice(0, 300)
-  } catch {
-    // not JSON: fall through
-  }
-  return `core answered with HTTP ${response.status}`
 }
