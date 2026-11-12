@@ -62,6 +62,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	llamaManifest := fs.String("llama-manifest", "", "llama.json with the pinned llama.cpp builds")
 	enginesDir := fs.String("engines-dir", "", "folder the downloaded llama.cpp engines go into")
 	dataDir := fs.String("data-dir", "", "folder for chats, attachments and documents; created if missing")
+	// Without it core knows no default engine and runs no model until a path is chosen.
+	llamaDir := fs.String("llama-dir", "", "folder holding the bundled llama-server.exe")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -88,12 +90,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 
 	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
 	var chatStore *store.Store
+	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
 	if *dataDir != "" {
 		if db, err := store.Open(*dataDir); err != nil {
 			logger.Error("open chat database", "err", err)
 		} else {
 			defer db.Close()
-			chatStore = db
+			chatStore, cfgDB = db, db
 			if err := db.RenameErr(); err != nil {
 				logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
 			}
@@ -128,7 +131,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 			engine = nil
 		}
 	}
-	env := config.Env{EnginesDir: *enginesDir}
+	env := config.Env{LlamaDir: *llamaDir, EnginesDir: *enginesDir}
 	if engine != nil {
 		env.Tag = engine.Tag
 	}
@@ -136,15 +139,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		env.Home = home
 	}
 
-	// Main's POST /api/config (right after core is ready) overrides the defaults while it is set. Every use reads the
-	// live value, so a change in Settings applies without restarting core.
+	// The models section lives in openvatra.db; main's POST /api/config (right after core is ready) overrides it while
+	// set. Every use reads the live value, so a change in Settings applies without restarting core.
+	cfg := config.New(cfgDB, logger)
+	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
 	override := config.NewOverride()
-	resolve := func() config.Resolved {
-		if m, ok := override.Get(); ok {
-			return m.Resolve(env)
-		}
-		return config.DefaultModels().Resolve(env)
-	}
+	resolve := func() config.Resolved { return resolveFrom(override, cfg, env) }
 	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	rt := router.New(router.Config{
 		NewBackend:     newBackendFunc(resolve, logger, logOut),
@@ -158,6 +158,11 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		},
 	})
 	override.OnChange(rt.Notify)
+	cfg.Subscribe(func(section string, _ int) {
+		if section == config.ModelsSection {
+			rt.Notify() // a new models folder changes the list although no model changed state
+		}
+	})
 	var chats *chat.Service
 	if chatStore != nil {
 		chats = &chat.Service{Store: chatStore, Router: rt, Sizes: &prompt.ContextSizes{}, Logger: logger}
@@ -217,6 +222,22 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// resolveFrom is the model settings core acts on: main's override while it is set, else the stored section.
+func resolveFrom(o *config.Override, cfg *config.Store, env config.Env) config.Resolved {
+	if m, ok := o.Get(); ok {
+		return m.Resolve(env)
+	}
+	return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env)
+}
+
+// effectiveModels is the models section's read-only view: the paths core really uses when none is chosen.
+func effectiveModels(env config.Env) func(config.Models) any {
+	return func(m config.Models) any {
+		r := m.Resolve(env)
+		return map[string]string{"llamaServerPath": r.LlamaServerPath, "modelsDir": r.ModelsDir}
+	}
 }
 
 // resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,
