@@ -30,11 +30,12 @@ func entry(id string, srvURL string) catalog.Entry {
 
 // fixture serves payload for every model; gate (if set) holds each response until it is closed.
 type fixture struct {
-	m    *Manager
-	dir  string
-	srv  *httptest.Server
-	done atomic.Int32 // OnFinish calls
-	gate chan struct{}
+	m     *Manager
+	dir   string
+	srv   *httptest.Server
+	done  atomic.Int32 // OnFinish calls
+	ready atomic.Int32 // OnEngineReady calls
+	gate  chan struct{}
 }
 
 func newFixture(t *testing.T, gated bool, ids ...string) *fixture {
@@ -63,10 +64,11 @@ func newFixture(t *testing.T, gated bool, ids ...string) *fixture {
 			Client: &http.Client{}, AllowHost: func(string) bool { return true }, AllowLocalHTTP: true,
 			Backoff: []time.Duration{time.Millisecond, time.Millisecond},
 		},
-		Entries:   entries,
-		ModelsDir: func() string { return f.dir },
-		DiskFree:  func(string) (uint64, error) { return 1 << 40, nil },
-		OnFinish:  func() { f.done.Add(1) },
+		Entries:       entries,
+		ModelsDir:     func() string { return f.dir },
+		DiskFree:      func(string) (uint64, error) { return 1 << 40, nil },
+		OnFinish:      func() { f.done.Add(1) },
+		OnEngineReady: func() { f.ready.Add(1) },
 	})
 	t.Cleanup(f.m.Close)
 	return f

@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -35,6 +36,7 @@ type engineFixture struct {
 	m      *Manager
 	engine *Engine
 	gate   chan struct{} // when set, each response waits for it
+	ready  atomic.Int32  // OnEngineReady calls
 }
 
 // newEngineFixture serves the two fake zips; extract stands in for tar.exe.
@@ -73,9 +75,10 @@ func newEngineFixture(t *testing.T, gated bool, extract func(ctx context.Context
 			Client: &http.Client{}, AllowHost: func(string) bool { return false }, AllowLocalHTTP: true,
 			Backoff: []time.Duration{time.Millisecond},
 		},
-		ModelsDir: func() string { return t.TempDir() },
-		DiskFree:  func(string) (uint64, error) { return 1 << 40, nil },
-		Engine:    f.engine,
+		ModelsDir:     func() string { return t.TempDir() },
+		DiskFree:      func(string) (uint64, error) { return 1 << 40, nil },
+		Engine:        f.engine,
+		OnEngineReady: func() { f.ready.Add(1) },
 	})
 	t.Cleanup(f.m.Close)
 	return f
@@ -289,5 +292,88 @@ func TestTarExtractUnpacksARealZip(t *testing.T) {
 	}
 	if err := tarExtract(context.Background(), filepath.Join(dir, "missing.zip"), dest); err == nil {
 		t.Fatal("a missing zip should fail")
+	}
+}
+
+func (f *engineFixture) waitReady(t *testing.T, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for f.ready.Load() != want && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := f.ready.Load(); got != want {
+		t.Fatalf("OnEngineReady ran %d times, want %d", got, want)
+	}
+}
+
+func TestOnEngineReadyRunsOnceWhenTheEngineIsDone(t *testing.T) {
+	f := newEngineFixture(t, false, fakeExtract)
+	if err := f.m.StartEngine(); err != nil {
+		t.Fatal(err)
+	}
+	f.waitReady(t, 1)
+}
+
+func TestOnEngineReadyWaitsForARetryAfterAFailedUnpack(t *testing.T) {
+	broken := true
+	f := newEngineFixture(t, false, func(ctx context.Context, zip, dest string) error {
+		if broken {
+			return errors.New("tar failed")
+		}
+		return fakeExtract(ctx, zip, dest)
+	})
+	_ = f.m.StartEngine()
+	f.wait(t, Failed)
+	if f.ready.Load() != 0 {
+		t.Fatal("a failed unpack must not call OnEngineReady")
+	}
+	broken = false
+	if err := f.m.Resume(EngineID); err != nil {
+		t.Fatal(err)
+	}
+	f.waitReady(t, 1)
+}
+
+func TestOnEngineReadyDoesNotRunWhenCancelled(t *testing.T) {
+	f := newEngineFixture(t, true, fakeExtract)
+	_ = f.m.StartEngine()
+	f.wait(t, Downloading)
+	if err := f.m.Cancel(EngineID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for len(f.m.Items()) > 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if f.ready.Load() != 0 {
+		t.Fatal("a cancelled engine download must not call OnEngineReady")
+	}
+}
+
+func TestOnEngineReadyDoesNotRunForAModelDownload(t *testing.T) {
+	f := newFixture(t, false, "a")
+	if err := f.m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor(t, "a", Done)
+	if f.ready.Load() != 0 {
+		t.Fatal("a model download must not call OnEngineReady")
+	}
+}
+
+func TestOnEngineReadyDoesNotRunForAnInstalledEngine(t *testing.T) {
+	f := newEngineFixture(t, false, fakeExtract)
+	installed := filepath.Join(f.engine.Dir, testTag+"-cuda")
+	if err := os.MkdirAll(installed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(installed, "llama-server.exe"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.m.StartEngine(); !errors.Is(err, ErrInstalled) {
+		t.Fatalf("start = %v, want ErrInstalled", err)
+	}
+	if f.ready.Load() != 0 {
+		t.Fatal("an engine installed at start must not call OnEngineReady")
 	}
 }

@@ -15,20 +15,21 @@ import (
 // Host checks. port is the one core listens on; shutdown is called (once the
 // reply is sent) when a client asks core to stop; listModels reports the models
 // currently on disk (a function, because the folder will change at runtime); rt
-// picks the model server for the chat and embedding endpoints; cfg receives what
-// main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Override, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
+// picks the model server for the chat and embedding endpoints; cfg is the stored config behind /api/config/... (nil
+// only in tests); override receives what main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg Config, override *config.Override, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
 	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
 	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
 	mux.HandleFunc("GET /api/state", stateHandler(rt, listModels))
-	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl))
+	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl, cfg))
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /api/models/refresh", refreshHandler(rt))
-	mux.HandleFunc("POST /api/config", configHandler(cfg))
+	mux.HandleFunc("POST /api/config", configHandler(override))
+	registerConfig(mux, cfg)
 	mux.HandleFunc("GET /api/hardware", hardwareHandler(hardware.Get))
 	mux.HandleFunc("POST /api/hardware/refresh", hardwareHandler(hardware.Refresh))
 	mux.HandleFunc("GET /api/catalog", catalogHandler(cat))

@@ -189,18 +189,19 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	cat := catalog.New(entries, hardware.Get, func() string { return resolve().ModelsDir })
 	// A finished download changes what is on disk: tell every listener to re-read the models.
 	dl := downloads.New(downloads.Config{
-		Downloader: dler,
-		Entries:    entries,
-		ModelsDir:  func() string { return resolve().ModelsDir },
-		OnFinish:   rt.Notify,
-		Engine:     engine,
+		Downloader:    dler,
+		Entries:       entries,
+		ModelsDir:     func() string { return resolve().ModelsDir },
+		OnFinish:      rt.Notify,
+		OnEngineReady: func() { switchToCUDA(cfg, logger) },
+		Engine:        engine,
 	})
 	defer dl.Close()
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, override, hardware, cat, dl, chats),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, override, hardware, cat, dl, chats),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)
@@ -313,4 +314,45 @@ func writeReady(w io.Writer, port int) error {
 		"port":    port,
 		"version": version,
 	})
+}
+
+// sectionWriter is the part of the config store switchToCUDA uses.
+type sectionWriter interface {
+	Section(name string) (config.Entry, error)
+	Put(name string, rev int, value json.RawMessage) (config.Entry, error)
+}
+
+// switchToCUDA stores engine "cuda" once its download is finished. A concurrent write (a Settings save) may win the
+// revision, so it reads again and retries once; after that it gives up and logs, because the user can still pick the
+// engine by hand and core must not loop.
+func switchToCUDA(cfg sectionWriter, logger *slog.Logger) {
+	var err error
+	for attempt := 0; attempt < 2; attempt++ {
+		var entry config.Entry
+		if entry, err = cfg.Section(config.ModelsSection); err != nil {
+			break
+		}
+		var m config.Models
+		if err = json.Unmarshal(entry.Value, &m); err != nil {
+			break
+		}
+		if m.Engine == "cuda" {
+			return
+		}
+		m.Engine = "cuda"
+		var value []byte
+		if value, err = json.Marshal(m); err != nil {
+			break
+		}
+		if _, err = cfg.Put(config.ModelsSection, entry.Rev, value); !errors.Is(err, config.ErrConflict) {
+			break
+		}
+	}
+	switch {
+	case err == nil:
+	case errors.Is(err, config.ErrUnavailable):
+		logger.Warn("could not switch to the CUDA engine: config storage is not available")
+	default:
+		logger.Error("could not switch to the CUDA engine", "err", err)
+	}
 }

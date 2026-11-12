@@ -37,3 +37,10 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "message": message})
 }
+
+// writeConflict is writeError plus the section as it is now, so the client can merge and retry.
+func writeConflict(w http.ResponseWriter, message string, current any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusConflict)
+	_ = json.NewEncoder(w).Encode(map[string]any{"error": "config_conflict", "message": message, "current": current})
+}

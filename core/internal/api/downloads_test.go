@@ -45,7 +45,7 @@ func callDownloads(dl Downloads, method, path, body string) *httptest.ResponseRe
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, dl, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, nil, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, dl, nil).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -99,7 +99,7 @@ func TestStartRejectsBadBodies(t *testing.T) {
 
 func TestEventsSendDownloadsAndThrottleThem(t *testing.T) {
 	dl := &stubDownloads{changes: make(chan struct{}, 1), items: []downloads.Item{{ID: "qwen", State: downloads.Downloading, Bytes: 1, Total: 2}}}
-	srv := httptest.NewServer(eventsHandler(&stubRouter{changes: make(chan struct{}, 1)}, twoModels, dl))
+	srv := httptest.NewServer(eventsHandler(&stubRouter{changes: make(chan struct{}, 1)}, twoModels, dl, nil))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
