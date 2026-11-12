@@ -150,7 +150,7 @@ func TestOpenapiRoute(t *testing.T) {
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	testHandler(d).ServeHTTP(rec, req)
+	testHandler(t, d).ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("status %d, content type %q", rec.Code, rec.Header().Get("Content-Type"))
 	}

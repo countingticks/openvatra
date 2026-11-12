@@ -39,7 +39,7 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 	port := srv.Listener.Addr().(interface{ String() string }).String()
 	var p int
 	fmt.Sscanf(port[strings.LastIndex(port, ":")+1:], "%d", &p)
-	srv.Config.Handler = testHandler(Deps{Port: p, Chats: svc})
+	srv.Config.Handler = testHandler(t, Deps{Port: p, Chats: svc})
 	srv.Start()
 	t.Cleanup(srv.Close)
 	return srv, st
@@ -162,7 +162,7 @@ func TestChatEndpointsWithoutStorageAnswer503(t *testing.T) {
 		req := httptest.NewRequest(row.method, row.path, strings.NewReader(row.body))
 		req.Host = fmt.Sprintf("127.0.0.1:%d", testPort)
 		req.Header.Set("Authorization", "Bearer "+testToken)
-		testHandler(Deps{}).ServeHTTP(rec, req)
+		testHandler(t, Deps{}).ServeHTTP(rec, req)
 		if rec.Code != 503 || !strings.Contains(rec.Body.String(), `"error":"chat_unavailable"`) {
 			t.Errorf("%s %s: %d %s", row.method, row.path, rec.Code, rec.Body)
 		}

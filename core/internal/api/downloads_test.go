@@ -36,12 +36,12 @@ func (s *stubDownloads) Items() []downloads.DownloadItem {
 }
 func (s *stubDownloads) Subscribe() (<-chan struct{}, func()) { return s.changes, func() {} }
 
-func callDownloads(dl Downloads, method, path, body string) *httptest.ResponseRecorder {
+func callDownloads(t *testing.T, dl Downloads, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	testHandler(Deps{Downloads: dl}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Downloads: dl}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -54,7 +54,7 @@ func TestDownloadEndpointsCallTheQueue(t *testing.T) {
 		{"POST", "/api/downloads/qwen/resume", "", "resume qwen"},
 	}
 	for _, c := range cases {
-		if rec := callDownloads(dl, c.method, c.path, c.body); rec.Code != http.StatusAccepted {
+		if rec := callDownloads(t, dl, c.method, c.path, c.body); rec.Code != http.StatusAccepted {
 			t.Fatalf("%s %s = %d %s", c.method, c.path, rec.Code, rec.Body)
 		}
 		if got := dl.calls[len(dl.calls)-1]; got != c.call {
@@ -77,7 +77,7 @@ func TestDownloadErrorsMapToStatuses(t *testing.T) {
 		{downloads.ErrNotResumable, 409, "not_paused"},
 	}
 	for _, c := range cases {
-		rec := callDownloads(&stubDownloads{err: c.err}, "POST", "/api/downloads", `{"catalogId":"qwen"}`)
+		rec := callDownloads(t, &stubDownloads{err: c.err}, "POST", "/api/downloads/qwen/resume", "")
 		if rec.Code != c.status || !strings.Contains(rec.Body.String(), c.code) {
 			t.Fatalf("%v -> %d %s, want %d %s", c.err, rec.Code, rec.Body, c.status, c.code)
 		}
@@ -87,18 +87,18 @@ func TestDownloadErrorsMapToStatuses(t *testing.T) {
 func TestStartRejectsBadBodies(t *testing.T) {
 	for _, body := range []string{``, `{}`, `{"catalogId":"a","engine":"cuda"}`, `{"catalogId":"a","x":1}`, `{"engine":"rocm"}`, `nope`} {
 		dl := &stubDownloads{}
-		if rec := callDownloads(dl, "POST", "/api/downloads", body); rec.Code != http.StatusBadRequest || len(dl.calls) != 0 {
+		if rec := callDownloads(t, dl, "POST", "/api/downloads", body); rec.Code != http.StatusBadRequest || len(dl.calls) != 0 {
 			t.Fatalf("body %q -> %d, calls %v", body, rec.Code, dl.calls)
 		}
 	}
 }
 
 func TestListDownloads(t *testing.T) {
-	if rec := callDownloads(&stubDownloads{}, "GET", "/api/downloads", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
+	if rec := callDownloads(t, &stubDownloads{}, "GET", "/api/downloads", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
 		t.Fatalf("empty queue: %d %s", rec.Code, rec.Body)
 	}
 	dl := &stubDownloads{items: []downloads.DownloadItem{{ID: "qwen", State: downloads.Downloading, Bytes: 5, Total: 10}}}
-	rec := callDownloads(dl, "GET", "/api/downloads", "")
+	rec := callDownloads(t, dl, "GET", "/api/downloads", "")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `{"items":[{"id":"qwen","state":"downloading"`) {
 		t.Fatalf("one item: %d %s", rec.Code, rec.Body)
 	}
@@ -112,7 +112,7 @@ func TestStartErrorCodes(t *testing.T) {
 		{`{}`, "bad_request"},
 	}
 	for _, c := range cases {
-		rec := callDownloads(&stubDownloads{}, "POST", "/api/downloads", c.body)
+		rec := callDownloads(t, &stubDownloads{}, "POST", "/api/downloads", c.body)
 		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"error":"`+c.code+`"`) {
 			t.Errorf("body %s -> %d %s, want 400 %s", c.body, rec.Code, rec.Body, c.code)
 		}
@@ -122,7 +122,7 @@ func TestStartErrorCodes(t *testing.T) {
 func TestStartAcceptsBodiesUpTo1MiB(t *testing.T) {
 	dl := &stubDownloads{}
 	body := `{"catalogId":"qwen"` + strings.Repeat(" ", 4<<10) + `}`
-	if rec := callDownloads(dl, "POST", "/api/downloads", body); rec.Code != http.StatusAccepted {
+	if rec := callDownloads(t, dl, "POST", "/api/downloads", body); rec.Code != http.StatusAccepted {
 		t.Fatalf("a 4 KiB body: %d %s", rec.Code, rec.Body)
 	}
 }

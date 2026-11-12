@@ -10,9 +10,10 @@ import (
 var scopeNames = map[Scope]string{None: "none", UI: "ui", Shell: "shell"}
 
 // Document is the OpenAPI document of Routes(d), deterministic for equal Deps. Handlers are never called.
-func Document(d Deps) []byte {
+func Document(d Deps) []byte { return documentOf(Routes(d), d.Version) }
+
+func documentOf(routes []Route, version string) []byte {
 	r := openapi.NewReflector()
-	routes := Routes(d)
 	ops := make([]openapi.Operation, 0, len(routes))
 	for _, rt := range routes {
 		op := openapi.Operation{
@@ -31,6 +32,6 @@ func Document(d Deps) []byte {
 		}
 		ops = append(ops, op)
 	}
-	return openapi.Build(openapi.Info{Title: "OpenVatra core", Version: d.Version, APILevel: 1}, ops, r,
+	return openapi.Build(openapi.Info{Title: "OpenVatra core", Version: version, APILevel: 1}, ops, r,
 		reflect.TypeFor[ErrorBody]())
 }

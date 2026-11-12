@@ -11,7 +11,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/router"
 )
 
-func callModels(rt Router, method, path string) *httptest.ResponseRecorder {
+func callModels(t *testing.T, rt Router, method, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -19,13 +19,13 @@ func callModels(rt Router, method, path string) *httptest.ResponseRecorder {
 	list := func() ([]models.Model, error) {
 		return []models.Model{{ID: "qwen", SizeBytes: 5, Kind: models.KindChat}, {ID: "gemma", SizeBytes: 7, Kind: models.KindChat}}, nil
 	}
-	testHandler(Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
 	return rec
 }
 
 func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 	rt := &stubRouter{snapshot: []router.ModelState{{ID: "qwen", State: router.StateReady, Busy: true}}}
-	rec := callModels(rt, http.MethodGet, "/api/models")
+	rec := callModels(t, rt, http.MethodGet, "/api/models")
 	want := `{"models":[` +
 		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat"},` +
 		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat"}]}`
@@ -35,7 +35,7 @@ func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 }
 
 func TestStateRouteIsGone(t *testing.T) {
-	if rec := callModels(&stubRouter{}, http.MethodGet, "/api/state"); rec.Code != http.StatusNotFound {
+	if rec := callModels(t, &stubRouter{}, http.MethodGet, "/api/state"); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
 	}
 }
@@ -56,15 +56,15 @@ func TestLoadAndUnload(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			rec := callModels(c.rt, http.MethodPost, c.path)
+			rec := callModels(t, c.rt, http.MethodPost, c.path)
 			if rec.Code != c.status || !strings.Contains(rec.Body.String(), c.contains) {
 				t.Fatalf("status = %d, body = %s; want %d with %s", rec.Code, rec.Body.String(), c.status, c.contains)
 			}
 		})
 	}
 	rt := &stubRouter{unloadOK: true}
-	callModels(rt, http.MethodPost, "/api/models/qwen/load")
-	callModels(rt, http.MethodPost, "/api/models/gemma/unload")
+	callModels(t, rt, http.MethodPost, "/api/models/qwen/load")
+	callModels(t, rt, http.MethodPost, "/api/models/gemma/unload")
 	if rt.loaded != "qwen" || rt.unloaded != "gemma" {
 		t.Fatalf("loaded %q, unloaded %q", rt.loaded, rt.unloaded)
 	}
@@ -72,7 +72,7 @@ func TestLoadAndUnload(t *testing.T) {
 
 func TestRefreshNotifiesOnce(t *testing.T) {
 	rt := &stubRouter{}
-	rec := callModels(rt, http.MethodPost, "/api/models/refresh")
+	rec := callModels(t, rt, http.MethodPost, "/api/models/refresh")
 	if rec.Code != http.StatusAccepted || rt.notified != 1 {
 		t.Fatalf("status %d, notified %d times; want 202 and once", rec.Code, rt.notified)
 	}
