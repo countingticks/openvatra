@@ -93,8 +93,14 @@ test.describe('a version-6 settings file with model settings', () => {
     }
 
     await expect.poll(models).toMatchObject(imported)
-    // The old copy is dropped only once core has the values, so from then on they can only come from core.
-    await expect.poll(onDisk).not.toHaveProperty('legacyModels')
+    // The old copy is dropped only once core has the values, so from then on they can only come from core. The file
+    // on disk stays v6 (no `legacyModels` either) until that save, so wait for the v7 file without it.
+    await expect
+      .poll(async () => {
+        const file = await onDisk()
+        return file['schemaVersion'] === 7 && !('legacyModels' in file)
+      })
+      .toBe(true)
     expect(await models()).toMatchObject(imported)
 
     const file = await onDisk()
