@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -79,7 +81,7 @@ func stateHandler(rt Router, list func() ([]models.Model, error)) http.HandlerFu
 // eventsHandler streams Server-Sent Events: the current state at once, then a new
 // one after every change, so Electron main never has to poll. An SSE message is
 // plain text, "event: <name>", "data: <one line>", and a blank line to end it.
-func eventsHandler(rt Router, list func() ([]models.Model, error), dl Downloads) http.HandlerFunc {
+func eventsHandler(rt Router, list func() ([]models.Model, error), dl Downloads, cfg Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -89,6 +91,48 @@ func eventsHandler(rt Router, list func() ([]models.Model, error), dl Downloads)
 		// Subscribe before the first read, so a change in between is not lost.
 		changed, cancel := rt.Subscribe()
 		defer cancel()
+
+		// Config changes: the subscriber only records the newest rev per section and signals, so a Put never waits
+		// on this stream; two quick writes may arrive as one event with the later rev. A nil channel never fires.
+		var cfgChanged chan struct{}
+		var pending map[string]int
+		var pendingMu sync.Mutex
+		if cfg != nil {
+			cfgChanged = make(chan struct{}, 1)
+			pending = map[string]int{}
+			cancelCfg := cfg.Subscribe(func(section string, rev int) {
+				pendingMu.Lock()
+				pending[section] = rev
+				pendingMu.Unlock()
+				select {
+				case cfgChanged <- struct{}{}:
+				default:
+				}
+			})
+			defer cancelCfg()
+		}
+		sendConfig := func() bool {
+			pendingMu.Lock()
+			batch := pending
+			pending = map[string]int{}
+			pendingMu.Unlock()
+			names := make([]string, 0, len(batch))
+			for name := range batch {
+				names = append(names, name)
+			}
+			sort.Strings(names)
+			for _, name := range names {
+				data, _ := json.Marshal(struct {
+					Section string `json:"section"`
+					Rev     int    `json:"rev"`
+				}{name, batch[name]})
+				if _, err := fmt.Fprintf(w, "event: config\ndata: %s\n\n", data); err != nil {
+					return false
+				}
+			}
+			flusher.Flush()
+			return true
+		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -136,6 +180,10 @@ func eventsHandler(rt Router, list func() ([]models.Model, error), dl Downloads)
 			select {
 			case <-changed:
 				if !send() {
+					return
+				}
+			case <-cfgChanged:
+				if !sendConfig() {
 					return
 				}
 			case <-dlChanged:

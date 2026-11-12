@@ -99,7 +99,7 @@ func TestStartRejectsBadBodies(t *testing.T) {
 
 func TestEventsSendDownloadsAndThrottleThem(t *testing.T) {
 	dl := &stubDownloads{changes: make(chan struct{}, 1), items: []downloads.Item{{ID: "qwen", State: downloads.Downloading, Bytes: 1, Total: 2}}}
-	srv := httptest.NewServer(eventsHandler(&stubRouter{changes: make(chan struct{}, 1)}, twoModels, dl))
+	srv := httptest.NewServer(eventsHandler(&stubRouter{changes: make(chan struct{}, 1)}, twoModels, dl, nil))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())

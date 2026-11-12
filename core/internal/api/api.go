@@ -24,7 +24,7 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
 	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
 	mux.HandleFunc("GET /api/state", stateHandler(rt, listModels))
-	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl))
+	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl, cfg))
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /api/models/refresh", refreshHandler(rt))
