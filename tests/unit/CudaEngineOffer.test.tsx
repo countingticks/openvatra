@@ -65,6 +65,20 @@ describe('faster engine for NVIDIA', () => {
     expect(store.getState().settings.models.engine).toBe('cuda')
   })
 
+  it('the Settings line follows main when the CUDA download switches the engine', async () => {
+    const { store, emitSettings } = show('ready', { engine: 'bundled', showAdvanced: true })
+    act(() => {
+      store.dispatch(settingsOpened('models'))
+    })
+    expect(await screen.findByRole('button', { name: 'Use the faster engine' })).toBeInTheDocument()
+
+    const settings = store.getState().settings
+    emitSettings({ ...settings, models: { ...settings.models, engine: 'cuda' } })
+
+    expect(await screen.findByRole('button', { name: 'Use the standard engine' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Use the faster engine' })).toBeNull()
+  })
+
   it('offers "Use the standard engine" next to a model that failed to start, while CUDA is in use', async () => {
     const { store } = show('ready', { engine: 'cuda' }, [broken])
     await openPopover()

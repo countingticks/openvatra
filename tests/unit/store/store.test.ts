@@ -9,12 +9,29 @@ import {
   wentBack
 } from '@renderer/store/uiSlice'
 import type { SettingsApi } from '../../../src/shared/ipc'
-import { defaultSettings } from '../../../src/shared/settings'
+import { defaultSettings, type Settings } from '../../../src/shared/settings'
 
-// Stands in for window.api.settings: records what the store asks to save. Typed like the real update, so the
-// fake can't drift from the API it replaces.
-function fakeSettings(): { update: Mock<SettingsApi['update']> } {
-  return { update: vi.fn<SettingsApi['update']>().mockResolvedValue(defaultSettings) }
+interface FakeSettings {
+  update: Mock<SettingsApi['update']>
+  onChange: SettingsApi['onChange']
+  /** Plays main's settings:changed push to the callback the store subscribed. */
+  push(settings: Settings): void
+}
+
+// Stands in for window.api.settings: records what the store asks to save and the callback it subscribes. Typed
+// like the real API, so the fake can't drift from what it replaces.
+function fakeSettings(
+  update = vi.fn<SettingsApi['update']>().mockResolvedValue(defaultSettings)
+): FakeSettings {
+  let subscribed: ((settings: Settings) => void) | undefined
+  return {
+    update,
+    onChange: (callback) => {
+      subscribed = callback
+      return () => (subscribed = undefined)
+    },
+    push: (settings) => subscribed?.(settings)
+  }
 }
 
 // Listener effects run after dispatch returns; one macrotask lets them finish.
@@ -63,7 +80,7 @@ describe('app store', () => {
 
   it('still switches the tab when saving fails', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const settings = { update: vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')) }
+    const settings = fakeSettings(vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')))
     const store = createAppStore({ settings })
 
     store.dispatch(tabSelected('automations'))
@@ -100,7 +117,7 @@ describe('sidebar state', () => {
 describe('changing settings', () => {
   it('shows the change at once, before it is saved', () => {
     // A save that never finishes: whatever the page shows now came from the optimistic update alone.
-    const settings = { update: vi.fn<SettingsApi['update']>(() => new Promise(() => {})) }
+    const settings = fakeSettings(vi.fn<SettingsApi['update']>(() => new Promise(() => {})))
     const store = createAppStore({ settings })
 
     store.dispatch(settingsChanged({ closeAction: 'quit' }))
@@ -111,7 +128,7 @@ describe('changing settings', () => {
 
   it('takes what main saved as the truth', async () => {
     const saved = { ...defaultSettings, theme: 'dark' as const, startWithWindows: true }
-    const settings = { update: vi.fn<SettingsApi['update']>().mockResolvedValue(saved) }
+    const settings = fakeSettings(vi.fn<SettingsApi['update']>().mockResolvedValue(saved))
     const store = createAppStore({ settings })
 
     store.dispatch(settingsChanged({ theme: 'dark' }))
@@ -122,7 +139,7 @@ describe('changing settings', () => {
 
   it('puts the old value back when saving fails, so the page never shows a setting that is not saved', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const settings = { update: vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')) }
+    const settings = fakeSettings(vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')))
     const store = createAppStore({ settings })
 
     store.dispatch(settingsChanged({ startWithWindows: true }))
@@ -130,6 +147,30 @@ describe('changing settings', () => {
     await settle()
 
     expect(selectSettings(store.getState()).startWithWindows).toBe(false)
+  })
+})
+
+describe('settings pushed by main', () => {
+  it('a push from main replaces the settings slice', () => {
+    const settings = fakeSettings()
+    const store = createAppStore({ settings })
+    const pushed: Settings = { ...defaultSettings, models: { ...defaultSettings.models, engine: 'cuda' } }
+
+    settings.push(pushed)
+
+    expect(selectSettings(store.getState())).toEqual(pushed)
+  })
+
+  it('a push leaves the open tab and the sidebar as they are', () => {
+    const settings = fakeSettings()
+    const store = createAppStore({ settings })
+    store.dispatch(tabSelected('code'))
+    store.dispatch(sidebarToggled())
+
+    settings.push({ ...defaultSettings, lastTab: 'automations', sidebarOpen: true })
+
+    expect(selectActiveTab(store.getState())).toBe('code')
+    expect(selectSidebarOpen(store.getState())).toBe(false)
   })
 })
 

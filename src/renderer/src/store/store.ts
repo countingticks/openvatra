@@ -19,8 +19,8 @@ export type AppStore = ReturnType<typeof configureStore<RootState>>
 export type AppDispatch = AppStore['dispatch']
 
 export interface AppStoreOptions {
-  /** Where changes are saved. Passed in (not read from window.api) so tests can hand in a fake. */
-  settings: Pick<SettingsApi, 'update'>
+  /** Where changes are saved, and where main's pushes arrive. Passed in (not read from window.api) for tests. */
+  settings: Pick<SettingsApi, 'update' | 'onChange'>
   /** The settings read at startup, so the app reopens as it was left (tab, sidebar) and Settings shows them. */
   initialSettings?: Settings
 }
@@ -77,7 +77,7 @@ export function createAppStore({ settings, initialSettings }: AppStoreOptions): 
   })
 
   const startup = initialSettings ?? structuredClone(defaultSettings)
-  return configureStore({
+  const store = configureStore({
     reducer: rootReducer,
     preloadedState: {
       // History starts empty each launch: Back never leads somewhere from a previous session.
@@ -86,4 +86,8 @@ export function createAppStore({ settings, initialSettings }: AppStoreOptions): 
     },
     middleware: (getDefault) => getDefault().prepend(listener.middleware)
   })
+  // Main may change settings on its own (the CUDA download switches the engine). One store per window, so the
+  // subscription lives as long as the window and is never removed. The ui slice is the window's own state.
+  settings.onChange((pushed) => store.dispatch(settingsReplaced(pushed)))
+  return store
 }
