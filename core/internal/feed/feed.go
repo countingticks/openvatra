@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
@@ -75,13 +76,24 @@ func State(rt Router, list func() ([]models.Model, error)) (StateBody, error) {
 	return StateBody{Models: out}, nil
 }
 
-// Start publishes the model state now and after every router signal until ctx ends. It returns at once. A failing
-// scan publishes nothing: the bus keeps the last value, and GET /api/state shows the error.
+// downloadsInterval keeps download.progress to 4 a second: progress changes with every chunk.
+const downloadsInterval = 250 * time.Millisecond
+
+// Start publishes the model state, and the download progress when dl is not nil, now and after every signal until
+// ctx ends. It returns at once. A failing scan publishes nothing: the bus keeps the last value, and GET /api/state
+// shows the error.
 func Start(ctx context.Context, log event.Log, rt Router, list func() ([]models.Model, error), dl Downloads) {
 	// Subscribe before the first scan, so a change in between is not lost.
 	changed, cancel := rt.Subscribe()
+	// A nil channel never fires, so without a downloads source its cases below simply never run.
+	var dlChanged <-chan struct{}
+	cancelDL := func() {}
+	if dl != nil {
+		dlChanged, cancelDL = dl.Subscribe()
+	}
 	go func() {
 		defer cancel()
+		defer cancelDL()
 		publish := func() {
 			body, err := State(rt, list)
 			if err != nil {
@@ -90,7 +102,23 @@ func Start(ctx context.Context, log event.Log, rt Router, list func() ([]models.
 			data, _ := json.Marshal(body.Models)
 			log.Publish("system", event.ModelState{Models: data})
 		}
+		var lastDL time.Time
+		publishDL := func() {
+			lastDL = time.Now()
+			data, _ := json.Marshal(dl.Items())
+			log.Publish("system", event.DownloadProgress{Items: data})
+		}
 		publish()
+		if dl != nil {
+			publishDL()
+		}
+		var timer *time.Timer
+		var timerC <-chan time.Time // nil while no timer is pending
+		defer func() {
+			if timer != nil {
+				timer.Stop()
+			}
+		}()
 		for {
 			select {
 			case <-changed:
@@ -98,6 +126,22 @@ func Start(ctx context.Context, log event.Log, rt Router, list func() ([]models.
 					return
 				}
 				publish()
+			case <-dlChanged:
+				if ctx.Err() != nil {
+					return
+				}
+				// A change inside the pause is not dropped: the timer publishes the newest items when it is over.
+				if wait := downloadsInterval - time.Since(lastDL); wait > 0 {
+					if timerC == nil {
+						timer = time.NewTimer(wait)
+						timerC = timer.C
+					}
+				} else {
+					publishDL()
+				}
+			case <-timerC:
+				timerC = nil
+				publishDL()
 			case <-ctx.Done():
 				return
 			}
