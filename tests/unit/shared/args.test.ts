@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { joinArgs, maxArgsLength, splitArgs } from '../../../src/shared/args'
 
@@ -41,5 +42,17 @@ describe('joinArgs', () => {
 
   it('drops quote characters it cannot write', () => {
     expect(joinArgs(['say "hi"'])).toBe('"say hi"')
+  })
+})
+
+describe('shared fixture with core', () => {
+  type Case = { name: string; text: string; args?: string[]; error?: string }
+  const path = new URL('../../../core/internal/config/testdata/args.json', import.meta.url)
+  const cases = JSON.parse(readFileSync(path, 'utf-8')) as Case[]
+
+  it.each(cases.map((c) => [c.name, c] as const))('%s', (_name, c) => {
+    expect(splitArgs(c.text)).toEqual(
+      c.error === undefined ? { ok: true, args: c.args } : { ok: false, error: c.error }
+    )
   })
 })
