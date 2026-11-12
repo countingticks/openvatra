@@ -11,3 +11,6 @@ CLAUDE.md
 
 # Generated brand data (source: the maintainer's brand tools)
 src/renderer/src/assets/
+
+# Golden files written by Go tests; byte-exact, not Prettier style
+core/internal/api/openapi/testdata/
