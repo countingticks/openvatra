@@ -147,12 +147,51 @@ func TestSendErrorsBeforeTheStreamAreJSON(t *testing.T) {
 }
 
 func TestChatEndpointsWithoutStorageAnswer503(t *testing.T) {
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest("GET", "/api/chats", nil)
-	req.Host = fmt.Sprintf("127.0.0.1:%d", testPort)
-	req.Header.Set("Authorization", "Bearer "+testToken)
-	testHandler(Deps{}).ServeHTTP(rec, req)
-	if rec.Code != 503 {
-		t.Fatalf("status %d", rec.Code)
+	rows := []struct{ method, path, body string }{
+		{"GET", "/api/chats", ""},
+		{"POST", "/api/chats", `{"model":"qwen"}`},
+		{"GET", "/api/chats/c1", ""},
+		{"PATCH", "/api/chats/c1", `{"title":"x"}`},
+		{"DELETE", "/api/chats/c1", ""},
+		{"GET", "/api/chats/c1/export", ""},
+		{"POST", "/api/chats/c1/messages", `{"text":"hi"}`},
+		{"POST", "/api/chats/c1/regenerate", ""},
+	}
+	for _, row := range rows {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(row.method, row.path, strings.NewReader(row.body))
+		req.Host = fmt.Sprintf("127.0.0.1:%d", testPort)
+		req.Header.Set("Authorization", "Bearer "+testToken)
+		testHandler(Deps{}).ServeHTTP(rec, req)
+		if rec.Code != 503 || !strings.Contains(rec.Body.String(), `"error":"chat_unavailable"`) {
+			t.Errorf("%s %s: %d %s", row.method, row.path, rec.Code, rec.Body)
+		}
+	}
+}
+
+func TestCreateChatBodyErrors(t *testing.T) {
+	srv, _ := chatServer(t, func(http.ResponseWriter, *http.Request) {})
+	cases := []struct{ body, code string }{
+		{`{}`, "invalid_request"},
+		{`{"model":""}`, "bad_request"},
+		{`{"model":"qwen","colour":"red"}`, "invalid_request"},
+	}
+	for _, c := range cases {
+		r := call(t, srv, "POST", "/api/chats", c.body)
+		if b := readBody(r); r.StatusCode != 400 || !strings.Contains(b, `"error":"`+c.code+`"`) {
+			t.Errorf("body %s: %d %s, want 400 %s", c.body, r.StatusCode, b, c.code)
+		}
+	}
+}
+
+func TestEmptyChatListIsArrayAndDeleteHasNoBody(t *testing.T) {
+	srv, st := chatServer(t, func(http.ResponseWriter, *http.Request) {})
+	if r := call(t, srv, "GET", "/api/chats", ""); strings.TrimSpace(readBody(r)) != "[]" {
+		t.Fatal("an empty list must be []")
+	}
+	c, _ := st.CreateChat(context.Background(), "qwen", false)
+	r := call(t, srv, "DELETE", "/api/chats/"+c.ID, "")
+	if b := readBody(r); r.StatusCode != 204 || b != "" {
+		t.Fatalf("delete: %d %q", r.StatusCode, b)
 	}
 }

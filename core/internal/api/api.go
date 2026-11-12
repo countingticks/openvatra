@@ -59,6 +59,8 @@ func Routes(d Deps) []Route {
 	routes = append(routes, hardwareRoutes(d.Hardware)...)
 	routes = append(routes, catalogRoutes(d.Catalog)...)
 	routes = append(routes, downloadRoutes(d.Downloads)...)
+	routes = append(routes, configRoutes(d.Config)...)
+	routes = append(routes, chatRoutes(d.Chats)...)
 	return append(routes,
 		Raw(http.MethodGet, "/v1/models", UI, "openaiModels", "List the models on disk, OpenAI style",
 			modelList(d.ListModels)).
@@ -77,10 +79,7 @@ func Routes(d Deps) []Route {
 
 // NewHandler serves every route behind the token and Host checks.
 func NewHandler(d Deps) http.Handler {
-	mux := newMux(Routes(d), d.Logger)
-	registerConfig(mux, d.Config)
-	registerChats(mux, d.Chats)
-	return guard(d.Token, d.Port, mux)
+	return guard(d.Token, d.Port, newMux(Routes(d), d.Logger))
 }
 
 func shutdownHandler(shutdown func()) http.HandlerFunc {

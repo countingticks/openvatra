@@ -118,17 +118,3 @@ func requestInfoFrom(r *http.Request) requestInfo {
 	}
 	return requestInfo{logger: discard}
 }
-
-// writeCode writes an error answer the old way. Kept only until the handlers that still call it become rows.
-func writeCode(w http.ResponseWriter, status int, code, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": code, "message": message})
-}
-
-// writeConflict is writeCode plus the section as it is now. Kept only until the config routes become rows.
-func writeConflict(w http.ResponseWriter, message string, current any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusConflict)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": "config_conflict", "message": message, "current": current})
-}

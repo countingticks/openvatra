@@ -1,144 +1,151 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
-// maxChatBody is the size limit for JSON bodies of the chat endpoints (SPEC-chat.md: 10 MB).
+// maxChatBody is the size limit of a message body (SPEC-chat.md: 10 MB); the other chat routes take the usual 1 MiB.
 const maxChatBody = 10 << 20
 
-// registerChats adds the chat endpoints. Without a service (the chat database could not be opened) each one
-// answers 503 with a plain reason, instead of the route not existing.
-func registerChats(mux *http.ServeMux, svc *chat.Service) {
-	h := func(f func(*chat.Service, http.ResponseWriter, *http.Request)) http.HandlerFunc {
+type ChatPath struct {
+	ID string `path:"id"`
+}
+
+type CreateChat struct {
+	Model     string `json:"model"`
+	WebSearch bool   `json:"webSearch,omitempty"`
+}
+
+func (c CreateChat) Validate() error {
+	if c.Model == "" {
+		return &Error{Status: http.StatusBadRequest, Code: "bad_request", Message: `"model" is required`}
+	}
+	return nil
+}
+
+type UpdateChat struct {
+	ID        string  `path:"id"`
+	Title     *string `json:"title,omitempty"`
+	Model     *string `json:"model,omitempty"`
+	WebSearch *bool   `json:"webSearch,omitempty"`
+}
+
+type ChatWithMessages struct {
+	Chat     store.Chat      `json:"chat"`
+	Messages []store.Message `json:"messages"`
+}
+
+var errChatUnavailable = &Error{Status: http.StatusServiceUnavailable, Code: "chat_unavailable",
+	Message: "chat storage is not available"}
+
+// chatRoutes are the chat endpoints. Without a service (the chat database could not be opened) each one answers 503
+// with a plain reason, instead of the route not existing.
+func chatRoutes(svc *chat.Service) []Route {
+	ready := func() error {
+		if svc == nil || svc.Store == nil {
+			return errChatUnavailable
+		}
+		return nil
+	}
+	raw := func(h func(w http.ResponseWriter, r *http.Request)) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
-			if svc == nil || svc.Store == nil {
-				writeCode(w, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available")
+			if err := ready(); err != nil {
+				writeError(w, r, err)
 				return
 			}
-			f(svc, w, r)
+			h(w, r)
 		}
 	}
-	mux.HandleFunc("GET /api/chats", h(listChats))
-	mux.HandleFunc("POST /api/chats", h(createChat))
-	mux.HandleFunc("GET /api/chats/{id}", h(getChat))
-	mux.HandleFunc("PATCH /api/chats/{id}", h(patchChat))
-	mux.HandleFunc("DELETE /api/chats/{id}", h(deleteChat))
-	mux.HandleFunc("POST /api/chats/{id}/messages", h(sendMessage))
-	mux.HandleFunc("POST /api/chats/{id}/regenerate", h(regenerate))
-	mux.HandleFunc("GET /api/chats/{id}/export", h(exportChat))
-}
+	chatPath := reflect.TypeFor[ChatPath]()
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody)).Decode(v); err != nil {
-		writeCode(w, http.StatusBadRequest, "bad_request", "the request body is not valid JSON")
-		return false
+	return []Route{
+		JSON(http.MethodGet, "/api/chats", UI, "listChats", "List the chats, newest first",
+			func(ctx context.Context, _ struct{}) ([]store.Chat, error) {
+				if err := ready(); err != nil {
+					return nil, err
+				}
+				chats, err := svc.Store.ListChats(ctx)
+				if chats == nil {
+					chats = []store.Chat{}
+				}
+				return chats, err
+			}).
+			WithErrors("chat_unavailable", "internal"),
+		JSON(http.MethodPost, "/api/chats", UI, "createChat", "Start a chat",
+			func(ctx context.Context, in CreateChat) (store.Chat, error) {
+				if err := ready(); err != nil {
+					return store.Chat{}, err
+				}
+				return svc.Store.CreateChat(ctx, in.Model, in.WebSearch)
+			}).
+			WithStatus(http.StatusCreated).
+			WithErrors("invalid_request", "bad_request", "chat_unavailable", "internal"),
+		JSON(http.MethodGet, "/api/chats/{id}", UI, "getChat", "One chat with its messages",
+			func(ctx context.Context, in ChatPath) (ChatWithMessages, error) {
+				if err := ready(); err != nil {
+					return ChatWithMessages{}, err
+				}
+				c, err := svc.Store.GetChat(ctx, in.ID)
+				if err != nil {
+					return ChatWithMessages{}, err
+				}
+				msgs, err := svc.Store.Messages(ctx, c.ID)
+				if msgs == nil {
+					msgs = []store.Message{}
+				}
+				return ChatWithMessages{c, msgs}, err
+			}).
+			WithErrors("chat_unavailable", "chat_not_found", "internal"),
+		JSON(http.MethodPatch, "/api/chats/{id}", UI, "updateChat", "Change a chat's title, model or web search",
+			func(ctx context.Context, in UpdateChat) (store.Chat, error) {
+				if err := ready(); err != nil {
+					return store.Chat{}, err
+				}
+				return svc.Store.UpdateChat(ctx, in.ID,
+					store.ChatUpdate{Title: in.Title, Model: in.Model, WebSearch: in.WebSearch})
+			}).
+			WithErrors("invalid_request", "chat_unavailable", "chat_not_found", "bad_request", "internal"),
+		JSON(http.MethodDelete, "/api/chats/{id}", UI, "deleteChat", "Delete a chat",
+			func(ctx context.Context, in ChatPath) (NoContent, error) {
+				if err := ready(); err != nil {
+					return NoContent{}, err
+				}
+				return NoContent{}, svc.Store.DeleteChat(ctx, in.ID)
+			}).
+			WithErrors("chat_unavailable", "chat_not_found", "internal"),
+		Raw(http.MethodGet, "/api/chats/{id}/export", UI, "exportChat", "A chat as Markdown",
+			raw(func(w http.ResponseWriter, r *http.Request) { exportChat(svc, w, r) })).
+			WithDoc(chatPath, nil, "text/markdown").
+			WithErrors("chat_unavailable", "chat_not_found", "internal"),
+		Raw(http.MethodPost, "/api/chats/{id}/messages", UI, "sendMessage", "Send a message and stream the reply",
+			raw(func(w http.ResponseWriter, r *http.Request) { sendMessage(svc, w, r) })).
+			WithDoc(chatPath, nil, "").
+			WithStream(StreamDoc{}).
+			WithErrors("chat_unavailable", "chat_not_found", "bad_request", "no_streaming", "internal"),
+		Raw(http.MethodPost, "/api/chats/{id}/regenerate", UI, "regenerate", "Answer the last message again, streamed",
+			raw(func(w http.ResponseWriter, r *http.Request) { regenerate(svc, w, r) })).
+			WithDoc(chatPath, nil, "").
+			WithStream(StreamDoc{}).
+			WithErrors("chat_unavailable", "chat_not_found", "bad_request", "no_streaming", "internal"),
 	}
-	return true
-}
-
-// writeStoreError maps the errors the chat code returns to HTTP answers.
-func writeStoreError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		writeCode(w, http.StatusNotFound, "chat_not_found", "no chat with that id")
-	case errors.Is(err, chat.ErrBadInput):
-		writeCode(w, http.StatusBadRequest, "bad_request", err.Error())
-	default:
-		writeCode(w, http.StatusInternalServerError, "chat_failed", "chat storage failed")
-	}
-}
-
-func listChats(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
-	chats, err := svc.Store.ListChats(r.Context())
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, chats)
-}
-
-func createChat(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Model     string `json:"model"`
-		WebSearch bool   `json:"webSearch"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	if req.Model == "" {
-		writeCode(w, http.StatusBadRequest, "bad_request", `"model" is required`)
-		return
-	}
-	c, err := svc.Store.CreateChat(r.Context(), req.Model, req.WebSearch)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, c)
-}
-
-func getChat(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
-	c, err := svc.Store.GetChat(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	msgs, err := svc.Store.Messages(r.Context(), c.ID)
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"chat": c, "messages": msgs})
-}
-
-func patchChat(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Title     *string `json:"title"`
-		Model     *string `json:"model"`
-		WebSearch *bool   `json:"webSearch"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	c, err := svc.Store.UpdateChat(r.Context(), r.PathValue("id"),
-		store.ChatUpdate{Title: req.Title, Model: req.Model, WebSearch: req.WebSearch})
-	if err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, c)
-}
-
-func deleteChat(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
-	if err := svc.Store.DeleteChat(r.Context(), r.PathValue("id")); err != nil {
-		writeStoreError(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func exportChat(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
 	c, err := svc.Store.GetChat(r.Context(), r.PathValue("id"))
 	if err != nil {
-		writeStoreError(w, err)
+		writeError(w, r, err)
 		return
 	}
 	msgs, err := svc.Store.Messages(r.Context(), c.ID)
 	if err != nil {
-		writeStoreError(w, err)
+		writeError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
@@ -150,7 +157,8 @@ func sendMessage(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
 		Text        string `json:"text"`
 		ReplaceLast bool   `json:"replaceLast"`
 	}
-	if !readJSON(w, r, &req) {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody)).Decode(&req); err != nil {
+		writeError(w, r, &Error{Status: http.StatusBadRequest, Code: "bad_request", Message: "the request body is not valid JSON"})
 		return
 	}
 	streamTurn(w, r, func(emit func(chat.Event)) error {
@@ -170,7 +178,7 @@ func regenerate(svc *chat.Service, w http.ResponseWriter, r *http.Request) {
 func streamTurn(w http.ResponseWriter, r *http.Request, run func(emit func(chat.Event)) error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		writeCode(w, http.StatusInternalServerError, "no_streaming", "streaming is not supported here")
+		writeError(w, r, &Error{Status: http.StatusInternalServerError, Code: "no_streaming", Message: "streaming is not supported here"})
 		return
 	}
 	began := false
@@ -186,6 +194,6 @@ func streamTurn(w http.ResponseWriter, r *http.Request, run func(emit func(chat.
 		flusher.Flush()
 	}
 	if err := run(emit); err != nil && !began {
-		writeStoreError(w, err)
+		writeError(w, r, err)
 	}
 }
