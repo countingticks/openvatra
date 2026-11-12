@@ -21,7 +21,13 @@ const testKeepalive = 50 * time.Millisecond
 // storeLog opens a real SQLite log in a temporary folder.
 func storeLog(t *testing.T) event.Log {
 	t.Helper()
-	db, err := store.Open(t.TempDir(), event.NewBus(64))
+	return storeLogWithBuffer(t, 64)
+}
+
+// storeLogWithBuffer is storeLog with a chosen bus buffer per subscriber.
+func storeLogWithBuffer(t *testing.T, buffer int) event.Log {
+	t.Helper()
+	db, err := store.Open(t.TempDir(), event.NewBus(buffer))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +249,9 @@ func TestEventsCatchUpAcrossPages(t *testing.T) {
 }
 
 func TestEventsAppendRacingTheAttachIsSentOnce(t *testing.T) {
-	log := storeLog(t)
+	// Room for every append: while the handler catches up it does not drain its channel, and a full one would end
+	// the stream (fell behind, tested on its own), which is not what this test is about.
+	log := storeLogWithBuffer(t, 256)
 	srv := eventsServer(t, log)
 	done := make(chan error, 1)
 	go func() {
