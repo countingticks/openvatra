@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
-	"github.com/countingticks/openvatra/core/internal/config"
 )
 
 // stubCatalog knows one model, "qwen", stored in D:\Models\qwen.
@@ -34,7 +33,7 @@ func getCatalog(t *testing.T, path string) *httptest.ResponseRecorder {
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
 	return rec
 }
 

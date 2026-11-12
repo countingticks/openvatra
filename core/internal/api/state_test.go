@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
 )
@@ -129,7 +128,7 @@ func configStream(t *testing.T, rt *stubRouter, cfg Config, before func(call fun
 	srv := httptest.NewUnstartedServer(nil)
 	_, portText, _ := strings.Cut(srv.Listener.Addr().String(), ":")
 	port, _ := strconv.Atoi(portText)
-	srv.Config.Handler = NewHandler(testToken, port, func() {}, twoModels, rt, cfg, config.NewOverride(), stubHardware{}, stubCatalog{}, nil, nil)
+	srv.Config.Handler = NewHandler(testToken, port, func() {}, twoModels, rt, cfg, stubHardware{}, stubCatalog{}, nil, nil)
 	srv.Start()
 	t.Cleanup(srv.Close)
 
@@ -226,19 +225,4 @@ func TestEventsOpenedAfterAWriteSendNoConfigEvent(t *testing.T) {
 	if e := nextEvent(t, events); e != `event: config|data: {"section":"models","rev":2}` {
 		t.Fatalf("event = %q", e)
 	}
-}
-
-func TestPostConfigSendsNoConfigEvent(t *testing.T) {
-	cfg := configStore(t, true)
-	rt := &stubRouter{changes: make(chan struct{}, 1)}
-	events, call := configStream(t, rt, cfg, nil)
-	nextEvent(t, events) // state
-	if code := call(http.MethodPost, "/api/config", `{"modelsDir":"D:/models","idleUnloadMinutes":null,"options":{}}`); code != http.StatusNoContent {
-		t.Fatalf("post = %d", code)
-	}
-	rt.changes <- struct{}{} // a following state event proves the stream is alive and in order
-	if e := nextEvent(t, events); !strings.HasPrefix(e, "event: state|") {
-		t.Fatalf("event after POST = %q", e)
-	}
-	expectNoEvent(t, events)
 }

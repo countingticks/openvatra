@@ -139,12 +139,11 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		env.Home = home
 	}
 
-	// The models section lives in openvatra.db; main's POST /api/config (right after core is ready) overrides it while
-	// set. Every use reads the live value, so a change in Settings applies without restarting core.
+	// The models section lives in openvatra.db and is the only model config. Every use reads the live value, so a
+	// change in Settings applies without restarting core.
 	cfg := config.New(cfgDB, logger)
 	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
-	override := config.NewOverride()
-	resolve := func() config.Resolved { return resolveFrom(override, cfg, env) }
+	resolve := func() config.Resolved { return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env) }
 	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	rt := router.New(router.Config{
 		NewBackend:     newBackendFunc(resolve, logger, logOut),
@@ -157,7 +156,6 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 			return r.IdleTimeout()
 		},
 	})
-	override.OnChange(rt.Notify)
 	cfg.Subscribe(func(section string, _ int) {
 		if section == config.ModelsSection {
 			rt.Notify() // a new models folder changes the list although no model changed state
@@ -201,7 +199,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, override, hardware, cat, dl, chats),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl, chats),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)
@@ -223,14 +221,6 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	return nil
-}
-
-// resolveFrom is the model settings core acts on: main's override while it is set, else the stored section.
-func resolveFrom(o *config.Override, cfg *config.Store, env config.Env) config.Resolved {
-	if m, ok := o.Get(); ok {
-		return m.Resolve(env)
-	}
-	return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env)
 }
 
 // effectiveModels is the models section's read-only view: the paths core really uses when none is chosen.
