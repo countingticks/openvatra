@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"slices"
 	"strconv"
 	"time"
 
@@ -122,28 +121,49 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	defer stop()
 	go watchStdin(stdin, stop)
 
-	// Empty until main sends POST /api/config (right after core is ready). Every use reads the live value, so a
-	// change in Settings applies without restarting core.
-	cfg := config.NewStore()
-	listModels := func() ([]models.Model, error) { return models.Discover(cfg.Get().ModelsDir) }
+	var engine *downloads.Engine
+	if *llamaManifest != "" && *enginesDir != "" {
+		if engine, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
+			logger.Warn("no CUDA engine offered", "err", err) // a build bug at worst: the rest of core is unaffected
+			engine = nil
+		}
+	}
+	env := config.Env{EnginesDir: *enginesDir}
+	if engine != nil {
+		env.Tag = engine.Tag
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		env.Home = home
+	}
+
+	// Main's POST /api/config (right after core is ready) overrides the defaults while it is set. Every use reads the
+	// live value, so a change in Settings applies without restarting core.
+	override := config.NewOverride()
+	resolve := func() config.Resolved {
+		if m, ok := override.Get(); ok {
+			return m.Resolve(env)
+		}
+		return config.DefaultModels().Resolve(env)
+	}
+	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	rt := router.New(router.Config{
-		NewBackend:     newBackendFunc(cfg, logger, logOut),
-		EmbeddingModel: func() string { return resolveEmbedding(cfg.Get()) },
+		NewBackend:     newBackendFunc(resolve, logger, logOut),
+		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
 		IdleTimeout: func(id string) time.Duration {
-			c := cfg.Get()
-			if id == resolveEmbedding(c) {
+			r := resolve()
+			if id == resolveEmbedding(r) {
 				return 0 // the serving embedding model never unloads, whichever way it was chosen
 			}
-			return c.IdleTimeout()
+			return r.IdleTimeout()
 		},
 	})
-	cfg.OnChange(rt.Notify)
+	override.OnChange(rt.Notify)
 	var chats *chat.Service
 	if chatStore != nil {
 		chats = &chat.Service{Store: chatStore, Router: rt, Sizes: &prompt.ContextSizes{}, Logger: logger}
 	}
 	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
-	hardware := hw.NewChecker(func() string { return cfg.Get().LlamaServerPath }, logger)
+	hardware := hw.NewChecker(func() string { return resolve().LlamaServerPath }, logger)
 	entries, err := catalog.Builtin()
 	if err != nil {
 		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
@@ -161,19 +181,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		dler.AllowHost = func(h string) bool { return download.HuggingFaceHost(h) || h == "127.0.0.1" || h == "localhost" }
 		logger.Warn("using a test catalog", "file", *testCatalog)
 	}
-	var engine *downloads.Engine
-	if *llamaManifest != "" && *enginesDir != "" {
-		if engine, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
-			logger.Warn("no CUDA engine offered", "err", err) // a build bug at worst: the rest of core is unaffected
-			engine = nil
-		}
-	}
-	cat := catalog.New(entries, hardware.Get, func() string { return cfg.Get().ModelsDir })
+	cat := catalog.New(entries, hardware.Get, func() string { return resolve().ModelsDir })
 	// A finished download changes what is on disk: tell every listener to re-read the models.
 	dl := downloads.New(downloads.Config{
 		Downloader: dler,
 		Entries:    entries,
-		ModelsDir:  func() string { return cfg.Get().ModelsDir },
+		ModelsDir:  func() string { return resolve().ModelsDir },
 		OnFinish:   rt.Notify,
 		Engine:     engine,
 	})
@@ -182,7 +195,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
-		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, cfg, hardware, cat, dl, chats),
+		Handler:     api.NewHandler(token, actualPort, stop, listModels, rt, override, hardware, cat, dl, chats),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	serveErr := make(chan error, 1)
@@ -208,7 +221,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 
 // resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,
 // else the first one found (Automatic), else "".
-func resolveEmbedding(c config.Config) string {
+func resolveEmbedding(c config.Resolved) string {
 	found, err := models.Discover(c.ModelsDir)
 	if err != nil {
 		return ""
@@ -219,9 +232,9 @@ func resolveEmbedding(c config.Config) string {
 // newBackendFunc builds the router's server factory: look the model up on disk,
 // give its llama-server a free port, and add --embeddings when asked. Its output
 // goes to core.log, every line prefixed with the model id.
-func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
+func newBackendFunc(resolve func() config.Resolved, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
 	return func(id string, embedding bool) (router.Backend, error) {
-		c := cfg.Get() // one snapshot, so a config change mid-call can't mix old and new values
+		c := resolve() // one snapshot, so a config change mid-call can't mix old and new values
 		found, err := models.Discover(c.ModelsDir)
 		if err != nil {
 			return nil, err
@@ -244,7 +257,7 @@ func newBackendFunc(cfg *config.Store, logger *slog.Logger, logOut io.Writer) fu
 }
 
 // serverArgs is one llama-server's full argument list: core's own flags first, then the user's.
-func serverArgs(c config.Config, m models.Model, port int, embedding bool) []string {
+func serverArgs(c config.Resolved, m models.Model, port int, embedding bool) []string {
 	args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
 	if embedding {
 		args = append(args, "--embeddings")
@@ -260,8 +273,8 @@ func serverArgs(c config.Config, m models.Model, port int, embedding bool) []str
 }
 
 // modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.
-func modelArgs(c config.Config, id string) []string {
-	return slices.Clone(c.Options[id].Args)
+func modelArgs(c config.Resolved, id string) []string {
+	return c.Args(id)
 }
 
 // watchStdin blocks until stdin is closed, then calls onClose. Electron never

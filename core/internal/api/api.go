@@ -17,7 +17,7 @@ import (
 // currently on disk (a function, because the folder will change at runtime); rt
 // picks the model server for the chat and embedding endpoints; cfg receives what
 // main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Store, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg *config.Override, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))

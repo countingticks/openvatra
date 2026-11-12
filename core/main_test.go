@@ -112,7 +112,7 @@ func TestRunStopsWhenStdinCloses(t *testing.T) {
 }
 
 func TestModelArgs(t *testing.T) {
-	c := config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "131072"}}}}
+	c := config.Models{Options: map[string]config.ModelOptions{"qwen": {Args: "-c 131072"}}}.Resolve(config.Env{})
 	got := modelArgs(c, "qwen")
 	if want := []string{"-c", "131072"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
@@ -122,9 +122,18 @@ func TestModelArgs(t *testing.T) {
 	}
 	// The list is a copy: writing into it must never change the config.
 	got[1] = "x"
-	if c.Options["qwen"].Args[1] != "131072" {
-		t.Fatalf("config args changed: %v", c.Options["qwen"].Args)
+	if again := modelArgs(c, "qwen"); again[1] != "131072" {
+		t.Fatalf("config args changed: %v", again)
 	}
+}
+
+// resolved builds the effective config for a test from the qwen model's argument text ("" = no options).
+func resolved(qwenArgs string) config.Resolved {
+	m := config.Models{Options: map[string]config.ModelOptions{}}
+	if qwenArgs != "" {
+		m.Options["qwen"] = config.ModelOptions{Args: qwenArgs}
+	}
+	return m.Resolve(config.Env{})
 }
 
 func TestServerArgsProjector(t *testing.T) {
@@ -133,16 +142,16 @@ func TestServerArgsProjector(t *testing.T) {
 	base := append(slices.Clone(core), "-c", "16384")
 	withProjector := append(slices.Clone(base), "--mmproj", m.MMProj)
 	cases := map[string]struct {
-		c         config.Config
+		c         config.Resolved
 		m         models.Model
 		embedding bool
 		want      []string
 	}{
-		"on by default":     {config.Config{}, m, false, withProjector},
-		"no-mmproj in args": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"--no-mmproj"}}}}, m, false, append(slices.Clone(base), "--no-mmproj")},
-		"none found":        {config.Config{}, models.Model{ID: "qwen", Path: m.Path}, false, base},
-		"embedding server":  {config.Config{}, m, true, append(slices.Clone(core), "--embeddings")},
-		"before user's own": {config.Config{Options: map[string]config.ModelOptions{"qwen": {Args: []string{"-c", "4096"}}}}, m, false, append(slices.Clone(withProjector), "-c", "4096")},
+		"on by default":     {resolved(""), m, false, withProjector},
+		"no-mmproj in args": {resolved("--no-mmproj"), m, false, append(slices.Clone(base), "--no-mmproj")},
+		"none found":        {resolved(""), models.Model{ID: "qwen", Path: m.Path}, false, base},
+		"embedding server":  {resolved(""), m, true, append(slices.Clone(core), "--embeddings")},
+		"before user's own": {resolved("-c 4096"), m, false, append(slices.Clone(withProjector), "-c", "4096")},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
