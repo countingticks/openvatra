@@ -4,9 +4,13 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest'
 import { loadSettings, logLoadOutcome, migrate, saveSettings } from '../../../src/main/settings'
-import { defaultSettings, type Settings } from '../../../src/shared/settings'
+import {
+  defaultSettingsFile as defaultSettings,
+  type SettingsFile,
+  settingsFileSchema
+} from '../../../src/shared/settings'
 
-const saved: Settings = { ...defaultSettings, theme: 'dark', lastTab: 'code' }
+const saved: SettingsFile = { ...defaultSettings, theme: 'dark', lastTab: 'code' }
 
 let dir: string
 let filePath: string
@@ -72,10 +76,18 @@ describe('saveSettings', () => {
 
   it('refuses invalid settings and keeps the old file', async () => {
     await saveSettings(filePath, saved)
-    const invalid = { ...saved, theme: 'blue' } as unknown as Settings
+    const invalid = { ...saved, theme: 'blue' } as unknown as SettingsFile
 
     await expect(saveSettings(filePath, invalid)).rejects.toThrow()
     expect(JSON.parse(await readFile(filePath, 'utf8'))).toEqual(saved)
+  })
+
+  it('writes a file that validates as v7', async () => {
+    await saveSettings(filePath, { ...saved, legacyModels: undefined })
+
+    const written: unknown = JSON.parse(await readFile(filePath, 'utf8'))
+    expect(settingsFileSchema.parse(written)).toEqual(saved)
+    expect(written).toMatchObject({ schemaVersion: 7 })
   })
 
   it('fails without leaving a temporary file when the folder is missing', async () => {
@@ -93,7 +105,7 @@ describe('migrate', () => {
   describe('1 → 2: Settings became a dialog', () => {
     it('reopens a file left on the Settings tab on Chat', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings', theme: 'dark' })).toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         lastTab: 'chat',
         theme: 'dark'
       })
@@ -101,7 +113,7 @@ describe('migrate', () => {
 
     it('keeps every other tab and setting as it was', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'code', closeAction: 'quit' })).toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         lastTab: 'code',
         closeAction: 'quit'
       })
@@ -113,14 +125,14 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 6, theme: 'dark', lastTab: 'chat' })
+      expect(settings).toMatchObject({ schemaVersion: 7, theme: 'dark', lastTab: 'chat' })
     })
   })
 
   describe('2 → 3: models settings', () => {
     it('keeps every existing setting and adds only the version', () => {
       expect(migrate({ schemaVersion: 2, theme: 'dark', lastTab: 'code' })).toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         theme: 'dark',
         lastTab: 'code'
       })
@@ -132,22 +144,15 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 6, theme: 'dark', closeAction: 'quit' })
-      expect(settings.models).toEqual({
-        llamaServerPath: null,
-        modelsDir: null,
-        embeddingModel: null,
-        idleUnloadMinutes: 15,
-        options: {},
-        engine: 'bundled',
-        showAdvanced: false,
-        cudaOfferDismissed: false
-      })
+      expect(settings).toMatchObject({ schemaVersion: 7, theme: 'dark', closeAction: 'quit' })
+      // No models in the file, so nothing for core to import: core's defaults apply.
+      expect(settings).not.toHaveProperty('legacyModels')
+      expect(settings).toMatchObject({ showAdvancedModels: false, cudaOfferDismissed: false })
     })
 
     it('upgrades a version-1 file through every step', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings' })).toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         lastTab: 'chat'
       })
     })
@@ -170,9 +175,9 @@ describe('migrate', () => {
           })
         )
       ).toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         theme: 'dark',
-        models: {
+        legacyModels: {
           modelsDir: 'D:/models',
           idleUnloadMinutes: 60,
           options: {
@@ -192,11 +197,11 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings.models).toMatchObject({ modelsDir: 'D:/models', options: {} })
+      expect(settings.legacyModels).toMatchObject({ modelsDir: 'D:/models', options: {} })
     })
 
     it('leaves a file without models alone', () => {
-      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 6, theme: 'dark' })
+      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 7, theme: 'dark' })
     })
   })
 
@@ -218,9 +223,13 @@ describe('migrate', () => {
           })
         )
       ).toEqual({
-        schemaVersion: 6,
+        schemaVersion: 7,
         theme: 'dark',
-        models: { modelsDir: 'D:/models', embeddingModel: 'bge', options: { qwen: { args: '-c 4096' } } }
+        legacyModels: {
+          modelsDir: 'D:/models',
+          embeddingModel: 'bge',
+          options: { qwen: { args: '-c 4096' } }
+        }
       })
     })
 
@@ -230,7 +239,7 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded', droppedSharedArgs: true })
-      expect(settings.models).not.toHaveProperty('sharedArgs')
+      expect(settings.legacyModels).not.toHaveProperty('sharedArgs')
     })
 
     it('does not mention shared arguments when there were none', async () => {
@@ -240,13 +249,72 @@ describe('migrate', () => {
     })
 
     it('leaves a file without models alone', () => {
-      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 6, theme: 'dark' })
+      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 7, theme: 'dark' })
+    })
+  })
+
+  describe('6 → 7: model settings moved to core', () => {
+    it('6 → 7 moves the flags to the top level and the rest into legacyModels', () => {
+      expect(
+        migrate({
+          schemaVersion: 6,
+          theme: 'dark',
+          models: {
+            modelsDir: 'D:/models',
+            idleUnloadMinutes: 30,
+            options: { qwen: { args: '-c 8192' } },
+            engine: 'cuda',
+            showAdvanced: true,
+            cudaOfferDismissed: true
+          }
+        })
+      ).toEqual({
+        schemaVersion: 7,
+        theme: 'dark',
+        showAdvancedModels: true,
+        cudaOfferDismissed: true,
+        legacyModels: {
+          modelsDir: 'D:/models',
+          idleUnloadMinutes: 30,
+          options: { qwen: { args: '-c 8192' } },
+          engine: 'cuda'
+        }
+      })
+    })
+
+    it('a v6 file without models gets no legacyModels', () => {
+      expect(migrate({ schemaVersion: 6, theme: 'dark' })).toEqual({ schemaVersion: 7, theme: 'dark' })
+    })
+
+    it('fills the keys a v6 file left out with the v6 defaults', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 6, models: { modelsDir: 'D:/models' } }))
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings.legacyModels).toEqual({
+        llamaServerPath: null,
+        modelsDir: 'D:/models',
+        embeddingModel: null,
+        idleUnloadMinutes: 15,
+        options: {},
+        engine: 'bundled'
+      })
+      expect(settings).not.toHaveProperty('models')
+    })
+
+    it('a v1 file migrates to 7', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 1, theme: 'dark', lastTab: 'settings' }))
+
+      const { settings } = await loadSettings(filePath)
+
+      expect(settings).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'chat' })
     })
   })
 
   it.each([
-    ['current files', { schemaVersion: 6, theme: 'dark' }],
-    ['newer files', { schemaVersion: 6 }],
+    ['current files', { schemaVersion: 7, theme: 'dark' }],
+    ['newer files', { schemaVersion: 8 }],
     ['files with no migration path', { schemaVersion: 0 }],
     ['non-objects', [1, 2]]
   ])('leaves %s unchanged', (_case, raw) => {

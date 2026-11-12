@@ -14,8 +14,10 @@ export type TabId = (typeof tabIds)[number]
  * 4: model options became llama-swap style argument text (`sharedArgs`, `options[id].args`).
  * 5: `sharedArgs` and the per-model unload time and projector switch were removed.
  * 6: added `models.engine`, `showAdvanced` and `cudaOfferDismissed` (model setup).
+ * 7: model settings moved to core; the file keeps `legacyModels` until they are imported, and the two view
+ * preferences at the top level.
  */
-export const settingsSchemaVersion = 6
+export const settingsSchemaVersion = 7
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -61,11 +63,11 @@ const modelOptionsById = z.record(modelId, modelOptionsSchema)
 export const engines = ['bundled', 'cuda'] as const
 const engine = z.enum(engines)
 
-/** What core needs to run models. main sends it to core.exe (POST /api/config) on start and on every change. */
+/** The window's view of the model settings: core's `models` section plus the two view preferences from the file. */
 export const modelsSettingsSchema = z.object({
-  /** Full path to llama-server.exe; null until chosen. */
+  /** Full path to llama-server.exe; null = the default engine, resolved by core. */
   llamaServerPath: z.string().min(1).nullable().default(null),
-  /** null = the default folder (`%USERPROFILE%\OpenVatra\Models`), resolved by main, never written here. */
+  /** null = the default folder (`%USERPROFILE%\OpenVatra\Models`), resolved by core. */
   modelsDir: z.string().min(1).nullable().default(null),
   /** A model id (its file name without .gguf). */
   embeddingModel: modelId.nullable().default(null),
@@ -86,7 +88,8 @@ export const windowBoundsSchema = z.object({
   height: z.number().min(windowMinSize.height)
 })
 
-export const settingsSchema = z.object({
+// The keys the file and the window's Settings share.
+const topLevelShape = {
   schemaVersion: z.literal(settingsSchemaVersion),
   theme: theme.default('system'),
   startWithWindows: startWithWindows.default(false),
@@ -95,13 +98,33 @@ export const settingsSchema = z.object({
   sidebarOpen: sidebarOpen.default(true),
   motion: motion.default('system'),
   window: windowBoundsSchema.optional(),
-  // prefault, not default: the empty object still runs through the field defaults above.
-  models: modelsSettingsSchema.prefault({}),
   /** The "still running in the tray" notice is shown once, the first time the window is closed. */
   closeToTrayNoticeShown: z.boolean().default(false)
+}
+
+/** The window's Settings (IPC): the file's keys, with `models` composed by main from core and the file. */
+export const settingsSchema = z.object({
+  ...topLevelShape,
+  // prefault, not default: the empty object still runs through the field defaults above.
+  models: modelsSettingsSchema.prefault({})
+})
+
+/** The six keys core owns, with the v6 defaults; also the shape of `legacyModels`. */
+export const legacyModelsSchema = modelsSettingsSchema.omit({ showAdvanced: true, cudaOfferDismissed: true })
+
+/** settings.json (v7). */
+export const settingsFileSchema = z.object({
+  ...topLevelShape,
+  /** Show the full model list and technical details instead of the simple view. */
+  showAdvancedModels: z.boolean().default(false),
+  /** The user said "no thanks" to the faster NVIDIA engine offer. */
+  cudaOfferDismissed: z.boolean().default(false),
+  /** A v6 user's model settings, kept until core has taken them (src/main/core/legacyImport.ts). */
+  legacyModels: legacyModelsSchema.optional()
 })
 
 export type Settings = z.infer<typeof settingsSchema>
+export type SettingsFile = z.infer<typeof settingsFileSchema>
 export type ModelsSettings = z.infer<typeof modelsSettingsSchema>
 export type ModelOptions = z.infer<typeof modelOptionsSchema>
 export type WindowBounds = z.infer<typeof windowBoundsSchema>
@@ -109,6 +132,9 @@ export type WindowBounds = z.infer<typeof windowBoundsSchema>
 // Frozen so no caller can change the defaults everyone else gets.
 export const defaultSettings: Readonly<Settings> = Object.freeze(
   settingsSchema.parse({ schemaVersion: settingsSchemaVersion })
+)
+export const defaultSettingsFile: Readonly<SettingsFile> = Object.freeze(
+  settingsFileSchema.parse({ schemaVersion: settingsSchemaVersion })
 )
 
 /**

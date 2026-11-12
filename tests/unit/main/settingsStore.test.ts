@@ -2,7 +2,11 @@
 import { describe, expect, it, type Mock, vi } from 'vitest'
 import type { saveSettings } from '../../../src/main/settings'
 import { createSettingsStore } from '../../../src/main/settingsStore'
-import { defaultSettings, type Settings } from '../../../src/shared/settings'
+import {
+  defaultSettingsFile as defaultSettings,
+  legacyModelsSchema,
+  type SettingsFile
+} from '../../../src/shared/settings'
 
 const filePath = 'D:/data/settings.json'
 
@@ -27,15 +31,6 @@ describe('createSettingsStore', () => {
     expect(save).toHaveBeenCalledWith(filePath, expected)
   })
 
-  it('rejects an invalid change without saving it', async () => {
-    const { store, save } = setUp()
-
-    await expect(store.update({ window: { x: 0, y: 0, width: 900, height: 600 } })).rejects.toThrow()
-
-    expect(save).not.toHaveBeenCalled()
-    expect(store.get()).toEqual(defaultSettings)
-  })
-
   it('keeps the old value when saving fails, and still accepts later changes', async () => {
     const save = vi.fn<Save>(async () => undefined).mockRejectedValueOnce(new Error('disk full'))
     const { store } = setUp(save)
@@ -56,41 +51,21 @@ describe('createSettingsStore', () => {
     expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'code' })
   })
 
-  it('merges a models change into the saved models', async () => {
-    const { store } = setUp()
-    await store.setModelPath('modelsDir', 'D:/models')
+  it('dropLegacyModels saves the file without it', async () => {
+    const legacyModels = { ...legacyModelsSchema.parse({}), modelsDir: 'D:/models' }
+    const save = vi.fn<Save>(async () => undefined)
+    const store = createSettingsStore(filePath, { ...defaultSettings, legacyModels }, save)
 
-    await store.update({ models: { embeddingModel: 'nomic' } })
+    await store.dropLegacyModels()
 
-    expect(store.get().models).toEqual({
-      ...defaultSettings.models,
-      modelsDir: 'D:/models',
-      embeddingModel: 'nomic'
-    })
-  })
-
-  it('sets a model path from main, which the UI patch cannot', async () => {
-    const { store, save } = setUp()
-
-    await store.setModelPath('llamaServerPath', 'C:/llama/llama-server.exe')
-
-    expect(store.get().models.llamaServerPath).toBe('C:/llama/llama-server.exe')
-    expect(save).toHaveBeenLastCalledWith(filePath, store.get())
-    await expect(store.update({ models: { llamaServerPath: 'C:/evil.exe' } })).rejects.toThrow()
-  })
-
-  it('goes back to the bundled llama-server when main clears the path', async () => {
-    const { store } = setUp()
-    await store.setModelPath('llamaServerPath', 'C:/llama/llama-server.exe')
-
-    await store.setModelPath('llamaServerPath', null)
-
-    expect(store.get().models.llamaServerPath).toBeNull()
+    expect(store.get()).toEqual(defaultSettings)
+    expect(store.get()).not.toHaveProperty('legacyModels')
+    expect(save).toHaveBeenCalledWith(filePath, defaultSettings)
   })
 
   it('saves one change at a time, in the order they were made', async () => {
     let finishFirstSave = (): void => {}
-    const saves: Settings[] = []
+    const saves: SettingsFile[] = []
     const save = vi.fn<Save>(async (_path, settings) => {
       saves.push(settings)
       if (saves.length === 1) await new Promise<void>((resolve) => (finishFirstSave = resolve))
@@ -176,14 +151,16 @@ describe('createSettingsStore', () => {
 
   it('whenIdle waits for every save asked for so far, even failed ones', async () => {
     let finishSave = (): void => {}
-    const save = vi.fn<Save>(() => new Promise<void>((resolve) => (finishSave = resolve)))
+    const save = vi
+      .fn<Save>(() => new Promise<void>((resolve) => (finishSave = resolve)))
+      .mockRejectedValueOnce(new Error('disk full'))
     const { store } = setUp(save)
-    const failing = store.update({ theme: 'nope' }).catch(() => undefined)
+    const failing = store.update({ theme: 'dark' }).catch(() => undefined)
     const saving = store.setWindowBounds({ x: 0, y: 0, width: 900, height: 600 })
 
     let idle = false
     const whenIdle = store.whenIdle().then(() => (idle = true))
-    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2))
     expect(idle).toBe(false)
 
     finishSave()

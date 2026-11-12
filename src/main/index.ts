@@ -4,25 +4,20 @@ import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
-import { defaultSettings, type Settings } from '../shared/settings'
+import { defaultSettingsFile, type SettingsFile } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
-import {
-  bundledLlamaDir,
-  cudaStatus,
-  defaultLlamaServer,
-  llamaManifestPath,
-  readBundledTag,
-  readPinnedTag
-} from './bundledLlama'
-import { createEngineWatch } from './engineWatch'
-import { createConfigSync } from './core/configSync'
+import { bundledLlamaDir, cudaStatus, llamaManifestPath, readBundledTag, readPinnedTag } from './bundledLlama'
+import { createConfigClient } from './core/configClient'
+import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
+import { createModelSettings } from './core/modelSettings'
 import { createModelsClient } from './core/modelsClient'
-import { createSetupClient, defaultModelsDir } from './core/setupClient'
+import { createSetupClient } from './core/setupClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
+import { createSettingsService } from './settingsService'
 import { createSettingsStore } from './settingsStore'
 import { applyTheme } from './theme'
 import { type AppTray, createTray } from './tray'
@@ -86,7 +81,7 @@ function focusMainWindow(): void {
 }
 
 /** Settings are read before the first window, which will need them (theme, size). */
-async function loadSettingsAtStartup(filePath: string): Promise<Settings> {
+async function loadSettingsAtStartup(filePath: string): Promise<SettingsFile> {
   try {
     const { settings, outcome } = await loadSettings(filePath)
     logLoadOutcome(log, filePath, outcome)
@@ -94,7 +89,7 @@ async function loadSettingsAtStartup(filePath: string): Promise<Settings> {
   } catch (error) {
     // e.g. the bad file couldn't be renamed to .bak. Defaults still apply; settings never stop the app.
     log.error(`Settings could not be loaded from ${filePath}; using defaults`, error)
-    return structuredClone(defaultSettings)
+    return structuredClone(defaultSettingsFile)
   }
 }
 
@@ -126,41 +121,50 @@ function start(): void {
     // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
     const llamaDir = bundledLlamaDir(app.isPackaged, process.resourcesPath, app.getAppPath())
-    const userModelsDir = defaultModelsDir(app.getPath('home'))
-    const configSync = createConfigSync(
-      store.get,
-      (path, body) => core?.post(path, body) ?? Promise.reject(),
-      log,
-      async () => defaultLlamaServer(store.get().models.engine, llamaDir, enginesDir(), await pinnedTag()),
-      userModelsDir
-    )
-    store.onChange(configSync.onSettingsChange)
+    const request = (path: string, init?: RequestInit): Promise<Response> =>
+      core?.request(path, init) ?? Promise.reject(new Error('core is not running'))
+    // core owns the model settings (paths, engine, arguments); main keeps the last answer to compose Settings.
+    const configClient = createConfigClient(request)
+    const modelSettings = createModelSettings({
+      client: configClient,
+      isReady: () => core?.state().status === 'ready',
+      log
+    })
+    const settings = createSettingsService(store, modelSettings)
     const sendToWindow = (channel: string, value: unknown): void => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value)
     }
-    // Every saved change, wherever it came from (the UI, a file dialog, the engine download), reaches the window.
-    store.onChange((settings) => sendToWindow(ipcChannels.settingsChanged, settings))
+    // Every change, wherever it came from (the UI, a file dialog, core's engine switch), reaches the window.
+    settings.onChange((value) => sendToWindow(ipcChannels.settingsChanged, value))
     const manifest = llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath())
     const pinnedTag = (): Promise<string | null> => readPinnedTag(manifest)
-    // A finished engine download switches to it (the standard engine stays one click away) and tells core.
-    const watchEngine = createEngineWatch(() => {
-      store
-        .update({ models: { engine: 'cuda' } })
-        .then(() => configSync.sync()) // a new tag leaves `engine` as it was, so no settings change would sync
-        .catch((error) => log.warn('Could not switch to the CUDA engine', error))
-    })
     const models = createModelsClient({
-      request: (path, init) => core?.request(path, init) ?? Promise.reject(new Error('core is not running')),
+      request,
       onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
-      onDownloads: (items) => {
-        watchEngine(items)
-        sendToWindow(ipcChannels.setupDownloadsChanged, items)
-      },
+      onDownloads: (items) => sendToWindow(ipcChannels.setupDownloadsChanged, items),
+      onConfig: modelSettings.noteChanged,
       log
     })
+    /** On every ready: a v6 user's values go to core once, then main reads what core has. */
+    async function syncModelSettings(): Promise<void> {
+      const legacy = store.get().legacyModels
+      let outcome: ImportOutcome | undefined
+      if (legacy) outcome = await importLegacyModels(configClient, legacy, log)
+      await modelSettings
+        .refresh()
+        .catch((error) => log.warn('Could not read the model settings from core', error))
+      // After the read, so the window goes from the old values straight to core's, never through the defaults.
+      if (outcome && outcome !== 'retry-later') {
+        await store
+          .dropLegacyModels()
+          .catch((error) =>
+            log.warn('Could not remove the imported model settings from settings.json', error)
+          )
+      }
+    }
     const setup = createSetupClient({
-      request: (path, init) => core?.request(path, init) ?? Promise.reject(new Error('core is not running')),
-      modelsDir: () => store.get().models.modelsDir ?? userModelsDir,
+      request,
+      modelsDir: () => modelSettings.entry()?.effective.modelsDir,
       makeDir: async (path) => void (await mkdir(path, { recursive: true })),
       trash: (path) => shell.trashItem(path),
       models: models.list,
@@ -177,16 +181,15 @@ function start(): void {
         if (state.status !== 'ready') models.stop()
         sendToWindow(ipcChannels.coreStateChanged, state)
       },
-      // A fresh core knows nothing: it gets the config as soon as it is ready, and again after every restart.
       onReady: () => {
-        void configSync.sync()
         models.start()
+        void syncModelSettings()
       },
       log
     })
     // Before the window, so the UI's first request always finds a handler.
     registerIpcHandlers(
-      store,
+      settings,
       appUrl,
       { settingsFile: settingsPath, logsFolder: logsFolder() },
       async () => ({

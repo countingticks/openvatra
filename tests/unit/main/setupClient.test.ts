@@ -2,7 +2,6 @@
 import { describe, expect, it, vi, type Mock } from 'vitest'
 import {
   createSetupClient,
-  defaultModelsDir,
   isInside,
   trashFailedMessage,
   type SetupClient
@@ -11,12 +10,6 @@ import type { ModelInfo } from '../../../src/shared/core'
 import type { DownloadItem } from '../../../src/shared/setup'
 
 const modelsDir = 'C:\\Users\\me\\OpenVatra\\Models'
-
-describe('defaultModelsDir', () => {
-  it('is OpenVatra\\Models under the user profile', () => {
-    expect(defaultModelsDir('C:\\Users\\me')).toBe(modelsDir)
-  })
-})
 
 describe('isInside', () => {
   it.each([
@@ -49,7 +42,8 @@ const json = (body: unknown, status = 200): Response =>
 function setUp(
   folder: unknown,
   models: () => ModelInfo[] = () => [],
-  downloads: () => DownloadItem[] = () => []
+  downloads: () => DownloadItem[] = () => [],
+  dir: () => string | undefined = () => modelsDir
 ): {
   client: SetupClient
   request: Mock<(path: string) => Promise<Response>>
@@ -70,7 +64,7 @@ function setUp(
   const warn = vi.fn()
   const client = createSetupClient({
     request,
-    modelsDir: () => modelsDir,
+    modelsDir: dir,
     makeDir,
     trash,
     models,
@@ -216,6 +210,23 @@ describe('setup client: downloads', () => {
     request.mockResolvedValueOnce(json({ error: 'not_enough_space', message: 'not enough disk space' }, 409))
 
     await expect(client.download('qwen3-8b')).rejects.toThrow('not enough disk space')
+  })
+})
+
+describe('setup client: before core has answered', () => {
+  it('download and remove reject while the models folder is unknown', async () => {
+    const { client, request, makeDir } = setUp(
+      `${modelsDir}\\qwen3-8b`,
+      undefined,
+      undefined,
+      () => undefined
+    )
+
+    await expect(client.download('qwen3-8b')).rejects.toThrow('The models service is not running')
+    await expect(client.remove('qwen3-8b')).rejects.toThrow('The models service is not running')
+
+    expect(makeDir).not.toHaveBeenCalled()
+    expect(request).not.toHaveBeenCalled()
   })
 })
 

@@ -1,7 +1,7 @@
 // Model setup through core: hardware, the catalog, downloads and removing a downloaded model. Everything here is
 // asked of core.exe; the only thing main decides itself is whether a folder may be deleted. No Electron imports
 // (the Recycle Bin and folder creation are passed in), so tests need only fakes.
-import { isAbsolute, join, relative, resolve, sep } from 'path'
+import { isAbsolute, relative, resolve, sep } from 'path'
 import type { ModelInfo } from '../../shared/core'
 import {
   isHardwareReport,
@@ -11,11 +11,6 @@ import {
   type HardwareReport
 } from '../../shared/setup'
 import { coreErrorMessage } from './coreError'
-
-/** The folder models are saved in when the user hasn't chosen one: easy to find in Explorer. */
-export function defaultModelsDir(homeDir: string): string {
-  return join(homeDir, 'OpenVatra', 'Models')
-}
 
 /**
  * Whether `child` is strictly inside `parent` (the folder itself doesn't count). Compared after resolving, so `..`
@@ -30,8 +25,8 @@ export function isInside(parent: string, child: string): boolean {
 export interface SetupClientOptions {
   /** The supervisor's `request`: core's address and token stay there. */
   request: (path: string, init?: RequestInit) => Promise<Response>
-  /** The folder models live in right now (the chosen one, or the default). */
-  modelsDir: () => string
+  /** The folder models live in right now, as core resolved it; undefined until core has answered once. */
+  modelsDir: () => string | undefined
   /** Creates a folder and its parents if missing. */
   makeDir: (path: string) => Promise<void>
   /** Moves a folder to the Recycle Bin (`shell.trashItem`). */
@@ -97,9 +92,16 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
     return view
   }
 
+  /** The models folder, or a rejection while core hasn't told us where it is. */
+  function knownModelsDir(): string {
+    const dir = modelsDir()
+    if (dir === undefined) throw new Error('The models service is not running')
+    return dir
+  }
+
   async function download(catalogId: string): Promise<void> {
     // Core only writes into the folder; making sure it exists is ours, so the default needs no setup step.
-    await makeDir(modelsDir())
+    await makeDir(knownModelsDir())
     await json('/api/downloads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -136,10 +138,11 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
   }
 
   async function remove(catalogId: string): Promise<void> {
+    const dir = knownModelsDir()
     // The folder comes from core, but core is another process: it must still lie inside the models folder.
     const body = (await json(`/api/catalog/${encodeURIComponent(catalogId)}/folder`)) as { folder?: unknown }
     const folder = body.folder
-    if (typeof folder !== 'string' || !isInside(modelsDir(), folder)) {
+    if (typeof folder !== 'string' || !isInside(dir, folder)) {
       throw new Error('That folder is not inside the models folder, so it was not removed')
     }
 
