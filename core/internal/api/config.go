@@ -1,97 +1,103 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"reflect"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/countingticks/openvatra/core/internal/config"
 )
 
 // Config is what the config routes need; *config.Store implements it.
 type Config interface {
-	All() map[string]config.Entry
-	Section(name string) (config.Entry, error)
-	Put(name string, rev int, value json.RawMessage) (config.Entry, error)
+	All() map[string]config.SectionEntry
+	Section(name string) (config.SectionEntry, error)
+	Put(name string, rev int, value json.RawMessage) (config.SectionEntry, error)
+	Sections() []config.SectionType
 }
 
-// registerConfig adds the three config routes; without a store (tests only) they answer 503.
-func registerConfig(mux *http.ServeMux, cfg Config) {
-	mux.HandleFunc("GET /api/config", getAllConfig(cfg))
-	mux.HandleFunc("GET /api/config/{section}", getConfigSection(cfg))
-	mux.HandleFunc("PUT /api/config/{section}", putConfigSection(cfg))
+type ConfigAll struct {
+	Sections map[string]config.SectionEntry `json:"sections"`
 }
 
-func writeUnavailable(w http.ResponseWriter) {
-	writeError(w, http.StatusServiceUnavailable, "config_unavailable", "config storage is not available")
-}
+var errConfigUnavailable = &Error{Status: http.StatusServiceUnavailable, Code: "config_unavailable",
+	Message: "config storage is not available"}
 
-func getAllConfig(cfg Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
-		if cfg == nil {
-			writeUnavailable(w)
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"sections": cfg.All()})
+// configRoutes are GET /api/config plus a typed GET and PUT per registered section, in registration order. Without
+// a store (tests only) there are no section routes and GET /api/config answers 503.
+func configRoutes(cfg Config) []Route {
+	routes := []Route{
+		JSON(http.MethodGet, "/api/config", UI, "getConfig", "Every config section",
+			func(context.Context, struct{}) (ConfigAll, error) {
+				if cfg == nil {
+					return ConfigAll{}, errConfigUnavailable
+				}
+				return ConfigAll{cfg.All()}, nil
+			}).
+			WithErrors("config_unavailable"),
 	}
-}
-
-func getConfigSection(cfg Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if cfg == nil {
-			writeUnavailable(w)
-			return
-		}
-		name := r.PathValue("section")
-		entry, err := cfg.Section(name)
-		if err != nil {
-			writeConfigError(w, cfg, name, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, entry)
+	if cfg == nil {
+		return routes
 	}
-}
-
-func putConfigSection(cfg Config) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if cfg == nil {
-			writeUnavailable(w)
-			return
-		}
-		name := r.PathValue("section")
-		var body struct {
-			Rev   *int            `json:"rev"`
-			Value json.RawMessage `json:"value"`
-		}
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&body); err != nil || body.Rev == nil || *body.Rev < 0 || len(body.Value) == 0 {
-			writeError(w, http.StatusBadRequest, "invalid_config", `the body must be {"rev": n, "value": {…}}`)
-			return
-		}
-		entry, err := cfg.Put(name, *body.Rev, body.Value)
-		if err != nil {
-			writeConfigError(w, cfg, name, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, entry)
+	for _, sec := range cfg.Sections() {
+		routes = append(routes, sectionRoutes(cfg, sec)...)
 	}
+	return routes
 }
 
-// writeConfigError maps the store's errors to statuses; the cause of an unexpected one is logged by the store.
-func writeConfigError(w http.ResponseWriter, cfg Config, name string, err error) {
-	var invalid *config.InvalidError
-	switch {
-	case errors.As(err, &invalid):
-		writeError(w, http.StatusBadRequest, "invalid_config", invalid.Message)
-	case errors.Is(err, config.ErrUnknownSection):
-		writeError(w, http.StatusNotFound, "unknown_section", `no config section "`+name+`"`)
-	case errors.Is(err, config.ErrConflict):
-		current, _ := cfg.Section(name)
-		writeConflict(w, "the section changed since it was read", current)
-	case errors.Is(err, config.ErrUnavailable):
-		writeUnavailable(w)
-	default:
-		writeError(w, http.StatusInternalServerError, "config_failed", "could not save the config")
+func sectionRoutes(cfg Config, sec config.SectionType) []Route {
+	name := sec.Name
+	r, size := utf8.DecodeRuneInString(name)
+	title := string(unicode.ToUpper(r)) + name[size:]
+	path := "/api/config/" + name
+
+	revField := reflect.StructField{Name: "Rev", Type: reflect.TypeFor[int](), Tag: `json:"rev"`}
+	valueField := reflect.StructField{Name: "Value", Type: sec.Value, Tag: `json:"value"`}
+	outFields := []reflect.StructField{revField, valueField}
+	if sec.Effective != nil {
+		outFields = append(outFields,
+			reflect.StructField{Name: "Effective", Type: sec.Effective, Tag: `json:"effective,omitempty"`})
+	}
+	in := reflect.StructOf([]reflect.StructField{revField, valueField})
+	out := reflect.StructOf(outFields)
+
+	return []Route{
+		// The entry is answered as the store keeps it: the same bytes as GET /api/config shows.
+		jsonRoute(http.MethodGet, path, UI, "getConfig"+title, fmt.Sprintf("The %s config section", name),
+			reflect.TypeFor[struct{}](), out,
+			func(context.Context, any) (any, error) { return cfg.Section(name) }).
+			WithErrors("internal"),
+		jsonRoute(http.MethodPut, path, UI, "putConfig"+title,
+			fmt.Sprintf("Replace the %s config section if rev is still current", name), in, out,
+			func(_ context.Context, body any) (any, error) {
+				v := reflect.ValueOf(body)
+				rev := int(v.Field(0).Int())
+				if rev < 0 {
+					return nil, &Error{Status: http.StatusBadRequest, Code: "invalid_config",
+						Message: `the body must be {"rev": n, "value": {…}}`}
+				}
+				// The wrapper already rejected wrong types and unknown fields; the store's own decode and Validate
+				// judge the rest.
+				value, err := json.Marshal(v.Field(1).Interface())
+				if err != nil {
+					return nil, err
+				}
+				entry, err := cfg.Put(name, rev, value)
+				if errors.Is(err, config.ErrConflict) {
+					current, _ := cfg.Section(name)
+					return nil, &Error{Status: http.StatusConflict, Code: "config_conflict",
+						Message: "the section changed since it was read", Extra: map[string]any{"current": current}}
+				}
+				if err != nil {
+					return nil, err
+				}
+				return entry, nil
+			}).
+			WithErrors("invalid_request", "invalid_config", "config_conflict", "config_unavailable", "internal"),
 	}
 }

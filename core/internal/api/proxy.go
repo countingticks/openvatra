@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -34,7 +33,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 		if err != nil {
-			writeError(w, http.StatusRequestEntityTooLarge, "body_unreadable", "request body too large or unreadable")
+			writeError(w, r, &Error{Status: http.StatusRequestEntityTooLarge, Code: "body_unreadable", Message: "request body too large or unreadable"})
 			return
 		}
 
@@ -44,7 +43,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 				Model string `json:"model"`
 			}
 			if err := json.Unmarshal(body, &req); err != nil || req.Model == "" {
-				writeError(w, http.StatusBadRequest, "bad_request", `body must be JSON with a "model" field`)
+				writeError(w, r, &Error{Status: http.StatusBadRequest, Code: "bad_request", Message: `body must be JSON with a "model" field`})
 				return
 			}
 			model = req.Model
@@ -52,7 +51,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 
 		base, release, err := rt.Acquire(r.Context(), kind, model)
 		if err != nil {
-			writeAcquireError(w, r, err)
+			writeError(w, r, acquireError(err))
 			return
 		}
 		// Held until the reply is completely sent, so a swap never cuts off a stream.
@@ -60,7 +59,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 
 		target, err := url.Parse(base)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "bad_backend", "invalid model server address")
+			writeError(w, r, &Error{Status: http.StatusInternalServerError, Code: "bad_backend", Message: "invalid model server address"})
 			return
 		}
 		(&httputil.ReverseProxy{
@@ -73,22 +72,9 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 			// -1 flushes after every write, which is what keeps Server-Sent Events
 			// (stream: true) arriving token by token instead of in one lump at the end.
 			FlushInterval: -1,
-			ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) {
-				writeError(w, http.StatusBadGateway, "backend_failed", "the model server did not answer")
+			ErrorHandler: func(w http.ResponseWriter, r *http.Request, _ error) {
+				writeError(w, r, &Error{Status: http.StatusBadGateway, Code: "backend_failed", Message: "the model server did not answer"})
 			},
 		}).ServeHTTP(w, r)
-	}
-}
-
-func writeAcquireError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, router.ErrUnknownModel):
-		writeError(w, http.StatusNotFound, "model_not_found", "no model with that name in the models folder")
-	case errors.Is(err, router.ErrNoEmbeddingModel):
-		writeError(w, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen")
-	case r.Context().Err() != nil:
-		// The client left while waiting for the model; nobody is listening for a reply.
-	default:
-		writeError(w, http.StatusServiceUnavailable, "model_load_failed", err.Error())
 	}
 }

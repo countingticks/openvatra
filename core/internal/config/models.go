@@ -25,6 +25,12 @@ type Models struct {
 	Engine            string                  `json:"engine"` // "bundled" | "cuda"
 }
 
+// ModelsEffective is the models section's read-only view: the paths core really uses when none is chosen.
+type ModelsEffective struct {
+	LlamaServerPath string `json:"llamaServerPath"`
+	ModelsDir       string `json:"modelsDir"`
+}
+
 // ModelOptions are one model's own settings.
 type ModelOptions struct {
 	// Args is the argument text as the user typed it. Core splits it into a list (SplitArgs) and hands that straight

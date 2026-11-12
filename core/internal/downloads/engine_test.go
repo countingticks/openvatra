@@ -93,7 +93,7 @@ func fakeExtract(_ context.Context, zip, dest string) error {
 	return os.WriteFile(filepath.Join(dest, name), []byte("x"), 0o644)
 }
 
-func (f *engineFixture) wait(t *testing.T, want State) Item {
+func (f *engineFixture) wait(t *testing.T, want State) DownloadItem {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -105,7 +105,7 @@ func (f *engineFixture) wait(t *testing.T, want State) Item {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("engine never reached %q: %+v", want, f.m.Items())
-	return Item{}
+	return DownloadItem{}
 }
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }

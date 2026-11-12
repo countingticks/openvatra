@@ -22,7 +22,7 @@ type Router interface {
 
 // Downloads is the part of the download queue feed reads.
 type Downloads interface {
-	Items() []downloads.Item
+	Items() []downloads.DownloadItem
 	Subscribe() (<-chan struct{}, func())
 }
 
@@ -40,7 +40,12 @@ type Model struct {
 	Error string      `json:"error,omitempty"`
 }
 
-// StateBody is the JSON of GET /api/state.
+// DownloadsBody is the JSON of GET /api/downloads and the data of the downloads event.
+type DownloadsBody struct {
+	Items []downloads.DownloadItem `json:"items"`
+}
+
+// StateBody is the JSON of GET /api/models.
 type StateBody struct {
 	Models []Model `json:"models"`
 }
@@ -80,7 +85,7 @@ func State(rt Router, list func() ([]models.Model, error)) (StateBody, error) {
 const downloadsInterval = 250 * time.Millisecond
 
 // Start publishes the model state, and the download progress when dl is not nil, now and after every signal until
-// ctx ends. It returns at once. A failing scan publishes nothing: the bus keeps the last value, and GET /api/state
+// ctx ends. It returns at once. A failing scan publishes nothing: the bus keeps the last value, and GET /api/models
 // shows the error.
 func Start(ctx context.Context, log event.Log, rt Router, list func() ([]models.Model, error), dl Downloads) {
 	// Subscribe before the first scan, so a change in between is not lost.

@@ -38,13 +38,13 @@ func configCall(t *testing.T, cfg Config, method, path, body string) *httptest.R
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, cfg, stubHardware{}, stubCatalog{}, nil, nil, event.MemoryLog(event.NewBus(16))).ServeHTTP(rec, req)
+	testHandler(Deps{Config: cfg}).ServeHTTP(rec, req)
 	return rec
 }
 
-func decodeEntry(t *testing.T, body string) config.Entry {
+func decodeEntry(t *testing.T, body string) config.SectionEntry {
 	t.Helper()
-	var e config.Entry
+	var e config.SectionEntry
 	if err := json.Unmarshal([]byte(body), &e); err != nil {
 		t.Fatalf("not an entry: %s", body)
 	}
@@ -69,7 +69,7 @@ func TestConfigListAndGetSection(t *testing.T) {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	var list struct {
-		Sections map[string]config.Entry `json:"sections"`
+		Sections map[string]config.SectionEntry `json:"sections"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
@@ -85,9 +85,11 @@ func TestConfigListAndGetSection(t *testing.T) {
 		t.Fatalf("section = %d %s", rec.Code, rec.Body)
 	}
 
-	rec = configCall(t, cfg, http.MethodGet, "/api/config/nope", "")
-	if rec.Code != http.StatusNotFound || errorBody(t, rec)["error"] != "unknown_section" {
-		t.Fatalf("unknown section = %d %s", rec.Code, rec.Body)
+	// The generic section routes are gone: an unregistered name is not a route.
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		if rec := configCall(t, cfg, method, "/api/config/nope", `{"rev":0,"value":{}}`); rec.Code != http.StatusNotFound {
+			t.Fatalf("%s unknown section = %d %s", method, rec.Code, rec.Body)
+		}
 	}
 }
 
@@ -121,14 +123,15 @@ func TestConfigPutRejectsBadBodies(t *testing.T) {
 		status           int
 		code, mentions   string
 	}{
-		{"unknown field in value", "/api/config/models", `{"rev":0,"value":{"idleUnloadMinutes":15,"options":{},"engine":"bundled","bogus":1}}`, 400, "invalid_config", "bogus"},
+		// Shape errors are the wrapper's (decision 12); the section's own decode and Validate answer invalid_config.
+		{"unknown field in value", "/api/config/models", `{"rev":0,"value":{"idleUnloadMinutes":15,"options":{},"engine":"bundled","bogus":1}}`, 400, "invalid_request", "bogus"},
+		{"wrong type in value", "/api/config/models", `{"rev":0,"value":{"idleUnloadMinutes":"soon"}}`, 400, "invalid_request", "idleUnloadMinutes"},
 		{"idle minutes 0", "/api/config/models", `{"rev":0,"value":{"idleUnloadMinutes":0,"options":{},"engine":"bundled"}}`, 400, "invalid_config", "idleUnloadMinutes"},
-		{"not JSON", "/api/config/models", `nope`, 400, "invalid_config", "the body must be"},
-		{"no rev", "/api/config/models", `{"value":{}}`, 400, "invalid_config", "the body must be"},
+		{"not JSON", "/api/config/models", `nope`, 400, "invalid_request", "not valid JSON"},
+		{"no rev", "/api/config/models", `{"value":{}}`, 400, "invalid_request", `"rev" is required`},
 		{"negative rev", "/api/config/models", `{"rev":-1,"value":{}}`, 400, "invalid_config", "the body must be"},
-		{"no value", "/api/config/models", `{"rev":0}`, 400, "invalid_config", "the body must be"},
-		{"unknown top-level field", "/api/config/models", `{"rev":0,"value":{},"x":1}`, 400, "invalid_config", "the body must be"},
-		{"unknown section", "/api/config/nope", `{"rev":0,"value":{}}`, 404, "unknown_section", "nope"},
+		{"no value", "/api/config/models", `{"rev":0}`, 400, "invalid_request", `"value" is required`},
+		{"unknown top-level field", "/api/config/models", `{"rev":0,"value":{},"x":1}`, 400, "invalid_request", `"x"`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -159,9 +162,53 @@ func TestConfigRoutesNeedTheToken(t *testing.T) {
 		req := httptest.NewRequest(r.method, r.path, strings.NewReader(`{"rev":0,"value":{}}`))
 		req.Host = "127.0.0.1:53121"
 		rec := httptest.NewRecorder()
-		NewHandler(testToken, testPort, func() {}, nil, nil, cfg, stubHardware{}, stubCatalog{}, nil, nil, event.MemoryLog(event.NewBus(16))).ServeHTTP(rec, req)
+		testHandler(Deps{Config: cfg}).ServeHTTP(rec, req)
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a token = %d, want 401", r.method, r.path, rec.Code)
 		}
+	}
+}
+
+func TestConfigWithoutStore(t *testing.T) {
+	rec := configCall(t, nil, http.MethodGet, "/api/config", "")
+	if rec.Code != http.StatusServiceUnavailable || errorBody(t, rec)["error"] != "config_unavailable" {
+		t.Fatalf("got %d %s", rec.Code, rec.Body)
+	}
+	if rec := configCall(t, nil, http.MethodGet, "/api/config/models", ""); rec.Code != http.StatusNotFound {
+		t.Fatalf("section route without a store = %d", rec.Code)
+	}
+}
+
+// otherSection is a second section, to check one route pair per registered section.
+type otherSection struct {
+	On bool `json:"on"`
+}
+
+func (otherSection) Validate() error { return nil }
+
+func TestOneRoutePairPerSection(t *testing.T) {
+	cfg := configStore(t, false)
+	config.Register[otherSection, struct{}](cfg, "search", otherSection{}, nil)
+
+	var got []string
+	for _, r := range Routes(Deps{Config: cfg}) {
+		if r.Tag == "config" {
+			got = append(got, r.Method+" "+r.Path+" "+r.OperationID)
+		}
+	}
+	want := []string{
+		"GET /api/config getConfig",
+		"GET /api/config/models getConfigModels",
+		"PUT /api/config/models putConfigModels",
+		"GET /api/config/search getConfigSearch",
+		"PUT /api/config/search putConfigSearch",
+	}
+	if g, w := strings.Join(got, "\n"), strings.Join(want, "\n"); g != w {
+		t.Fatalf("config routes:\n%s\nwant:\n%s", g, w)
+	}
+
+	rec := configCall(t, cfg, http.MethodGet, "/api/config/search", "")
+	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != `{"rev":0,"value":{"on":false}}` {
+		t.Fatalf("GET search = %d %s", rec.Code, got)
 	}
 }
