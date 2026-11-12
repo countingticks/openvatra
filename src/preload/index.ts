@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { isCoreState, isModelList } from '../shared/core'
 import { type Api, ipcChannels } from '../shared/ipc'
+import type { Settings } from '../shared/settings'
 import { isDownloadList } from '../shared/setup'
 
 const api: Api = {
@@ -16,7 +17,18 @@ const api: Api = {
   // Thin wrappers: only these channels can be reached, and main validates whatever arrives on them.
   settings: Object.freeze({
     get: () => ipcRenderer.invoke(ipcChannels.settingsGet),
-    update: (patch) => ipcRenderer.invoke(ipcChannels.settingsUpdate, patch)
+    update: (patch) => ipcRenderer.invoke(ipcChannels.settingsUpdate, patch),
+    onChange: (callback) => {
+      // Main is the only sender, as with get(): only a plain object gets through (no zod in the sandbox).
+      const listener = (_event: IpcRendererEvent, settings: unknown): void => {
+        if (typeof settings === 'object' && settings !== null && !Array.isArray(settings))
+          callback(settings as Settings)
+      }
+      ipcRenderer.on(ipcChannels.settingsChanged, listener)
+      return () => {
+        ipcRenderer.removeListener(ipcChannels.settingsChanged, listener)
+      }
+    }
   }),
   files: Object.freeze({
     locations: () => ipcRenderer.invoke(ipcChannels.filesLocations),

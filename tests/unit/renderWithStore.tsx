@@ -73,6 +73,8 @@ export interface FakeAppWindow {
 interface Rendered extends RenderResult {
   store: AppStore
   saveSettings: Mock<SettingsApi['update']>
+  /** Plays main's settings:changed push; replaces the fake's saved settings too. */
+  emitSettings(settings: Settings): void
   openFolder: Mock<FilesApi['openFolder']>
   /** Answers like main after the user picked a path; set its result per test. Default: cancelled (null). */
   pick: Mock<FilesApi['pick']>
@@ -213,10 +215,21 @@ export function renderWithStore(
   }
   vi.stubGlobal('api', api)
 
-  const store = createAppStore({ settings: { update: saveSettings }, initialSettings: current })
+  const settingsListeners = new Set<(settings: Settings) => void>()
+  const onChange: SettingsApi['onChange'] = (callback) => {
+    settingsListeners.add(callback)
+    return () => settingsListeners.delete(callback)
+  }
+  const emitSettings = (settings: Settings): void => {
+    current = settings
+    act(() => settingsListeners.forEach((listener) => listener(settings)))
+  }
+
+  const store = createAppStore({ settings: { update: saveSettings, onChange }, initialSettings: current })
   return {
     store,
     saveSettings,
+    emitSettings,
     openFolder,
     pick,
     useBundledLlama,

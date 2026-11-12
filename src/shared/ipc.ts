@@ -9,6 +9,8 @@ import type { CatalogView, DownloadItem, HardwareReport } from './setup'
 export const ipcChannels = {
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
+  /** Main → UI: sent with the full Settings after every saved change. */
+  settingsChanged: 'settings:changed',
   filesLocations: 'files:locations',
   filesOpenFolder: 'files:open-folder',
   filesPick: 'files:pick',
@@ -119,6 +121,8 @@ export interface SettingsApi {
   get(): Promise<Settings>
   /** Validates, saves, and resolves with the full new settings; rejects (and saves nothing) if invalid. */
   update(patch: SettingsPatch): Promise<Settings>
+  /** Calls back with the full settings after every saved change, wherever it came from; returns unsubscribe. */
+  onChange(callback: (settings: Settings) => void): () => void
 }
 
 /** The models service (core.exe). The UI can watch it and ask for a restart; it never learns its token. */

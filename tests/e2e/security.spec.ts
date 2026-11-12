@@ -112,7 +112,8 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
 
   expect(shape).toEqual({
     api: ['app', 'appWindow', 'core', 'files', 'runtime', 'settings', 'setup'],
-    settings: ['get', 'update'],
+    // Added in 024 (core-config): main pushes saved settings.
+    settings: ['get', 'onChange', 'update'],
     settingsFrozen: true,
     // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders. T56 (2026-11-03): the bundled llama.cpp's tag, and going back to it.
     files: ['bundledLlama', 'locations', 'openFolder', 'pick', 'useBundledLlama'],
