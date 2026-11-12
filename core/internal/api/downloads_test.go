@@ -45,7 +45,7 @@ func callDownloads(dl Downloads, method, path, body string) *httptest.ResponseRe
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, dl, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, nil, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, dl, nil).ServeHTTP(rec, req)
 	return rec
 }
 
