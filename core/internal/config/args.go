@@ -72,17 +72,3 @@ func SplitArgs(text string) ([]string, error) {
 	}
 	return args, nil
 }
-
-// JoinArgs is the reverse of SplitArgs: quotes only what needs them; a " inside an argument can't be written, so it
-// is dropped.
-func JoinArgs(args []string) string {
-	parts := make([]string, len(args))
-	for i, arg := range args {
-		arg = strings.ReplaceAll(arg, `"`, "")
-		if arg == "" || strings.IndexFunc(arg, isJSSpace) >= 0 {
-			arg = `"` + arg + `"`
-		}
-		parts[i] = arg
-	}
-	return strings.Join(parts, " ")
-}

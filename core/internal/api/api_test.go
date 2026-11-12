@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/models"
 )
 
@@ -37,7 +36,7 @@ func doMethod(t *testing.T, method, path, host, auth string, shutdown func()) *h
 	if method == http.MethodGet && path == "/v1/models?fail" {
 		list = func() ([]models.Model, error) { return nil, errors.New("boom") }
 	}
-	NewHandler(testToken, testPort, shutdown, list, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, shutdown, list, nil, nil, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -59,7 +58,7 @@ func TestModelsListEmptyIsArrayAndErrorIs500(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, func() ([]models.Model, error) { return nil, nil }, nil, nil, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
 	if !strings.Contains(rec.Body.String(), `"data":[]`) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
@@ -154,41 +153,13 @@ func TestShutdownNeedsTokenAndPost(t *testing.T) {
 	}
 }
 
-func TestConfigReplacesTheWholeConfig(t *testing.T) {
-	override := config.NewOverride()
-	post := func(body string) int {
-		req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(body))
-		req.Host = "127.0.0.1:53121"
-		req.Header.Set("Authorization", "Bearer "+testToken)
-		rec := httptest.NewRecorder()
-		NewHandler(testToken, testPort, func() {}, nil, nil, nil, override, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
-		if rec.Code != 204 {
-			t.Log(rec.Body.String())
-		}
-		return rec.Code
-	}
-
-	if code := post(`{"modelsDir":"D:/models","idleUnloadMinutes":null,"options":{"a":{"args":["-c","4096"]}}}`); code != http.StatusNoContent {
-		t.Fatalf("valid config: status = %d, want 204", code)
-	}
-	got, ok := override.Get()
-	if !ok || got.ModelsDir == nil || *got.ModelsDir != `D:/models` || got.IdleUnloadMinutes != nil || got.Options["a"].Args != "-c 4096" {
-		t.Fatalf("override = %+v, set = %v", got, ok)
-	}
-
-	for name, body := range map[string]string{
-		"not json":      `{`,
-		"unknown field": `{"modelDir":"x"}`,
-		"invalid value": `{"idleUnloadMinutes":-5}`,
-		"removed field": `{"sharedArgs":["-fa","on"]}`,
-		"reserved flag": `{"options":{"a":{"args":["--port","1"]}}}`,
-		"nul in an arg": `{"options":{"a":{"args":["a\u0000b"]}}}`,
-	} {
-		if code := post(body); code != http.StatusBadRequest {
-			t.Fatalf("%s: status = %d, want 400", name, code)
-		}
-	}
-	if got, _ := override.Get(); got.ModelsDir == nil || *got.ModelsDir != `D:/models` {
-		t.Fatal("a rejected request changed the override")
+func TestPostConfigIsNoLongerARoute(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(`{"modelsDir":"D:/models"}`))
+	req.Host = "127.0.0.1:53121"
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	NewHandler(testToken, testPort, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+	if rec.Code >= 200 && rec.Code < 300 {
+		t.Fatalf("status = %d, want a non-2xx", rec.Code)
 	}
 }

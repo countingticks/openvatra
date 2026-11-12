@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
-	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
 )
@@ -16,8 +15,8 @@ import (
 // reply is sent) when a client asks core to stop; listModels reports the models
 // currently on disk (a function, because the folder will change at runtime); rt
 // picks the model server for the chat and embedding endpoints; cfg is the stored config behind /api/config/... (nil
-// only in tests); override receives what main sends to POST /api/config; hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg Config, override *config.Override, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
+// only in tests); hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg Config, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
@@ -28,7 +27,6 @@ func NewHandler(token string, port int, shutdown func(), listModels func() ([]mo
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /api/models/refresh", refreshHandler(rt))
-	mux.HandleFunc("POST /api/config", configHandler(override))
 	registerConfig(mux, cfg)
 	mux.HandleFunc("GET /api/hardware", hardwareHandler(hardware.Get))
 	mux.HandleFunc("POST /api/hardware/refresh", hardwareHandler(hardware.Refresh))

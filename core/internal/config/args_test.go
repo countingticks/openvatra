@@ -70,17 +70,3 @@ func TestSplitArgsLengthCountsUTF16Units(t *testing.T) {
 		})
 	}
 }
-
-func TestJoinArgsRoundTrips(t *testing.T) {
-	for _, c := range argsCases(t) {
-		if c.Error != "" || slices.ContainsFunc(c.Args, func(a string) bool { return strings.Contains(a, `"`) }) {
-			continue
-		}
-		t.Run(c.Name, func(t *testing.T) {
-			got, err := SplitArgs(JoinArgs(c.Args))
-			if err != nil || !slices.Equal(got, c.Args) {
-				t.Fatalf("round trip = %#v, %v; want %#v", got, err, c.Args)
-			}
-		})
-	}
-}

@@ -174,34 +174,3 @@ func TestUseMMProj(t *testing.T) {
 		}
 	}
 }
-
-func TestOverride(t *testing.T) {
-	o := NewOverride()
-	calls := 0
-	o.OnChange(func() { calls++ })
-	if _, ok := o.Get(); ok {
-		t.Fatal("Get is set before any Set")
-	}
-
-	bad := DefaultModels()
-	bad.Engine = "x"
-	if err := o.Set(bad); err == nil {
-		t.Fatal("an invalid value was accepted")
-	}
-	if _, ok := o.Get(); ok || calls != 0 {
-		t.Fatalf("an invalid Set changed the override (set %v) or notified (%d)", ok, calls)
-	}
-
-	good := DefaultModels()
-	good.ModelsDir = ptr(t.TempDir())
-	if err := o.Set(good); err != nil {
-		t.Fatal(err)
-	}
-	got, ok := o.Get()
-	if !ok || got.ModelsDir == nil || *got.ModelsDir != *good.ModelsDir {
-		t.Fatalf("Get = %+v, %v", got, ok)
-	}
-	if calls != 1 {
-		t.Fatalf("onChange called %d times, want 1", calls)
-	}
-}

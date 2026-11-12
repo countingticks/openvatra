@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
-	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
@@ -39,7 +38,7 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 	port := srv.Listener.Addr().(interface{ String() string }).String()
 	var p int
 	fmt.Sscanf(port[strings.LastIndex(port, ":")+1:], "%d", &p)
-	srv.Config.Handler = NewHandler(testToken, p, func() {}, nil, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, nil, svc)
+	srv.Config.Handler = NewHandler(testToken, p, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, nil, svc)
 	srv.Start()
 	t.Cleanup(srv.Close)
 	return srv, st
@@ -151,7 +150,7 @@ func TestChatEndpointsWithoutStorageAnswer503(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/chats", nil)
 	req.Host = fmt.Sprintf("127.0.0.1:%d", testPort)
 	req.Header.Set("Authorization", "Bearer "+testToken)
-	NewHandler(testToken, testPort, func() {}, nil, nil, nil, config.NewOverride(), stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
 	if rec.Code != 503 {
 		t.Fatalf("status %d", rec.Code)
 	}
