@@ -22,6 +22,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -88,11 +89,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		logger.Warn("job object setup failed", "err", err)
 	}
 
+	bus := event.NewBus(256)
+
 	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
 	var chatStore *store.Store
 	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
 	if *dataDir != "" {
-		if db, err := store.Open(*dataDir); err != nil {
+		if db, err := store.Open(*dataDir, bus); err != nil {
 			logger.Error("open chat database", "err", err)
 		} else {
 			defer db.Close()
@@ -123,6 +126,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	go watchStdin(stdin, stop)
+	if chatStore != nil && chatStore.ReadOnly() == nil {
+		go trimSystemEvents(ctx, chatStore, 24*time.Hour, time.Now, logger)
+	}
 
 	var engine *downloads.Engine
 	if *llamaManifest != "" && *enginesDir != "" {
@@ -310,6 +316,37 @@ func writeReady(w io.Writer, port int) error {
 type sectionWriter interface {
 	Section(name string) (config.Entry, error)
 	Put(name string, rev int, value json.RawMessage) (config.Entry, error)
+}
+
+// systemRetention is how long system events are kept; other streams are never trimmed.
+const systemRetention = 30 * 24 * time.Hour
+
+type systemTrimmer interface {
+	TrimSystem(ctx context.Context, before time.Time) (int64, error)
+}
+
+// trimSystemEvents trims old system events at once and then every `every` until ctx ends. A failed trim is logged
+// and tried again next time.
+func trimSystemEvents(ctx context.Context, t systemTrimmer, every time.Duration, now func() time.Time, logger *slog.Logger) {
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		n, err := t.TrimSystem(ctx, now().Add(-systemRetention))
+		switch {
+		case err != nil:
+			logger.Error("trim system events", "err", err)
+		case n > 0:
+			logger.Info("trimmed old system events", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if ctx.Err() != nil { // both were ready and select picked the tick
+			return
+		}
+	}
 }
 
 // switchToCUDA stores engine "cuda" once its download is finished. A concurrent write (a Settings save) may win the

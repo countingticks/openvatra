@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 // ErrConflict means the stored revision differs from the one the caller based its change on.
@@ -27,11 +29,14 @@ func (s *Store) ConfigGet(ctx context.Context, section string) (rev int, value [
 }
 
 // ConfigPut stores value if the section is still at expectRev (absent counts as 0), and returns the new revision.
-// The bytes are stored as given; validating them is the config package's job.
+// The bytes are stored as given; validating them is the config package's job. The same commit appends
+// config.changed on the system stream, published once the commit succeeded.
 func (s *Store) ConfigPut(ctx context.Context, section string, expectRev int, value []byte) (newRev int, err error) {
 	if s.readOnly != nil {
 		return 0, ErrReadOnly
 	}
+	s.appendMu.Lock()
+	defer s.appendMu.Unlock()
 	tx, err := s.writer().BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("config put: %w", err)
@@ -55,8 +60,13 @@ func (s *Store) ConfigPut(ctx context.Context, section string, expectRev int, va
 	if err != nil {
 		return 0, fmt.Errorf("config put: %w", err)
 	}
+	events, err := s.appendTx(ctx, tx, "system", []event.Payload{event.ConfigChanged{Section: section, Rev: newRev}})
+	if err != nil {
+		return 0, fmt.Errorf("config put: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("config put: %w", err)
 	}
+	s.bus.Publish(events...)
 	return newRev, nil
 }

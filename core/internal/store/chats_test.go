@@ -6,14 +6,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 var ctx = context.Background()
 
-// clock returns a store whose time moves forward 1 s per call, so ordering is deterministic.
+// newStore returns a store whose time moves forward 1 s per call, so ordering is deterministic.
 func newStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(t.TempDir())
+	s, _ := newEventStore(t)
+	return s
+}
+
+// newEventStore is newStore together with the bus its events are published on.
+func newEventStore(t *testing.T) (*Store, *event.Bus) {
+	t.Helper()
+	bus := event.NewBus(64)
+	s, err := Open(t.TempDir(), bus)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +31,7 @@ func newStore(t *testing.T) *Store {
 	base := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	n := 0
 	s.now = func() time.Time { n++; return base.Add(time.Duration(n) * time.Second) }
-	return s
+	return s, bus
 }
 
 // must unwraps a (value, error) pair: Go allows f(g()) only when f takes exactly g's results, so no t parameter here.

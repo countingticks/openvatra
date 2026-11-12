@@ -2,15 +2,18 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"testing"
+
+	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 func openConfigStore(t *testing.T) (*Store, string) {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := Open(dir)
+	s, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +66,12 @@ func TestConfigPutWithRevOnAbsentSectionConflicts(t *testing.T) {
 
 func TestConfigPutOnReadOnlyStoreIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
-	s, err = open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +90,7 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 		return string(b)
 	}
 	dir := t.TempDir()
-	old, err := open(dir, migrations(read("0001_baseline.sql"), read("0002_chats.sql")), "m")
+	old, err := open(dir, event.NewBus(16), migrations(read("0001_baseline.sql"), read("0002_chats.sql")), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,12 +100,12 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 	}
 	old.Close()
 
-	s, err := Open(dir)
+	s, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 3 {
+	if v, _ := s.Version(); v != 4 {
 		t.Fatalf("version = %d", v)
 	}
 	if _, err := s.GetChat(context.Background(), chat.ID); err != nil {
@@ -119,12 +122,60 @@ func TestConfigValueSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Close()
-	s2, err := Open(dir)
+	s2, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s2.Close()
 	if rev, v, _ := s2.ConfigGet(context.Background(), "x"); rev != 1 || string(v) != `{"k":"v"}` {
 		t.Fatalf("got %d, %q", rev, v)
+	}
+}
+
+func TestConfigPutWritesConfigChangedInTheSameCommit(t *testing.T) {
+	s, bus := newEventStore(t)
+	_, ch, cancel := bus.Subscribe(event.Filter{})
+	defer cancel()
+	must(s.ConfigPut(ctx, "models", 0, []byte(`1`)))
+	rev := must(s.ConfigPut(ctx, "models", 1, []byte(`2`)))
+
+	got := must(s.Log().Read(ctx, 1, event.Filter{Streams: []string{"system"}}, 10))
+	if len(got) != 1 || got[0].Type != "config.changed" || string(got[0].Data) != `{"section":"models","rev":2}` ||
+		rev != 2 {
+		t.Fatalf("events = %+v", got)
+	}
+	for _, wantRev := range []string{`{"section":"models","rev":1}`, `{"section":"models","rev":2}`} {
+		if e := <-ch; string(e.Data) != wantRev || e.Stream != "system" {
+			t.Fatalf("published %+v (data %s)", e, e.Data)
+		}
+	}
+}
+
+func TestConflictingConfigPutAddsNoEvent(t *testing.T) {
+	s, bus := newEventStore(t)
+	must(s.ConfigPut(ctx, "models", 0, []byte(`1`)))
+	_, ch, cancel := bus.Subscribe(event.Filter{})
+	defer cancel()
+	if _, err := s.ConfigPut(ctx, "models", 0, []byte(`2`)); !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v", err)
+	}
+	if got := must(s.Log().Read(ctx, 0, event.Filter{}, 10)); len(got) != 1 {
+		t.Fatalf("events = %+v", got)
+	}
+	if len(ch) != 0 {
+		t.Fatal("event published")
+	}
+}
+
+func TestProjectorErrorRollsTheConfigPutBack(t *testing.T) {
+	s, _ := newEventStore(t)
+	must(s.ConfigPut(ctx, "models", 0, []byte(`1`)))
+	boom := errors.New("boom")
+	s.AddProjector(fakeProjector(func(*sql.Tx, event.Event) error { return boom }))
+	if _, err := s.ConfigPut(ctx, "models", 1, []byte(`2`)); !errors.Is(err, boom) {
+		t.Fatalf("err = %v", err)
+	}
+	if rev, v, _ := s.ConfigGet(ctx, "models"); rev != 1 || string(v) != `1` {
+		t.Fatalf("config = %d, %q", rev, v)
 	}
 }

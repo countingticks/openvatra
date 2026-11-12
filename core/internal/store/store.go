@@ -13,8 +13,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/countingticks/openvatra/core/internal/event"
 	_ "modernc.org/sqlite" // registers the "sqlite" driver
 )
 
@@ -37,15 +39,24 @@ type Store struct {
 	readOnly  error
 	renameErr error            // why chats.db kept its old name this run; nil when nothing was wrong
 	now       func() time.Time // nil = real clock; tests set it
+	bus       *event.Bus
+	// appendMu is held from the start of every transaction that appends events until its publish returns, so the
+	// bus sees events in seq order.
+	appendMu   sync.Mutex
+	projectors []event.Projector // guarded by appendMu
 }
 
 // Open creates the data folder if needed, opens openvatra.db inside it (renaming an old chats.db) and brings it up to date. A database from a newer
 // version is opened read-only instead (see ReadOnly): a downgrade must never rewrite data it doesn't understand.
-func Open(dir string) (*Store, error) {
-	return open(dir, embedded, "migrations")
+// Durable events are published on bus after they commit; a nil bus is a wiring bug and panics.
+func Open(dir string, bus *event.Bus) (*Store, error) {
+	return open(dir, bus, embedded, "migrations")
 }
 
-func open(dir string, migrations fs.FS, root string) (*Store, error) {
+func open(dir string, bus *event.Bus, migrations fs.FS, root string) (*Store, error) {
+	if bus == nil {
+		panic("store: Open with a nil bus")
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data folder: %w", err)
 	}
@@ -65,7 +76,7 @@ func open(dir string, migrations fs.FS, root string) (*Store, error) {
 		return nil, err
 	}
 
-	s := &Store{w: w, renameErr: renameErr}
+	s := &Store{w: w, renameErr: renameErr, bus: bus}
 	if current > len(steps) {
 		// Reopen with writes switched off at the SQLite level, so even a bug can't modify the newer data.
 		w.Close()

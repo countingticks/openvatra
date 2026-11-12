@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
@@ -214,7 +216,7 @@ func registeredStore(t *testing.T, withDB bool, logger *slog.Logger) *config.Sto
 	t.Helper()
 	var db config.DB
 	if withDB {
-		st, err := store.Open(t.TempDir())
+		st, err := store.Open(t.TempDir(), event.NewBus(16))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -301,5 +303,64 @@ func TestSwitchToCUDARetriesOnceOnConflict(t *testing.T) {
 				t.Errorf("error lines = %d, want error: %v\n%s", got, tt.wantError, log.String())
 			}
 		})
+	}
+}
+
+// fakeTrimmer records each cutoff and returns counts in turn (0 once they run out).
+type fakeTrimmer struct {
+	t       *testing.T
+	cutoffs chan time.Time
+	counts  []int64
+}
+
+func (f *fakeTrimmer) TrimSystem(ctx context.Context, before time.Time) (int64, error) {
+	if ctx.Err() != nil {
+		f.t.Error("trim called after the context ended")
+	}
+	f.cutoffs <- before
+	var n int64
+	if len(f.counts) > 0 {
+		n, f.counts = f.counts[0], f.counts[1:]
+	}
+	return n, nil
+}
+
+func TestTrimSystemEventsRunsAtOnceThenOnSchedule(t *testing.T) {
+	now := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	f := &fakeTrimmer{t: t, cutoffs: make(chan time.Time, 1000), counts: []int64{3}}
+	var log bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		trimSystemEvents(ctx, f, 10*time.Millisecond, func() time.Time { return now }, slog.New(slog.NewTextHandler(&log, nil)))
+		close(done)
+	}()
+
+	next := func() time.Time {
+		t.Helper()
+		select {
+		case c := <-f.cutoffs:
+			return c
+		case <-time.After(5 * time.Second):
+			t.Fatal("no trim")
+			return time.Time{}
+		}
+	}
+	want := now.Add(-30 * 24 * time.Hour)
+	if c := next(); !c.Equal(want) {
+		t.Fatalf("first cutoff = %v, want %v", c, want)
+	}
+	if c := next(); !c.Equal(want) {
+		t.Fatalf("second cutoff = %v, want %v", c, want)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("trim loop did not stop")
+	}
+	if got := log.String(); strings.Count(got, "trimmed old system events") != 1 || !strings.Contains(got, "count=3") {
+		t.Fatalf("log = %q", got)
 	}
 }

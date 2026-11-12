@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -36,7 +37,7 @@ func testEffective(v testSection) any { return map[string]int{"double": v.N * 2}
 // openDB opens a real database in dir and closes it when the test ends.
 func openDB(t *testing.T, dir string) *store.Store {
 	t.Helper()
-	db, err := store.Open(dir)
+	db, err := store.Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +190,7 @@ func TestWithoutADatabase(t *testing.T) {
 
 func TestReadOnlyDatabase(t *testing.T) {
 	dir := t.TempDir()
-	db, err := store.Open(dir)
+	db, err := store.Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
