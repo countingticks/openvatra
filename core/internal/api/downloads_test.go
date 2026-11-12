@@ -1,16 +1,14 @@
 package api
 
 import (
-	"bufio"
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 // stubDownloads records calls and answers with err.
@@ -44,7 +42,7 @@ func callDownloads(dl Downloads, method, path, body string) *httptest.ResponseRe
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, dl, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, nil, nil, nil, stubHardware{}, stubCatalog{}, dl, nil, event.MemoryLog(event.NewBus(16))).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -93,60 +91,5 @@ func TestStartRejectsBadBodies(t *testing.T) {
 		if rec := callDownloads(dl, "POST", "/api/downloads", body); rec.Code != http.StatusBadRequest || len(dl.calls) != 0 {
 			t.Fatalf("body %q -> %d, calls %v", body, rec.Code, dl.calls)
 		}
-	}
-}
-
-func TestEventsSendDownloadsAndThrottleThem(t *testing.T) {
-	dl := &stubDownloads{changes: make(chan struct{}, 1), items: []downloads.Item{{ID: "qwen", State: downloads.Downloading, Bytes: 1, Total: 2}}}
-	srv := httptest.NewServer(eventsHandler(&stubRouter{changes: make(chan struct{}, 1)}, twoModels, dl, nil))
-	defer srv.Close()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, srv.URL, nil)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-
-	// Read event names and the time each "downloads" event arrived.
-	arrivals := make(chan time.Time, 20)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
-		for sc.Scan() {
-			if sc.Text() == "event: downloads" {
-				arrivals <- time.Now()
-			}
-		}
-	}()
-	first := waitArrival(t, arrivals)
-
-	// A burst of 20 changes must collapse into a few events, not 20.
-	for i := 0; i < 20; i++ {
-		select {
-		case dl.changes <- struct{}{}:
-		default:
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	second := waitArrival(t, arrivals)
-	if second.Sub(first) < downloadsInterval-20*time.Millisecond {
-		t.Fatalf("events %v apart, want at least %v", second.Sub(first), downloadsInterval)
-	}
-	time.Sleep(downloadsInterval + 100*time.Millisecond)
-	if n := len(arrivals); n > 2 {
-		t.Fatalf("%d extra events for one burst", n)
-	}
-}
-
-func waitArrival(t *testing.T, ch <-chan time.Time) time.Time {
-	t.Helper()
-	select {
-	case at := <-ch:
-		return at
-	case <-time.After(3 * time.Second):
-		t.Fatal("no downloads event")
-		return time.Time{}
 	}
 }

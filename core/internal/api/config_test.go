@@ -38,7 +38,7 @@ func configCall(t *testing.T, cfg Config, method, path, body string) *httptest.R
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	NewHandler(testToken, testPort, func() {}, nil, nil, cfg, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+	NewHandler(testToken, testPort, func() {}, nil, nil, cfg, stubHardware{}, stubCatalog{}, nil, nil, event.MemoryLog(event.NewBus(16))).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -159,7 +159,7 @@ func TestConfigRoutesNeedTheToken(t *testing.T) {
 		req := httptest.NewRequest(r.method, r.path, strings.NewReader(`{"rev":0,"value":{}}`))
 		req.Host = "127.0.0.1:53121"
 		rec := httptest.NewRecorder()
-		NewHandler(testToken, testPort, func() {}, nil, nil, cfg, stubHardware{}, stubCatalog{}, nil, nil).ServeHTTP(rec, req)
+		NewHandler(testToken, testPort, func() {}, nil, nil, cfg, stubHardware{}, stubCatalog{}, nil, nil, event.MemoryLog(event.NewBus(16))).ServeHTTP(rec, req)
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s %s without a token = %d, want 401", r.method, r.path, rec.Code)
 		}
