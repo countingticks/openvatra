@@ -16,7 +16,7 @@ type stubDownloads struct {
 	mu      sync.Mutex
 	calls   []string
 	err     error
-	items   []downloads.Item
+	items   []downloads.DownloadItem
 	changes chan struct{}
 }
 
@@ -30,7 +30,7 @@ func (s *stubDownloads) Start(id string) error  { return s.record("start " + id)
 func (s *stubDownloads) StartEngine() error     { return s.record("start engine") }
 func (s *stubDownloads) Resume(id string) error { return s.record("resume " + id) }
 func (s *stubDownloads) Cancel(id string) error { return s.record("cancel " + id) }
-func (s *stubDownloads) Items() []downloads.Item {
+func (s *stubDownloads) Items() []downloads.DownloadItem {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.items

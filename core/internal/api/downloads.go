@@ -10,7 +10,7 @@ import (
 
 // Downloads is what the download endpoints and the event need; *downloads.Manager in production, a stub in tests.
 type Downloads interface {
-	Items() []downloads.Item
+	Items() []downloads.DownloadItem
 	Subscribe() (<-chan struct{}, func())
 	Start(id string) error
 	StartEngine() error

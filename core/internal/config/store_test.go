@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -56,7 +57,7 @@ func newTestStore(t *testing.T, db DB, log *bytes.Buffer) *Store {
 	return s
 }
 
-func mustSection(t *testing.T, s *Store) Entry {
+func mustSection(t *testing.T, s *Store) SectionEntry {
 	t.Helper()
 	e, err := s.Section(testName)
 	if err != nil {
@@ -289,7 +290,45 @@ func TestWiringBugsPanic(t *testing.T) {
 		}()
 		f()
 	}
-	mustPanic("a duplicate Register", func() { Register(s, testName, testDefaults, nil) })
+	mustPanic("a duplicate Register", func() { Register[testSection, struct{}](s, testName, testDefaults, nil) })
 	mustPanic("Get with the wrong type", func() { Get[otherSection](s, testName) })
 	mustPanic("Get of an unknown section", func() { Get[testSection](s, "nope") })
+}
+
+type doubled struct {
+	Double int `json:"double"`
+}
+
+func TestSectionsListsRegistrationOrderAndTypes(t *testing.T) {
+	s := New(nil, nil)
+	Register(s, "zeta", testDefaults, func(v testSection) doubled { return doubled{v.N * 2} })
+	Register[otherSection, struct{}](s, "alpha", otherSection{}, nil)
+
+	got := s.Sections()
+	want := []SectionType{
+		{Name: "zeta", Value: reflect.TypeFor[testSection](), Effective: reflect.TypeFor[doubled]()},
+		{Name: "alpha", Value: reflect.TypeFor[otherSection]()},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Sections() = %v, want %v", got, want)
+	}
+}
+
+func TestNilEffectiveHasNoType(t *testing.T) {
+	s := New(nil, nil)
+	Register[testSection, struct{}](s, testName, testDefaults, nil)
+	if eff := s.Sections()[0].Effective; eff != nil {
+		t.Fatalf("Effective = %v, want nil", eff)
+	}
+	e := mustSection(t, s)
+	if e.Effective != nil {
+		t.Fatalf("entry effective = %s, want none", e.Effective)
+	}
+	raw, err := json.Marshal(e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "effective") {
+		t.Fatalf("entry JSON %s has an effective field", raw)
+	}
 }

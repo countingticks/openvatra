@@ -10,9 +10,9 @@ import (
 
 // Config is what the config routes need; *config.Store implements it.
 type Config interface {
-	All() map[string]config.Entry
-	Section(name string) (config.Entry, error)
-	Put(name string, rev int, value json.RawMessage) (config.Entry, error)
+	All() map[string]config.SectionEntry
+	Section(name string) (config.SectionEntry, error)
+	Put(name string, rev int, value json.RawMessage) (config.SectionEntry, error)
 }
 
 // registerConfig adds the three config routes; without a store (tests only) they answer 503.

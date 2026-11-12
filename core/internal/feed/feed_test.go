@@ -183,16 +183,16 @@ func TestCancelStopsPublishing(t *testing.T) {
 // stubDownloads has settable items and a channel the test sends signals on.
 type stubDownloads struct {
 	mu      sync.Mutex
-	items   []downloads.Item
+	items   []downloads.DownloadItem
 	changes chan struct{}
 }
 
-func (s *stubDownloads) Items() []downloads.Item {
+func (s *stubDownloads) Items() []downloads.DownloadItem {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.items
 }
-func (s *stubDownloads) set(items ...downloads.Item) {
+func (s *stubDownloads) set(items ...downloads.DownloadItem) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.items = items
@@ -202,7 +202,7 @@ func (s *stubDownloads) Subscribe() (<-chan struct{}, func()) { return s.changes
 func TestStartPublishesDownloadProgressRetained(t *testing.T) {
 	log := newLog()
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
-	dl := &stubDownloads{changes: make(chan struct{}, 1), items: []downloads.Item{{ID: "qwen", State: "downloading", Bytes: 5, Total: 10}}}
+	dl := &stubDownloads{changes: make(chan struct{}, 1), items: []downloads.DownloadItem{{ID: "qwen", State: "downloading", Bytes: 5, Total: 10}}}
 	Start(t.Context(), log, rt, twoModels, dl)
 
 	e := waitRetained(t, log, "download.progress")
@@ -244,7 +244,7 @@ func TestDownloadBurstIsThrottled(t *testing.T) {
 	if len(times) != 1 {
 		t.Fatalf("%d events at start, want 1", len(times))
 	}
-	dl.set(downloads.Item{ID: "after-burst", Bytes: 9})
+	dl.set(downloads.DownloadItem{ID: "after-burst", Bytes: 9})
 	for i := 0; i < 20; i++ {
 		dl.changes <- struct{}{}
 	}

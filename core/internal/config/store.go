@@ -35,16 +35,23 @@ type DB interface {
 	ConfigPut(ctx context.Context, section string, expectRev int, value []byte) (int, error)
 }
 
-// Entry is one section as clients see it.
-type Entry struct {
+// SectionEntry is one section as clients see it.
+type SectionEntry struct {
 	Rev       int             `json:"rev"` // 0 = never written; value is the defaults
 	Value     json.RawMessage `json:"value"`
 	Effective json.RawMessage `json:"effective,omitempty"` // resolved values, read-only; per section
 }
 
+// SectionType describes one registered section for the API. Effective is nil when the section has none.
+type SectionType struct {
+	Name             string
+	Value, Effective reflect.Type
+}
+
 // section is one registered section. value is always a T; decode and effective are typed closures made by Register.
 type section struct {
 	typ       reflect.Type
+	effType   reflect.Type // nil = no effective values
 	rev       int
 	value     any
 	raw       []byte // json.Marshal(value), so Section doesn't marshal it again
@@ -61,6 +68,7 @@ type Store struct {
 	putMu    sync.Mutex // one Put at a time, from decode to cache update
 	mu       sync.RWMutex
 	sections map[string]*section
+	order    []string // section names in registration order
 
 	notifyMu sync.Mutex // keeps subscribers called in commit order
 	subsMu   sync.Mutex
@@ -85,12 +93,13 @@ func New(db DB, logger *slog.Logger) *Store {
 // Register adds a section with its defaults and reads its stored value. A stored value that no longer decodes or
 // validates is logged and the defaults are used; the row stays until the next accepted Put. effective (nil for none)
 // turns the value into the resolved values clients see beside it. Panics on a duplicate name (wiring bug).
-func Register[T Validator](s *Store, name string, defaults T, effective func(T) any) {
+func Register[T Validator, E any](s *Store, name string, defaults T, effective func(T) E) {
 	sec := &section{
 		typ:    reflect.TypeFor[T](),
 		decode: func(data []byte) (any, error) { return decodeStrict[T](data) },
 	}
 	if effective != nil {
+		sec.effType = reflect.TypeFor[E]()
 		sec.effective = func(v any) any { return effective(v.(T)) }
 	}
 
@@ -121,6 +130,19 @@ func Register[T Validator](s *Store, name string, defaults T, effective func(T) 
 		panic(fmt.Sprintf("config section %q registered twice", name))
 	}
 	s.sections[name] = sec
+	s.order = append(s.order, name)
+}
+
+// Sections lists the registered sections in the order Register was called.
+func (s *Store) Sections() []SectionType {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]SectionType, 0, len(s.order))
+	for _, name := range s.order {
+		sec := s.sections[name]
+		out = append(out, SectionType{Name: name, Value: sec.typ, Effective: sec.effType})
+	}
+	return out
 }
 
 // Get returns the cached value of a section; it never touches the disk. Callers must not modify maps or slices in
@@ -140,7 +162,7 @@ func Get[T Validator](s *Store, name string) T {
 }
 
 // Section returns one section's entry, or ErrUnknownSection.
-func (s *Store) Section(name string) (Entry, error) {
+func (s *Store) Section(name string) (SectionEntry, error) {
 	s.mu.RLock()
 	sec, ok := s.sections[name]
 	var rev int
@@ -151,14 +173,14 @@ func (s *Store) Section(name string) (Entry, error) {
 	}
 	s.mu.RUnlock()
 	if !ok {
-		return Entry{}, ErrUnknownSection
+		return SectionEntry{}, ErrUnknownSection
 	}
 	return sec.entry(rev, value, raw), nil
 }
 
-// entry builds the Entry outside the lock: effective may look at the disk (the CUDA engine's file).
-func (sec *section) entry(rev int, value any, raw []byte) Entry {
-	e := Entry{Rev: rev, Value: json.RawMessage(raw)}
+// entry builds the SectionEntry outside the lock: effective may look at the disk (the CUDA engine's file).
+func (sec *section) entry(rev int, value any, raw []byte) SectionEntry {
+	e := SectionEntry{Rev: rev, Value: json.RawMessage(raw)}
 	if sec.effective != nil {
 		eff, err := json.Marshal(sec.effective(value))
 		if err != nil {
@@ -170,14 +192,14 @@ func (sec *section) entry(rev int, value any, raw []byte) Entry {
 }
 
 // All returns every section's entry.
-func (s *Store) All() map[string]Entry {
+func (s *Store) All() map[string]SectionEntry {
 	s.mu.RLock()
 	names := make([]string, 0, len(s.sections))
 	for name := range s.sections {
 		names = append(names, name)
 	}
 	s.mu.RUnlock()
-	all := make(map[string]Entry, len(names))
+	all := make(map[string]SectionEntry, len(names))
 	for _, name := range names {
 		if e, err := s.Section(name); err == nil {
 			all[name] = e
@@ -188,7 +210,7 @@ func (s *Store) All() map[string]Entry {
 
 // Put replaces a whole section if rev is still the stored revision: decode strictly, Validate, save, update the
 // cache, then notify the subscribers. A rejected Put changes nothing and notifies nobody.
-func (s *Store) Put(name string, rev int, value json.RawMessage) (Entry, error) {
+func (s *Store) Put(name string, rev int, value json.RawMessage) (SectionEntry, error) {
 	s.putMu.Lock()
 	locked := true
 	defer func() {
@@ -201,27 +223,27 @@ func (s *Store) Put(name string, rev int, value json.RawMessage) (Entry, error) 
 	sec, ok := s.sections[name]
 	s.mu.RUnlock()
 	if !ok {
-		return Entry{}, ErrUnknownSection
+		return SectionEntry{}, ErrUnknownSection
 	}
 	if s.db == nil {
-		return Entry{}, ErrUnavailable
+		return SectionEntry{}, ErrUnavailable
 	}
 	v, err := sec.decode(value)
 	if err != nil {
-		return Entry{}, err
+		return SectionEntry{}, err
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
-		return Entry{}, fmt.Errorf("config put %s: %w", name, err)
+		return SectionEntry{}, fmt.Errorf("config put %s: %w", name, err)
 	}
 	newRev, err := s.db.ConfigPut(context.Background(), name, rev, raw)
 	switch {
 	case errors.Is(err, store.ErrConflict):
-		return Entry{}, ErrConflict
+		return SectionEntry{}, ErrConflict
 	case errors.Is(err, store.ErrReadOnly):
-		return Entry{}, ErrUnavailable
+		return SectionEntry{}, ErrUnavailable
 	case err != nil:
-		return Entry{}, fmt.Errorf("config put %s: %w", name, err)
+		return SectionEntry{}, fmt.Errorf("config put %s: %w", name, err)
 	}
 
 	// The notify lock comes before the data lock is released, so a later Put can't notify before this one; it is

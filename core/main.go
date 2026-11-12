@@ -233,10 +233,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 }
 
 // effectiveModels is the models section's read-only view: the paths core really uses when none is chosen.
-func effectiveModels(env config.Env) func(config.Models) any {
-	return func(m config.Models) any {
+func effectiveModels(env config.Env) func(config.Models) config.ModelsEffective {
+	return func(m config.Models) config.ModelsEffective {
 		r := m.Resolve(env)
-		return map[string]string{"llamaServerPath": r.LlamaServerPath, "modelsDir": r.ModelsDir}
+		return config.ModelsEffective{LlamaServerPath: r.LlamaServerPath, ModelsDir: r.ModelsDir}
 	}
 }
 
@@ -317,8 +317,8 @@ func writeReady(w io.Writer, port int) error {
 
 // sectionWriter is the part of the config store switchToCUDA uses.
 type sectionWriter interface {
-	Section(name string) (config.Entry, error)
-	Put(name string, rev int, value json.RawMessage) (config.Entry, error)
+	Section(name string) (config.SectionEntry, error)
+	Put(name string, rev int, value json.RawMessage) (config.SectionEntry, error)
 }
 
 // systemRetention is how long system events are kept; other streams are never trimmed.
@@ -358,7 +358,7 @@ func trimSystemEvents(ctx context.Context, t systemTrimmer, every time.Duration,
 func switchToCUDA(cfg sectionWriter, logger *slog.Logger) {
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
-		var entry config.Entry
+		var entry config.SectionEntry
 		if entry, err = cfg.Section(config.ModelsSection); err != nil {
 			break
 		}

@@ -29,8 +29,8 @@ const (
 	Done        State = "done"
 )
 
-// Item is one download as the "downloads" event shows it. ID is the catalog id.
-type Item struct {
+// DownloadItem is one download as the "downloads" event shows it. ID is the catalog id.
+type DownloadItem struct {
 	ID    string `json:"id"`
 	State State  `json:"state"`
 	Bytes int64  `json:"bytes"`
@@ -156,20 +156,20 @@ func (m *Manager) notify() {
 
 // Items lists every download worth showing, in catalog order. A model with no job but a leftover .part file from an
 // earlier run shows as paused: that is how a download survives closing the app, with no state file of our own.
-func (m *Manager) Items() []Item {
+func (m *Manager) Items() []DownloadItem {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := []Item{}
+	out := []DownloadItem{}
 	for _, t := range m.targets() {
 		if j := m.jobs[t.id]; j != nil {
-			out = append(out, Item{ID: t.id, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
+			out = append(out, DownloadItem{ID: t.id, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
 			continue
 		}
 		if t.folder == "" {
 			continue
 		}
 		if have := partBytes(t.folder, t.files); have > 0 {
-			out = append(out, Item{ID: t.id, State: Paused, Bytes: have, Total: totalSize(t.files)})
+			out = append(out, DownloadItem{ID: t.id, State: Paused, Bytes: have, Total: totalSize(t.files)})
 		}
 	}
 	return out

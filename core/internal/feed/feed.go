@@ -22,7 +22,7 @@ type Router interface {
 
 // Downloads is the part of the download queue feed reads.
 type Downloads interface {
-	Items() []downloads.Item
+	Items() []downloads.DownloadItem
 	Subscribe() (<-chan struct{}, func())
 }
 

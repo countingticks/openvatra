@@ -261,19 +261,19 @@ type conflictingWriter struct {
 	putRevs   []int
 }
 
-func (c *conflictingWriter) Section(string) (config.Entry, error) {
-	return config.Entry{Rev: c.rev, Value: c.value}, nil
+func (c *conflictingWriter) Section(string) (config.SectionEntry, error) {
+	return config.SectionEntry{Rev: c.rev, Value: c.value}, nil
 }
 
-func (c *conflictingWriter) Put(_ string, rev int, value json.RawMessage) (config.Entry, error) {
+func (c *conflictingWriter) Put(_ string, rev int, value json.RawMessage) (config.SectionEntry, error) {
 	c.putRevs = append(c.putRevs, rev)
 	if c.conflicts > 0 {
 		c.conflicts--
 		c.rev++
-		return config.Entry{}, config.ErrConflict
+		return config.SectionEntry{}, config.ErrConflict
 	}
 	c.value, c.rev = value, rev+1
-	return config.Entry{Rev: c.rev, Value: value}, nil
+	return config.SectionEntry{Rev: c.rev, Value: value}, nil
 }
 
 func TestSwitchToCUDARetriesOnceOnConflict(t *testing.T) {

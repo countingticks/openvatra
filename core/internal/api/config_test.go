@@ -42,9 +42,9 @@ func configCall(t *testing.T, cfg Config, method, path, body string) *httptest.R
 	return rec
 }
 
-func decodeEntry(t *testing.T, body string) config.Entry {
+func decodeEntry(t *testing.T, body string) config.SectionEntry {
 	t.Helper()
-	var e config.Entry
+	var e config.SectionEntry
 	if err := json.Unmarshal([]byte(body), &e); err != nil {
 		t.Fatalf("not an entry: %s", body)
 	}
@@ -69,7 +69,7 @@ func TestConfigListAndGetSection(t *testing.T) {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	var list struct {
-		Sections map[string]config.Entry `json:"sections"`
+		Sections map[string]config.SectionEntry `json:"sections"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
