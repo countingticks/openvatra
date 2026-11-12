@@ -1,0 +1,312 @@
+{
+  "components": {
+    "schemas": {
+      "NewThing": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "size": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "errBody": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "code"
+        ],
+        "type": "object"
+      },
+      "thing": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "a",
+              "b"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenVatra core",
+    "version": "1.2.3",
+    "x-api-level": 4
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Event stream",
+        "tags": [
+          "events"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/shutdown": {
+      "post": {
+        "operationId": "shutdown",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Stop core",
+        "tags": [
+          "system"
+        ],
+        "x-scope": "shell"
+      }
+    },
+    "/api/things": {
+      "post": {
+        "operationId": "createThing",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewThing"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thing"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errBody"
+                }
+              }
+            },
+            "description": "Error. Codes: bad_request, conflict."
+          }
+        },
+        "summary": "Create a thing",
+        "tags": [
+          "things"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/things/{id}": {
+      "delete": {
+        "operationId": "deleteThing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Delete",
+        "tags": [
+          "things"
+        ],
+        "x-scope": "shell"
+      },
+      "get": {
+        "operationId": "getThing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "explode": false,
+            "in": "query",
+            "name": "tags",
+            "required": false,
+            "schema": {
+              "description": "filter",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "style": "form"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/thing"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errBody"
+                }
+              }
+            },
+            "description": "Error. Codes: not_found."
+          }
+        },
+        "summary": "Get one thing",
+        "tags": [
+          "things"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/things/{id}/rename": {
+      "post": {
+        "operationId": "renameThing",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Rename",
+        "tags": [
+          "things"
+        ],
+        "x-scope": "ui"
+      }
+    }
+  }
+}
