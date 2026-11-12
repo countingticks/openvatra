@@ -1,4 +1,4 @@
-// Package store is OpenVatra's own database (chats.db): SQLite through a pure-Go driver, so no C compiler is needed.
+// Package store is OpenVatra's own database (openvatra.db): SQLite through a pure-Go driver, so no C compiler is needed.
 package store
 
 import (
@@ -22,7 +22,10 @@ import (
 var embedded embed.FS
 
 // FileName is the database file inside the data folder.
-const FileName = "chats.db"
+const FileName = "openvatra.db"
+
+// legacyFileName is what the database was called while it held only chats.
+const legacyFileName = "chats.db"
 
 // ErrNewer is wrapped by ReadOnly's error: the database was written by a newer OpenVatra.
 var ErrNewer = errors.New("database is newer than this version")
@@ -30,12 +33,13 @@ var ErrNewer = errors.New("database is newer than this version")
 // Store owns the connections. Writes go through one connection so they never fight over SQLite's single write lock;
 // reads use a small pool of their own, which WAL lets run beside the writer.
 type Store struct {
-	w, r     *sql.DB
-	readOnly error
-	now      func() time.Time // nil = real clock; tests set it
+	w, r      *sql.DB
+	readOnly  error
+	renameErr error            // why chats.db kept its old name this run; nil when nothing was wrong
+	now       func() time.Time // nil = real clock; tests set it
 }
 
-// Open creates the data folder if needed, opens chats.db inside it and brings it up to date. A database from a newer
+// Open creates the data folder if needed, opens openvatra.db inside it (renaming an old chats.db) and brings it up to date. A database from a newer
 // version is opened read-only instead (see ReadOnly): a downgrade must never rewrite data it doesn't understand.
 func Open(dir string) (*Store, error) {
 	return open(dir, embedded, "migrations")
@@ -45,7 +49,7 @@ func open(dir string, migrations fs.FS, root string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data folder: %w", err)
 	}
-	path := filepath.Join(dir, FileName)
+	path, renameErr := resolvePath(dir)
 
 	steps, err := load(migrations, root)
 	if err != nil {
@@ -61,7 +65,7 @@ func open(dir string, migrations fs.FS, root string) (*Store, error) {
 		return nil, err
 	}
 
-	s := &Store{w: w}
+	s := &Store{w: w, renameErr: renameErr}
 	if current > len(steps) {
 		// Reopen with writes switched off at the SQLite level, so even a bug can't modify the newer data.
 		w.Close()
@@ -82,6 +86,50 @@ func open(dir string, migrations fs.FS, root string) (*Store, error) {
 	s.w.SetMaxOpenConns(1)
 	s.r.SetMaxOpenConns(4)
 	return s, nil
+}
+
+// RenameErr is nil when nothing needed renaming or the rename worked; otherwise why chats.db was kept this run.
+func (s *Store) RenameErr() error { return s.renameErr }
+
+// resolvePath picks the database file. An old chats.db is renamed in place once its WAL is folded into it: renaming
+// the main file while a non-empty -wal stays behind would orphan the newest writes. On any failure nothing is
+// copied or deleted and the old name is used for this run.
+func resolvePath(dir string) (string, error) {
+	path := filepath.Join(dir, FileName)
+	legacy := filepath.Join(dir, legacyFileName)
+	if fi, err := os.Stat(path); err == nil && !fi.IsDir() { // a folder in the way is a rename failure, below
+		return path, nil
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		return path, nil
+	}
+	if err := renameLegacy(legacy, path); err != nil {
+		return legacy, err
+	}
+	return path, nil
+}
+
+func renameLegacy(legacy, path string) error {
+	db, err := sql.Open("sqlite", "file:"+filepath.ToSlash(legacy))
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	if cerr := db.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		return fmt.Errorf("checkpoint: %w", err)
+	}
+	if fi, err := os.Stat(legacy + "-wal"); err == nil && fi.Size() > 0 {
+		return errors.New("write-ahead log is not empty after checkpoint")
+	}
+	if err := os.Rename(legacy, path); err != nil {
+		return err
+	}
+	os.Remove(legacy + "-wal") // best effort: both are empty or stale once the checkpoint closed cleanly
+	os.Remove(legacy + "-shm")
+	return nil
 }
 
 // connect opens a pool on the file. The pragmas ride in the DSN so every new connection gets them: a pragma run once

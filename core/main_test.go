@@ -179,7 +179,7 @@ func TestRunCreatesTheDataFolderAndDatabase(t *testing.T) {
 	}
 	go io.Copy(io.Discard, pr)
 
-	if _, err := os.Stat(filepath.Join(dir, "chats.db")); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, "openvatra.db")); err != nil {
 		t.Fatal("database not created:", err)
 	}
 	stdinW.Close()

@@ -1,0 +1,72 @@
+[
+  {
+    "name": "empty text",
+    "text": "",
+    "args": []
+  },
+  {
+    "name": "only whitespace",
+    "text": "   \n ",
+    "args": []
+  },
+  {
+    "name": "tabs and newlines between args",
+    "text": "-c 131072\n  --jinja\t-ngl 99",
+    "args": ["-c", "131072", "--jinja", "-ngl", "99"]
+  },
+  {
+    "name": "quoted path with spaces",
+    "text": "--x \"D:\\My Models\\a.gguf\"",
+    "args": ["--x", "D:\\My Models\\a.gguf"]
+  },
+  {
+    "name": "quote inside an argument",
+    "text": "--alias=\"my model\" next",
+    "args": ["--alias=my model", "next"]
+  },
+  {
+    "name": "empty argument",
+    "text": "--chat-template \"\"",
+    "args": ["--chat-template", ""]
+  },
+  {
+    "name": "backslashes are plain",
+    "text": "D:\\My Models\\a.gguf",
+    "args": ["D:\\My", "Models\\a.gguf"]
+  },
+  {
+    "name": "no-break space separates",
+    "text": "a\u00a0b",
+    "args": ["a", "b"]
+  },
+  {
+    "name": "byte order mark separates",
+    "text": "a\ufeffb",
+    "args": ["a", "b"]
+  },
+  {
+    "name": "next line does not separate",
+    "text": "a\u0085b",
+    "args": ["a\u0085b"]
+  },
+  {
+    "name": "unclosed quote",
+    "text": "--alias \"my model",
+    "error": "A quote \" is not closed."
+  },
+  {
+    "name": "reserved flag with equals",
+    "text": "--port=1",
+    "error": "--port is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved short flag",
+    "text": "-m x",
+    "error": "-m is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "valid flags",
+    "text": "-c 4096 --jinja",
+    "args": ["-c", "4096", "--jinja"]
+  }
+]
