@@ -1,6 +1,7 @@
 // core's model endpoints, for the UI: follows core's event stream (GET /api/events) to keep the model list current
 // without polling, and loads or unloads a model on request. No Electron imports, so tests need only a fake fetch.
 import { isModelList, type ModelInfo } from '../../shared/core'
+import { coreErrorMessage } from './coreError'
 import { isDownloadList, type DownloadItem } from '../../shared/setup'
 
 /** Wait before reopening an event stream that ended while core was still ready. */
@@ -143,7 +144,7 @@ export function createModelsClient({
   async function act(id: string, action: 'load' | 'unload'): Promise<void> {
     const response = await request(`/api/models/${encodeURIComponent(id)}/${action}`, { method: 'POST' })
     if (response.ok) return
-    throw new Error(await errorMessage(response))
+    throw new Error(await coreErrorMessage(response))
   }
 
   return {
@@ -154,16 +155,4 @@ export function createModelsClient({
     load: (id) => act(id, 'load'),
     unload: (id) => act(id, 'unload')
   }
-}
-
-/** core's errors are `{ "error": { "code", "message" } }`; anything else gets a generic message. */
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { message?: unknown } }
-    const message = body.error?.message
-    if (typeof message === 'string' && message) return message.slice(0, 300)
-  } catch {
-    // not JSON: fall through
-  }
-  return `core answered with HTTP ${response.status}`
 }

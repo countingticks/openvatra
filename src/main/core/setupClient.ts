@@ -10,6 +10,7 @@ import {
   type DownloadItem,
   type HardwareReport
 } from '../../shared/setup'
+import { coreErrorMessage } from './coreError'
 
 /** The folder models are saved in when the user hasn't chosen one: easy to find in Explorer. */
 export function defaultModelsDir(homeDir: string): string {
@@ -80,7 +81,7 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
 
   async function json(path: string, init?: RequestInit): Promise<unknown> {
     const response = await request(path, init)
-    if (!response.ok) throw new Error(await errorMessage(response))
+    if (!response.ok) throw new Error(await coreErrorMessage(response))
     return response.json()
   }
 
@@ -184,16 +185,4 @@ export function createSetupClient(options: SetupClientOptions): SetupClient {
   }
 
   return { hardware, catalog, download, downloadEngine, cancel, resume, remove }
-}
-
-/** core's errors are `{ "error": { "code", "message" } }`; anything else gets a generic message. */
-async function errorMessage(response: Response): Promise<string> {
-  try {
-    const body = (await response.json()) as { error?: { message?: unknown } }
-    const message = body.error?.message
-    if (typeof message === 'string' && message) return message.slice(0, 300)
-  } catch {
-    // not JSON: fall through
-  }
-  return `core answered with HTTP ${response.status}`
 }

@@ -169,9 +169,7 @@ describe('setup client: remove', () => {
 
   it("shows core's own message when core refuses", async () => {
     const { client, request, trash } = setUp(null)
-    request.mockResolvedValueOnce(
-      json({ error: { code: 'unknown_model', message: 'not a catalog model' } }, 404)
-    )
+    request.mockResolvedValueOnce(json({ error: 'unknown_model', message: 'not a catalog model' }, 404))
 
     await expect(client.remove('nope')).rejects.toThrow('not a catalog model')
     expect(trash).not.toHaveBeenCalled()
@@ -215,9 +213,7 @@ describe('setup client: downloads', () => {
 
   it("rejects with core's message, e.g. not enough space", async () => {
     const { client, request } = setUp(null)
-    request.mockResolvedValueOnce(
-      json({ error: { code: 'not_enough_space', message: 'not enough disk space' } }, 409)
-    )
+    request.mockResolvedValueOnce(json({ error: 'not_enough_space', message: 'not enough disk space' }, 409))
 
     await expect(client.download('qwen3-8b')).rejects.toThrow('not enough disk space')
   })

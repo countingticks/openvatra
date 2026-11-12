@@ -196,7 +196,7 @@ describe('models client: load and unload', () => {
   })
 
   it("rejects with core's own message, or a generic one when there is none", async () => {
-    const coreError = { error: { code: 'load_failed', message: 'llama-server.exe not found' } }
+    const coreError = { error: 'load_failed', message: 'llama-server.exe not found' }
     const request = vi
       .fn<Request>()
       .mockResolvedValueOnce(Response.json(coreError, { status: 503 }))
