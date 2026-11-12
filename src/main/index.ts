@@ -143,6 +143,10 @@ function start(): void {
       onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
       onDownloads: (items) => sendToWindow(ipcChannels.setupDownloadsChanged, items),
       onConfig: modelSettings.noteChanged,
+      onReset: () =>
+        void modelSettings
+          .refresh()
+          .catch((error) => log.warn('Could not read the model settings from core', error)),
       log
     })
     /** On every ready: a v6 user's values go to core once, then main reads what core has. */

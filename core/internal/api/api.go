@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/router"
 )
@@ -15,15 +16,16 @@ import (
 // reply is sent) when a client asks core to stop; listModels reports the models
 // currently on disk (a function, because the folder will change at runtime); rt
 // picks the model server for the chat and embedding endpoints; cfg is the stored config behind /api/config/... (nil
-// only in tests); hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened).
-func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg Config, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service) http.Handler {
+// only in tests); hardware measures the PC; cat is the list of models to download; dl runs the downloads; chats runs conversations (nil when the chat database could not be opened); log is
+// the event log behind /api/events.
+func NewHandler(token string, port int, shutdown func(), listModels func() ([]models.Model, error), rt Router, cfg Config, hardware Hardware, cat Catalog, dl Downloads, chats *chat.Service, log event.Log) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
 	mux.HandleFunc("GET /v1/models", modelList(listModels))
 	mux.HandleFunc("POST /v1/chat/completions", proxy(rt, router.Chat))
 	mux.HandleFunc("POST /v1/embeddings", proxy(rt, router.Embedding))
 	mux.HandleFunc("GET /api/state", stateHandler(rt, listModels))
-	mux.HandleFunc("GET /api/events", eventsHandler(rt, listModels, dl, cfg))
+	mux.HandleFunc("GET /api/events", eventsHandler(log, keepaliveInterval))
 	mux.HandleFunc("POST /api/models/{id}/load", loadHandler(rt))
 	mux.HandleFunc("POST /api/models/{id}/unload", unloadHandler(rt))
 	mux.HandleFunc("POST /api/models/refresh", refreshHandler(rt))

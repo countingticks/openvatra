@@ -13,7 +13,6 @@ type Config interface {
 	All() map[string]config.Entry
 	Section(name string) (config.Entry, error)
 	Put(name string, rev int, value json.RawMessage) (config.Entry, error)
-	Subscribe(fn func(section string, rev int)) (cancel func())
 }
 
 // registerConfig adds the three config routes; without a store (tests only) they answer 503.
