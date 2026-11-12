@@ -47,6 +47,26 @@ test('the UI can change a setting, and it is saved to disk', async () => {
   expect(await settingsOnDisk()).toMatchObject({ theme: 'dark' })
 })
 
+test('the UI hears a change it made, after it is saved', async () => {
+  // From another value, so a push that merely repeats the earlier test's theme (window bounds are pushed too) can't pass.
+  await mainWindow.evaluate(() => (window as WithApi).api.settings.update({ theme: 'light' }))
+
+  const pushed = await mainWindow.evaluate(
+    () =>
+      new Promise<string>((resolve) => {
+        const api = (window as WithApi).api
+        const unsubscribe = api.settings.onChange((settings) => {
+          if (settings.theme !== 'dark') return
+          unsubscribe()
+          resolve(settings.theme)
+        })
+        void api.settings.update({ theme: 'dark' })
+      })
+  )
+
+  expect(pushed).toBe('dark')
+})
+
 test('the UI cannot change what it does not own', async () => {
   const forbidden = { x: 0, y: 0, width: 4000, height: 4000 }
 

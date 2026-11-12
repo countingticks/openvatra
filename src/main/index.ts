@@ -138,6 +138,8 @@ function start(): void {
     const sendToWindow = (channel: string, value: unknown): void => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value)
     }
+    // Every saved change, wherever it came from (the UI, a file dialog, the engine download), reaches the window.
+    store.onChange((settings) => sendToWindow(ipcChannels.settingsChanged, settings))
     const manifest = llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath())
     const pinnedTag = (): Promise<string | null> => readPinnedTag(manifest)
     // A finished engine download switches to it (the standard engine stays one click away) and tells core.
