@@ -64,6 +64,8 @@ type Config struct {
 	DiskFree func(dir string) (uint64, error)
 	// OnFinish runs after a model finished, so the caller can rescan the folder and tell the UI.
 	OnFinish func()
+	// OnEngineReady runs once after the CUDA engine download finished in this run; nil = nothing.
+	OnEngineReady func()
 	// Engine is the optional CUDA build; nil when core was started without a manifest.
 	Engine *Engine
 }
@@ -371,6 +373,9 @@ func (m *Manager) run(id string) {
 	}
 	if err == nil && m.cfg.OnFinish != nil {
 		m.cfg.OnFinish()
+	}
+	if err == nil && id == EngineID && m.cfg.OnEngineReady != nil {
+		m.cfg.OnEngineReady()
 	}
 	m.notify()
 }

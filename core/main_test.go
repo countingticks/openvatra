@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -234,5 +235,112 @@ func TestResolveFrom(t *testing.T) {
 	}
 	if got := resolveFrom(override, cfg, env); got.LlamaServerPath != server || got.ModelsDir != folder {
 		t.Errorf("with the override = %q, %q, want %q, %q", got.LlamaServerPath, got.ModelsDir, server, folder)
+	}
+}
+
+func modelsEngine(t *testing.T, s sectionWriter) (string, int) {
+	t.Helper()
+	entry, err := s.Section(config.ModelsSection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m config.Models
+	if err := json.Unmarshal(entry.Value, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m.Engine, entry.Rev
+}
+
+func registeredStore(t *testing.T, withDB bool, logger *slog.Logger) *config.Store {
+	t.Helper()
+	var db config.DB
+	if withDB {
+		st, err := store.Open(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.Close() })
+		db = st
+	}
+	cfg := config.New(db, logger)
+	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(config.Env{LlamaDir: t.TempDir(), Home: t.TempDir()}))
+	return cfg
+}
+
+func TestSwitchToCUDAStoresTheEngine(t *testing.T) {
+	cfg := registeredStore(t, true, nil)
+	var log bytes.Buffer
+	switchToCUDA(cfg, slog.New(slog.NewTextHandler(&log, nil)))
+	if engine, rev := modelsEngine(t, cfg); engine != "cuda" || rev != 1 {
+		t.Fatalf("engine %q rev %d, want cuda and 1", engine, rev)
+	}
+	switchToCUDA(cfg, slog.New(slog.NewTextHandler(&log, nil)))
+	if _, rev := modelsEngine(t, cfg); rev != 1 {
+		t.Fatalf("rev after a second switch = %d, want 1 (already cuda)", rev)
+	}
+	if log.Len() != 0 {
+		t.Fatalf("unexpected log: %s", log.String())
+	}
+}
+
+func TestSwitchToCUDAWithoutADatabaseWarns(t *testing.T) {
+	var log bytes.Buffer
+	switchToCUDA(registeredStore(t, false, nil), slog.New(slog.NewTextHandler(&log, nil)))
+	if !strings.Contains(log.String(), "level=WARN") || !strings.Contains(log.String(), "config storage is not available") {
+		t.Fatalf("log = %q", log.String())
+	}
+}
+
+// conflictingWriter answers ErrConflict to the first conflicts Puts and bumps the stored rev each time, like a
+// competing writer would.
+type conflictingWriter struct {
+	value     json.RawMessage
+	rev       int
+	conflicts int
+	putRevs   []int
+}
+
+func (c *conflictingWriter) Section(string) (config.Entry, error) {
+	return config.Entry{Rev: c.rev, Value: c.value}, nil
+}
+
+func (c *conflictingWriter) Put(_ string, rev int, value json.RawMessage) (config.Entry, error) {
+	c.putRevs = append(c.putRevs, rev)
+	if c.conflicts > 0 {
+		c.conflicts--
+		c.rev++
+		return config.Entry{}, config.ErrConflict
+	}
+	c.value, c.rev = value, rev+1
+	return config.Entry{Rev: c.rev, Value: value}, nil
+}
+
+func TestSwitchToCUDARetriesOnceOnConflict(t *testing.T) {
+	value, _ := json.Marshal(config.DefaultModels())
+	tests := []struct {
+		name      string
+		conflicts int
+		wantPuts  []int
+		wantCUDA  bool
+		wantError bool
+	}{
+		{"one conflict", 1, []int{0, 1}, true, false},
+		{"two conflicts", 2, []int{0, 1}, false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &conflictingWriter{value: value, conflicts: tt.conflicts}
+			var log bytes.Buffer
+			switchToCUDA(w, slog.New(slog.NewTextHandler(&log, nil)))
+			if !slices.Equal(w.putRevs, tt.wantPuts) {
+				t.Errorf("Put revs = %v, want %v", w.putRevs, tt.wantPuts)
+			}
+			if engine, _ := modelsEngine(t, w); (engine == "cuda") != tt.wantCUDA {
+				t.Errorf("engine = %q, cuda wanted: %v", engine, tt.wantCUDA)
+			}
+			if got := strings.Count(log.String(), "level=ERROR"); (got == 1) != tt.wantError || got > 1 {
+				t.Errorf("error lines = %d, want error: %v\n%s", got, tt.wantError, log.String())
+			}
+		})
 	}
 }
