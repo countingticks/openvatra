@@ -5,12 +5,14 @@ import (
 	"errors"
 	"io/fs"
 	"testing"
+
+	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 func openConfigStore(t *testing.T) (*Store, string) {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := Open(dir)
+	s, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,12 +65,12 @@ func TestConfigPutWithRevOnAbsentSectionConflicts(t *testing.T) {
 
 func TestConfigPutOnReadOnlyStoreIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
-	s, err = open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +89,7 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 		return string(b)
 	}
 	dir := t.TempDir()
-	old, err := open(dir, migrations(read("0001_baseline.sql"), read("0002_chats.sql")), "m")
+	old, err := open(dir, event.NewBus(16), migrations(read("0001_baseline.sql"), read("0002_chats.sql")), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,12 +99,12 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 	}
 	old.Close()
 
-	s, err := Open(dir)
+	s, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 3 {
+	if v, _ := s.Version(); v != 4 {
 		t.Fatalf("version = %d", v)
 	}
 	if _, err := s.GetChat(context.Background(), chat.ID); err != nil {
@@ -119,7 +121,7 @@ func TestConfigValueSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Close()
-	s2, err := Open(dir)
+	s2, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}

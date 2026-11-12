@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
@@ -214,7 +215,7 @@ func registeredStore(t *testing.T, withDB bool, logger *slog.Logger) *config.Sto
 	t.Helper()
 	var db config.DB
 	if withDB {
-		st, err := store.Open(t.TempDir())
+		st, err := store.Open(t.TempDir(), event.NewBus(16))
 		if err != nil {
 			t.Fatal(err)
 		}

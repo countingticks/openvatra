@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/router"
 	"github.com/countingticks/openvatra/core/internal/store"
@@ -58,7 +59,7 @@ func sse(w http.ResponseWriter, lines ...string) {
 
 func newService(t *testing.T, up *upstream) (*Service, store.Chat) {
 	t.Helper()
-	st, err := store.Open(t.TempDir())
+	st, err := store.Open(t.TempDir(), event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}

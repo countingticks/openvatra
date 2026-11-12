@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
@@ -26,7 +27,7 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 		model(w, r)
 	}))
 	t.Cleanup(backend.Close)
-	st, err := store.Open(t.TempDir())
+	st, err := store.Open(t.TempDir(), event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}

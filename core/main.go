@@ -22,6 +22,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -88,11 +89,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		logger.Warn("job object setup failed", "err", err)
 	}
 
+	bus := event.NewBus(256)
+
 	// Not fatal: models and downloads work without chat storage, and the log says why it is missing.
 	var chatStore *store.Store
 	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
 	if *dataDir != "" {
-		if db, err := store.Open(*dataDir); err != nil {
+		if db, err := store.Open(*dataDir, bus); err != nil {
 			logger.Error("open chat database", "err", err)
 		} else {
 			defer db.Close()

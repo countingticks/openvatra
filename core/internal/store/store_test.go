@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/countingticks/openvatra/core/internal/event"
 )
 
 // migrations builds an in-memory migration folder named m/0001_x.sql, m/0002_x.sql, ...
@@ -21,7 +23,7 @@ func migrations(sqls ...string) fstest.MapFS {
 
 func TestOpenEmptyDatabaseCreatesFolderAndMigrates(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "nested", "data")
-	s, err := Open(dir)
+	s, err := Open(dir, event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +41,7 @@ func TestOpenEmptyDatabaseCreatesFolderAndMigrates(t *testing.T) {
 }
 
 func TestPragmasApplyToEveryConnection(t *testing.T) {
-	s, err := Open(t.TempDir())
+	s, err := Open(t.TempDir(), event.NewBus(16))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +58,7 @@ func TestPragmasApplyToEveryConnection(t *testing.T) {
 
 func TestOldDatabaseGetsOnlyTheNewMigrations(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +67,7 @@ func TestOldDatabaseGetsOnlyTheNewMigrations(t *testing.T) {
 	}
 	s.Close()
 
-	s, err = open(dir, migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,10 +86,10 @@ func TestOldDatabaseGetsOnlyTheNewMigrations(t *testing.T) {
 
 func TestFailedMigrationLeavesVersionUntouched(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := open(dir, migrations("CREATE TABLE a(x)", "THIS IS NOT SQL"), "m"); err == nil {
+	if _, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)", "THIS IS NOT SQL"), "m"); err == nil {
 		t.Fatal("want an error")
 	}
-	s, err := open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,13 +101,13 @@ func TestFailedMigrationLeavesVersionUntouched(t *testing.T) {
 
 func TestNewerDatabaseOpensReadOnly(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.Close()
 
-	s, err = open(dir, migrations("CREATE TABLE a(x)"), "m") // an older app
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m") // an older app
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +138,7 @@ func TestLoadRejectsGapsInNumbering(t *testing.T) {
 func crashCopy(t *testing.T, name string) string {
 	t.Helper()
 	a, b := t.TempDir(), t.TempDir()
-	s, err := open(a, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(a, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +164,7 @@ func crashCopy(t *testing.T, name string) string {
 
 func TestLegacyDatabaseWithWalIsRenamed(t *testing.T) {
 	dir := crashCopy(t, legacyFileName)
-	s, err := open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +187,7 @@ func TestLegacyDatabaseWithWalIsRenamed(t *testing.T) {
 
 func TestExistingNewNameWinsOverLegacy(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +196,7 @@ func TestExistingNewNameWinsOverLegacy(t *testing.T) {
 	if err := os.WriteFile(legacy, []byte("not a database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err = open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +209,7 @@ func TestExistingNewNameWinsOverLegacy(t *testing.T) {
 
 func TestNewerLegacyDatabaseIsRenamedAndReadOnly(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)", "CREATE TABLE b(y)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +217,7 @@ func TestNewerLegacyDatabaseIsRenamedAndReadOnly(t *testing.T) {
 	if err := os.Rename(filepath.Join(dir, FileName), filepath.Join(dir, legacyFileName)); err != nil {
 		t.Fatal(err)
 	}
-	s, err = open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,7 +232,7 @@ func TestNewerLegacyDatabaseIsRenamedAndReadOnly(t *testing.T) {
 
 func TestFailedRenameKeepsLegacyDatabase(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +246,7 @@ func TestFailedRenameKeepsLegacyDatabase(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(dir, FileName), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	s, err = open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err = open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +262,7 @@ func TestFailedRenameKeepsLegacyDatabase(t *testing.T) {
 
 func TestEmptyFolderGetsNewName(t *testing.T) {
 	dir := t.TempDir()
-	s, err := open(dir, migrations("CREATE TABLE a(x)"), "m")
+	s, err := open(dir, event.NewBus(16), migrations("CREATE TABLE a(x)"), "m")
 	if err != nil {
 		t.Fatal(err)
 	}
