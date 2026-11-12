@@ -95,6 +95,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		} else {
 			defer db.Close()
 			chatStore = db
+			if err := db.RenameErr(); err != nil {
+				logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
+			}
 			if ro := db.ReadOnly(); ro != nil {
 				logger.Warn("chat database is read-only", "err", ro)
 			}
