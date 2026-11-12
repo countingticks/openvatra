@@ -1,0 +1,1894 @@
+{
+  "components": {
+    "schemas": {
+      "CatalogFolder": {
+        "properties": {
+          "folder": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "folder"
+        ],
+        "type": "object"
+      },
+      "Chat": {
+        "properties": {
+          "createdAt": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "settings": {},
+          "title": {
+            "type": "string"
+          },
+          "titleSource": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "integer"
+          },
+          "webSearch": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "titleSource",
+          "model",
+          "createdAt",
+          "updatedAt",
+          "webSearch",
+          "settings"
+        ],
+        "type": "object"
+      },
+      "ChatWithMessages": {
+        "properties": {
+          "chat": {
+            "$ref": "#/components/schemas/Chat"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/Message"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "chat",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "ConfigAll": {
+        "properties": {
+          "sections": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SectionEntry"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "sections"
+        ],
+        "type": "object"
+      },
+      "ConfigChanged": {
+        "properties": {
+          "rev": {
+            "type": "integer"
+          },
+          "section": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "section",
+          "rev"
+        ],
+        "type": "object"
+      },
+      "ConfigChangedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ConfigChanged"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "config.changed"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "CreateChat": {
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "webSearch": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "type": "object"
+      },
+      "DownloadItem": {
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "speed": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "bytes",
+          "total",
+          "speed"
+        ],
+        "type": "object"
+      },
+      "DownloadProgressEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DownloadsBody"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "download.progress"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "DownloadsBody": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DownloadItem"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "type": "object"
+      },
+      "ErrorBody": {
+        "properties": {
+          "current": {
+            "description": "409 config_conflict only: the section as it is now"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "message"
+        ],
+        "type": "object"
+      },
+      "Event": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ConfigChangedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ModelStateEvent"
+          },
+          {
+            "$ref": "#/components/schemas/DownloadProgressEvent"
+          }
+        ]
+      },
+      "File": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "GPU": {
+        "properties": {
+          "freeBytes": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "totalBytes": {
+            "type": "integer"
+          },
+          "vendor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "vendor",
+          "totalBytes",
+          "freeBytes"
+        ],
+        "type": "object"
+      },
+      "Hello": {
+        "properties": {
+          "head": {
+            "type": "integer"
+          },
+          "log": {
+            "type": "string"
+          },
+          "reset": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "log",
+          "head",
+          "reset"
+        ],
+        "type": "object"
+      },
+      "Item": {
+        "properties": {
+          "baseUrl": {
+            "type": "string"
+          },
+          "diskShortBytes": {
+            "type": "integer"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/File"
+            },
+            "type": "array"
+          },
+          "fit": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "licence": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "needsGB": {
+            "type": "integer"
+          },
+          "rank": {
+            "type": "integer"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "summary",
+          "tags",
+          "licence",
+          "repo",
+          "revision",
+          "files",
+          "needsGB",
+          "rank",
+          "fit",
+          "installed",
+          "diskShortBytes"
+        ],
+        "type": "object"
+      },
+      "Message": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "integer"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "reasoning": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "stats": {},
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "chatId",
+          "role",
+          "content",
+          "reasoning",
+          "status",
+          "error",
+          "model",
+          "stats",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "Model": {
+        "properties": {
+          "busy": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "projector": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "busy",
+          "sizeBytes",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "ModelOptions": {
+        "properties": {
+          "args": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "args"
+        ],
+        "type": "object"
+      },
+      "ModelStateEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/StateBody"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "model.state"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "Models": {
+        "properties": {
+          "embeddingModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "engine": {
+            "type": "string"
+          },
+          "idleUnloadMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "llamaServerPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "modelsDir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelOptions"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "llamaServerPath",
+          "modelsDir",
+          "embeddingModel",
+          "idleUnloadMinutes",
+          "options",
+          "engine"
+        ],
+        "type": "object"
+      },
+      "ModelsEffective": {
+        "properties": {
+          "llamaServerPath": {
+            "type": "string"
+          },
+          "modelsDir": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "llamaServerPath",
+          "modelsDir"
+        ],
+        "type": "object"
+      },
+      "Report": {
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "gpu": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/GPU"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ramBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "gpu",
+          "ramBytes"
+        ],
+        "type": "object"
+      },
+      "SectionEntry": {
+        "properties": {
+          "effective": {},
+          "rev": {
+            "type": "integer"
+          },
+          "value": {}
+        },
+        "required": [
+          "rev",
+          "value"
+        ],
+        "type": "object"
+      },
+      "StartDownload": {
+        "properties": {
+          "catalogId": {
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "cuda"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "StateBody": {
+        "properties": {
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "models"
+        ],
+        "type": "object"
+      },
+      "StatusBody": {
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "VersionBody": {
+        "properties": {
+          "api": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "api"
+        ],
+        "type": "object"
+      },
+      "View": {
+        "properties": {
+          "diskFreeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            },
+            "type": "array"
+          },
+          "recommended": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "entries",
+          "diskFreeBytes",
+          "recommended"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenVatra core",
+    "version": "0.1.0",
+    "x-api-level": 1
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/catalog": {
+      "get": {
+        "operationId": "getCatalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/View"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "The models to download, judged against this PC",
+        "tags": [
+          "catalog"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/catalog/{id}/folder": {
+      "get": {
+        "operationId": "getCatalogFolder",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogFolder"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_model, no_models_folder, internal."
+          }
+        },
+        "summary": "The folder a catalog model lives in",
+        "tags": [
+          "catalog"
+        ],
+        "x-scope": "shell"
+      }
+    },
+    "/api/chats": {
+      "get": {
+        "operationId": "listChats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Chat"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable, internal."
+          }
+        },
+        "summary": "List the chats, newest first",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      },
+      "post": {
+        "operationId": "createChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChat"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, bad_request, chat_unavailable, internal."
+          }
+        },
+        "summary": "Start a chat",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}": {
+      "delete": {
+        "operationId": "deleteChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable, chat_not_found, internal."
+          }
+        },
+        "summary": "Delete a chat",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      },
+      "get": {
+        "operationId": "getChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatWithMessages"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable, chat_not_found, internal."
+          }
+        },
+        "summary": "One chat with its messages",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      },
+      "patch": {
+        "operationId": "updateChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "webSearch": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, chat_unavailable, chat_not_found, bad_request, internal."
+          }
+        },
+        "summary": "Change a chat's title, model or web search",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}/export": {
+      "get": {
+        "operationId": "exportChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/markdown": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable, chat_not_found, internal."
+          }
+        },
+        "summary": "A chat as Markdown",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}/messages": {
+      "post": {
+        "operationId": "sendMessage",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable, chat_not_found, bad_request, no_streaming, internal."
+          }
+        },
+        "summary": "Send a message and stream the reply",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}/regenerate": {
+      "post": {
+        "operationId": "regenerate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable, chat_not_found, bad_request, no_streaming, internal."
+          }
+        },
+        "summary": "Answer the last message again, streamed",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/config": {
+      "get": {
+        "operationId": "getConfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigAll"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: config_unavailable."
+          }
+        },
+        "summary": "Every config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/config/models": {
+      "get": {
+        "operationId": "getConfigModels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "effective": {
+                      "$ref": "#/components/schemas/ModelsEffective"
+                    },
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/Models"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: internal."
+          }
+        },
+        "summary": "The models config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      },
+      "put": {
+        "operationId": "putConfigModels",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rev": {
+                    "type": "integer"
+                  },
+                  "value": {
+                    "$ref": "#/components/schemas/Models"
+                  }
+                },
+                "required": [
+                  "rev",
+                  "value"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "effective": {
+                      "$ref": "#/components/schemas/ModelsEffective"
+                    },
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/Models"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, internal."
+          }
+        },
+        "summary": "Replace the models config section if rev is still current",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/downloads": {
+      "get": {
+        "operationId": "listDownloads",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadsBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "The download queue",
+        "tags": [
+          "downloads"
+        ],
+        "x-scope": "ui"
+      },
+      "post": {
+        "operationId": "startDownload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartDownload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, internal."
+          }
+        },
+        "summary": "Queue a catalog model or the CUDA engine",
+        "tags": [
+          "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/downloads/{id}": {
+      "delete": {
+        "operationId": "cancelDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_model, no_download, internal."
+          }
+        },
+        "summary": "Cancel a download and drop its partial files",
+        "tags": [
+          "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/downloads/{id}/resume": {
+      "post": {
+        "operationId": "resumeDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_model, no_download, no_models_folder, already_installed, not_enough_space, not_paused, internal."
+          }
+        },
+        "summary": "Resume a paused or failed download",
+        "tags": [
+          "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "stream",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "log",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/Hello"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Event"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_after, invalid_filter, no_streaming, event_log_failed."
+          }
+        },
+        "summary": "Stream the event log as Server-Sent Events",
+        "tags": [
+          "events"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/hardware": {
+      "get": {
+        "operationId": "getHardware",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "The PC's hardware, as last measured",
+        "tags": [
+          "hardware"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/hardware/refresh": {
+      "post": {
+        "operationId": "refreshHardware",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Measure the PC's hardware again",
+        "tags": [
+          "hardware"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/models": {
+      "get": {
+        "operationId": "listModels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StateBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: models_unreadable."
+          }
+        },
+        "summary": "List the models on disk with their state",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/models/refresh": {
+      "post": {
+        "operationId": "refreshModels",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Tell every listener to re-read the models folder",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/models/{id}/load": {
+      "post": {
+        "operationId": "loadModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: model_not_found, no_embedding_model, model_load_failed."
+          }
+        },
+        "summary": "Load a model and answer once it is ready",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/models/{id}/unload": {
+      "post": {
+        "operationId": "unloadModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: model_not_loaded."
+          }
+        },
+        "summary": "Unload a model",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/openapi.json": {
+      "get": {
+        "operationId": "getOpenapi",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Core's OpenAPI document",
+        "tags": [
+          "openapi"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/version": {
+      "get": {
+        "operationId": "getVersion",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Core's version and the contract's version",
+        "tags": [
+          "version"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Report that core is up",
+        "tags": [
+          "core"
+        ],
+        "x-scope": "none"
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "operationId": "shutdown",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "Stop core",
+        "tags": [
+          "core"
+        ],
+        "x-scope": "shell"
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "operationId": "openaiChatCompletions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: body_unreadable, bad_request, model_not_found, model_load_failed, bad_backend, backend_failed."
+          }
+        },
+        "summary": "Chat with a model, OpenAI style",
+        "tags": [
+          "openai"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/v1/embeddings": {
+      "post": {
+        "operationId": "openaiEmbeddings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: body_unreadable, no_embedding_model, model_load_failed, bad_backend, backend_failed."
+          }
+        },
+        "summary": "Embed text with the embedding model, OpenAI style",
+        "tags": [
+          "openai"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "openaiModels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {}
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: models_unreadable."
+          }
+        },
+        "summary": "List the models on disk, OpenAI style",
+        "tags": [
+          "openai"
+        ],
+        "x-scope": "ui"
+      }
+    }
+  }
+}
