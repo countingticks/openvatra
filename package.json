@@ -18,7 +18,7 @@
   "scripts": {
     "fetch:llama": "node scripts/fetch-llama.mjs",
     "gen:api": "node scripts/genApi.mjs",
-    "build:core": "go build -C core -o ../resources/core/core.exe .",
+    "build:core": "node scripts/buildCore.mjs",
     "dev": "npm run build:core && npm run fetch:llama && electron-vite dev --watch",
     "start": "electron-vite preview",
     "build": "npm run build:core && npm run fetch:llama && npm run typecheck && electron-vite build",
