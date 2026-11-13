@@ -9,12 +9,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,21 +29,33 @@ import (
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
+// coreMainEnv makes the test binary act as core.exe: the launcher test starts it with --detach, and the launcher in
+// turn starts it again as the host core.
+const coreMainEnv = "OPENVATRA_CORE_MAIN"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(coreMainEnv) == "1" {
+		main() // exits
+	}
+	os.Exit(m.Run())
+}
+
 func TestWriteReadyIsOneJSONLine(t *testing.T) {
 	var buf bytes.Buffer
-	if err := writeReady(&buf, 53121); err != nil {
+	if err := writeReady(&buf, 53121, 4242); err != nil {
 		t.Fatal(err)
 	}
 
 	var got struct {
 		Event   string `json:"event"`
 		Port    int    `json:"port"`
+		PID     int    `json:"pid"`
 		Version string `json:"version"`
 	}
 	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
 		t.Fatalf("not JSON: %v", err)
 	}
-	if got.Event != "ready" || got.Port != 53121 || got.Version != version {
+	if got.Event != "ready" || got.Port != 53121 || got.PID != 4242 || got.Version != version {
 		t.Fatalf("got %+v", got)
 	}
 	if bytes.Count(buf.Bytes(), []byte("\n")) != 1 {
@@ -238,6 +253,127 @@ func TestHostArgs(t *testing.T) {
 				t.Fatalf("hostArgs = %#v, want %#v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestModeFlagsAreExclusive(t *testing.T) {
+	for _, pair := range [][2]string{{"--detach", "--stop"}, {"--openapi", "--stop"}, {"--openapi", "--detach"}} {
+		err := run([]string{pair[0], pair[1], "--data-dir", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), pair[0]) || !strings.Contains(err.Error(), pair[1]) {
+			t.Errorf("%s %s: err = %v, want one naming both", pair[0], pair[1], err)
+		}
+	}
+}
+
+func TestDetachAndStopNeedADataFolder(t *testing.T) {
+	for _, mode := range []string{"--detach", "--stop"} {
+		err := run([]string{mode}, strings.NewReader(""), io.Discard, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "--data-dir") {
+			t.Errorf("%s: err = %v, want one naming --data-dir", mode, err)
+		}
+	}
+}
+
+// shorten sets *v to d for the rest of the test.
+func shorten(t *testing.T, v *time.Duration, d time.Duration) {
+	t.Helper()
+	old := *v
+	*v = d
+	t.Cleanup(func() { *v = old })
+}
+
+// stopToken is the token in the core.json files the --stop tests write.
+const stopToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+// writeStopTarget writes a core.json naming port and pid into a new data folder and returns the folder.
+func writeStopTarget(t *testing.T, port, pid int) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := host.WriteDiscovery(dir, host.Discovery{PID: pid, Port: port, Token: stopToken}); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// runStop runs core --stop on dir and returns its stderr and error, failing the test if stderr holds the token.
+func runStop(t *testing.T, dir string) (string, error) {
+	t.Helper()
+	var stderr bytes.Buffer
+	err := run([]string{"--stop", "--data-dir", dir}, strings.NewReader(""), io.Discard, &stderr)
+	if strings.Contains(stderr.String(), stopToken) {
+		t.Errorf("stderr contains the token: %q", stderr.String())
+	}
+	return stderr.String(), err
+}
+
+// serverPort is the port an httptest server listens on.
+func serverPort(t *testing.T, srv *httptest.Server) int {
+	t.Helper()
+	port, err := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return port
+}
+
+func TestStopWithoutACore(t *testing.T) {
+	stderr, err := runStop(t, t.TempDir())
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if !strings.Contains(stderr, "no core is running") {
+		t.Fatalf("stderr = %q, want it to say no core is running", stderr)
+	}
+}
+
+func TestStopWithAStaleFileReturnsAtOnce(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	ln.Close()
+	dir := writeStopTarget(t, port, os.Getpid()) // a live pid: waiting on it would time out
+
+	start := time.Now()
+	_, err = runStop(t, dir)
+	if err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("--stop took %v on a closed port, want no wait", took)
+	}
+}
+
+func TestStopSendsTheTokenAndTreatsARefusalAsNoCore(t *testing.T) {
+	var auth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+	dir := writeStopTarget(t, serverPort(t, srv), os.Getpid())
+
+	if _, err := runStop(t, dir); err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if auth != "Bearer "+stopToken {
+		t.Fatal("the request did not carry core.json's token")
+	}
+}
+
+func TestStopWaitsOnAHungCoreAndFailsIfItStaysUp(t *testing.T) {
+	shorten(t, &stopRequestTimeout, 100*time.Millisecond)
+	shorten(t, &stopWait, 200*time.Millisecond)
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-release }))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) }) // runs first, so Close does not wait on the handler
+	dir := writeStopTarget(t, serverPort(t, srv), os.Getpid())
+
+	_, err := runStop(t, dir)
+	if err == nil || !strings.Contains(err.Error(), strconv.Itoa(os.Getpid())) {
+		t.Fatalf("err = %v, want one naming pid %d", err, os.Getpid())
 	}
 }
 

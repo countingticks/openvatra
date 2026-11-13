@@ -91,6 +91,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	openapi := fs.Bool("openapi", false, "print the OpenAPI document to stdout and exit")
 	// So a killed e2e test leaves no orphan core behind.
 	parentPID := fs.Int("parent-pid", 0, "pid whose exit stops core (e2e tests)")
+	detach := fs.Bool("detach", false, "start a core detached from this process, print its ready line and exit")
+	stopFlag := fs.Bool("stop", false, "stop the core running on --data-dir and exit")
 	// Pages from these origins may call core (with a token); main passes the dev server's in development only.
 	var origins []string
 	fs.Func("origin", "an origin (scheme://host[:port]) whose pages may call core; repeatable", func(v string) error {
@@ -105,6 +107,16 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return fmt.Errorf("--origin %q is not scheme://host[:port]", o)
 		}
 	}
+	var modes []string
+	for name, on := range map[string]bool{"--openapi": *openapi, "--detach": *detach, "--stop": *stopFlag} {
+		if on {
+			modes = append(modes, name)
+		}
+	}
+	if len(modes) > 1 {
+		slices.Sort(modes)
+		return fmt.Errorf("%s cannot be used together", strings.Join(modes, " and "))
+	}
 
 	// Nothing is opened or read: the document comes from the route table alone, so it needs no token.
 	if *openapi {
@@ -115,6 +127,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	if *dataDir == "" {
 		return errors.New("--data-dir is required")
+	}
+
+	// Both run before the logs, the lock and the job object: the launcher must never join a kill-on-close job, or
+	// the core it starts would die with it.
+	if *stopFlag {
+		return stopCore(*dataDir, stderr)
+	}
+	if *detach {
+		return detachCore(dropFlags(args, []string{"detach"}, nil), *dataDir, stdout, stderr)
 	}
 
 	// Child mode: the app started us and passed the token. Otherwise core makes its own and publishes it in core.json.
@@ -194,7 +215,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// With port 0 the real port is only known after listening.
 	actualPort := ln.Addr().(*net.TCPAddr).Port
 	logger.Info("listening", "port", actualPort)
-	if err := writeReady(stdout, actualPort); err != nil {
+	if err := writeReady(stdout, actualPort, os.Getpid()); err != nil {
 		return err
 	}
 
@@ -472,12 +493,92 @@ func exePath() (string, error) {
 }
 
 // writeReady prints the one JSON line main waits for.
-func writeReady(w io.Writer, port int) error {
+func writeReady(w io.Writer, port, pid int) error {
 	return json.NewEncoder(w).Encode(map[string]any{
 		"event":   "ready",
 		"port":    port,
+		"pid":     pid,
 		"version": version,
 	})
+}
+
+// detachTimeout is how long the launcher waits for the core it started to write core.json.
+const detachTimeout = 15 * time.Second
+
+// detachCore starts this exe with args as a core that outlives us and prints its ready line. The core is the same
+// build, so the ready line's version is ours.
+func detachCore(args []string, dataDir string, stdout, stderr io.Writer) error {
+	exe, err := exePath()
+	if err != nil {
+		return err
+	}
+	r, err := host.Detach(exe, args, dataDir, detachTimeout)
+	if errors.Is(err, host.ErrRunning) {
+		if _, err := fmt.Fprintln(stdout, `{"event":"running"}`); err != nil {
+			return err
+		}
+		return host.ErrRunning
+	}
+	if err != nil {
+		return err
+	}
+	if !r.Breakaway {
+		fmt.Fprintln(stderr, "core: started without breakaway from the job; it may stop with its starter")
+	}
+	return writeReady(stdout, r.Port, r.PID)
+}
+
+// Vars so tests can shorten them.
+var (
+	stopRequestTimeout = 3 * time.Second // a core that does not answer /shutdown by then counts as hung
+	stopWait           = 8 * time.Second // how long a stopping core gets to exit
+)
+
+// stopCore asks the core named by dataDir's core.json to shut down and waits for it to exit. No core, or a stale file
+// whose core does not answer as ours, is not an error: there is nothing to stop. It never kills and never deletes
+// core.json, and the token never reaches stderr.
+func stopCore(dataDir string, stderr io.Writer) error {
+	d, err := host.ReadDiscovery(dataDir)
+	if errors.Is(err, host.ErrNoDiscovery) {
+		fmt.Fprintln(stderr, "core: no core is running")
+		return nil
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, "core: core.json is unreadable:", err)
+		return nil
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/shutdown", d.Port), nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "core: no core from core.json is running (%v)\n", err)
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+d.Token)
+	resp, err := (&http.Client{Timeout: stopRequestTimeout}).Do(req)
+	var netErr net.Error
+	switch {
+	case err == nil:
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted {
+			fmt.Fprintf(stderr, "core: no core from core.json is running (status %d)\n", resp.StatusCode)
+			return nil
+		}
+	case errors.As(err, &netErr) && netErr.Timeout():
+		// Connected but no answer: a hung core, so wait on its pid as after a 202.
+	default:
+		// A refused connection: the file is stale and its pid may already belong to another process.
+		fmt.Fprintf(stderr, "core: no core from core.json is running (%v)\n", err)
+		return nil
+	}
+
+	exited, err := host.WaitExit(d.PID, stopWait)
+	if err != nil {
+		return err
+	}
+	if !exited {
+		return fmt.Errorf("core (pid %d) is still running", d.PID)
+	}
+	return nil
 }
 
 // sectionWriter is the part of the config store switchToCUDA uses.
