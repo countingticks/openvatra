@@ -40,7 +40,8 @@ npm run check        # format check, typecheck, lint, unit tests, gofmt/go vet/g
                      # (-- <paths> limits the JS tests; -- --e2e also builds and runs the e2e tests)
 npm run inspect      # print element boxes in the built app as text: npm run inspect -- "<selector>" [--shot]
 npm run fetch:llama  # download the pinned llama.cpp build (resources/llama/llama.json) into resources/llama/bin
-npm run build:core   # go build -C core → resources/core/core.exe (dev and build run it; needs Go, see core/go.mod)
+npm run build:core   # stop a core running on the default data folder, then go build -C core → resources/core/core.exe
+                     # (dev and build run it; needs Go, see core/go.mod)
 npm run build        # build core, typecheck, production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
 npm run gen:api      # regenerate core/api/openapi.json and src/renderer/src/core/generated.ts from core's routes

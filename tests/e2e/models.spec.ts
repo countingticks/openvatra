@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
@@ -41,14 +41,10 @@ test.afterAll(async () => {
   await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 })
 
-/** The pid of core.exe among the app's children; Windows only, like the app. */
-async function coreExePid(parentPid: number): Promise<number> {
-  const { stdout } = await run('powershell', [
-    '-NoProfile',
-    '-Command',
-    `(Get-CimInstance Win32_Process -Filter "ParentProcessId=${parentPid} AND Name='core.exe'").ProcessId`
-  ])
-  return Number(stdout.trim())
+/** The pid of the running core.exe, from its core.json: core runs detached, not as a child of the app. */
+async function coreExePid(): Promise<number> {
+  const text = await readFile(join(userDataDir, 'data', 'core.json'), 'utf8')
+  return (JSON.parse(text) as { pid: number }).pid
 }
 
 function isRunning(pid: number): boolean {
@@ -104,7 +100,7 @@ test('loads a model from the popover, and quitting leaves no core.exe behind', a
   await expect(row).toHaveAttribute('aria-current', 'true')
   await expect(mainWindow.getByText(/Ready —/)).toHaveCount(0)
 
-  const corePid = await coreExePid(await app.evaluate(() => process.pid))
+  const corePid = await coreExePid()
   expect(corePid).toBeGreaterThan(0)
   await app.close()
   await expect.poll(() => isRunning(corePid)).toBe(false)

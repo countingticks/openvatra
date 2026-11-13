@@ -7,7 +7,7 @@ import { defaultSettingsFile, type SettingsFile } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { createConfigClient } from './core/configClient'
 import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
-import { createSupervisor, type Supervisor } from './core/supervisor'
+import { createHost, type Host } from './core/host'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
@@ -56,7 +56,8 @@ function llamaManifestPath(): string {
 }
 
 // core learns which CUDA build is pinned from the same llama.json the bundled build is checked against.
-function coreExtraArgs(): string[] {
+// The order is fixed: these arguments are part of the fingerprint a running core is compared with.
+function coreArgs(): string[] {
   const args = [
     '--llama-manifest',
     llamaManifestPath(),
@@ -78,9 +79,17 @@ function coreExtraArgs(): string[] {
   return args
 }
 
+// e2e runs only: core exits with the Electron that started it, so a killed test leaves no core behind.
+// Not part of the fingerprint.
+function coreLaunchOnlyArgs(): string[] {
+  const e2e = !app.isPackaged && process.env['OPENVATRA_E2E'] === '1'
+  if (!e2e || process.env['OPENVATRA_E2E_KEEP_CORE'] === '1') return []
+  return ['--parent-pid', String(process.pid)]
+}
+
 let mainWindow: BrowserWindow | null = null
 let tray: AppTray | null = null
-let core: Supervisor | null = null
+let core: Host | null = null
 
 // Set by 'before-quit'. Until then, closing the window only hides it to the tray.
 let quitting = false
@@ -155,9 +164,11 @@ function start(): void {
         .dropLegacyModels()
         .catch((error) => log.warn('Could not remove the imported model settings from settings.json', error))
     }
-    core = createSupervisor({
+    core = createHost({
       exePath: coreExePath(),
-      extraArgs: coreExtraArgs(),
+      args: coreArgs(),
+      launchOnlyArgs: coreLaunchOnlyArgs(),
+      dataDir: join(app.getPath('userData'), 'data'),
       logsDir: logsFolder(),
       onState: (state) => sendToWindow(ipcChannels.coreStateChanged, state),
       onReady: () => void syncModelSettings(),

@@ -16,6 +16,14 @@ async function settingsOnDisk(): Promise<unknown> {
   return readFile(join(userDataDir, 'settings.json'), 'utf8').then(JSON.parse, () => null)
 }
 
+/** The pid in core.json; null until core has written it. */
+async function corePid(): Promise<number | null> {
+  return readFile(join(userDataDir, 'data', 'core.json'), 'utf8').then(
+    (text) => (JSON.parse(text) as { pid: number }).pid,
+    () => null
+  )
+}
+
 async function launch(): Promise<void> {
   app = await electron.launch({ args: appArgs(userDataDir) })
   await app.firstWindow()
@@ -37,6 +45,8 @@ test('closing the window hides it to the tray instead of quitting', async () => 
   await expect
     .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
     .toBe(true)
+  await expect.poll(() => corePid(), { timeout: 20_000 }).not.toBeNull()
+  const pidBefore = await corePid()
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
 
   const window = await app.evaluate(({ BrowserWindow }) =>
@@ -45,6 +55,12 @@ test('closing the window hides it to the tray instead of quitting', async () => 
   expect(window).toEqual([{ visible: false, destroyed: false }])
   // The one-time notice was shown, and is remembered so it won't show again.
   await expect.poll(() => settingsOnDisk()).toMatchObject({ closeToTrayNoticeShown: true })
+
+  // Core keeps running behind the hidden window: the same one is there when it comes back.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].show())
+  expect(await corePid()).toBe(pidBefore)
+  // Hidden again, for the next test to bring back.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide())
 })
 
 test('a second launch brings the hidden window back', async () => {
