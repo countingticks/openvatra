@@ -1,5 +1,4 @@
-import { app, Menu, shell, type BrowserWindow } from 'electron'
-import { mkdir } from 'fs/promises'
+import { app, Menu, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -11,7 +10,6 @@ import { createConfigClient } from './core/configClient'
 import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
 import { createModelSettings } from './core/modelSettings'
 import { createModelsClient } from './core/modelsClient'
-import { createSetupClient } from './core/setupClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -148,7 +146,7 @@ function start(): void {
     const models = createModelsClient({
       request,
       onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
-      onDownloads: (items) => sendToWindow(ipcChannels.setupDownloadsChanged, items),
+      onDownloads: () => undefined,
       onConfig: modelSettings.noteChanged,
       onReset: () =>
         void modelSettings
@@ -173,16 +171,6 @@ function start(): void {
           )
       }
     }
-    const setup = createSetupClient({
-      request,
-      modelsDir: () => modelSettings.entry()?.effective.modelsDir,
-      makeDir: async (path) => void (await mkdir(path, { recursive: true })),
-      trash: (path) => shell.trashItem(path),
-      models: models.list,
-      unload: models.unload,
-      downloads: models.downloads,
-      log
-    })
     core = createSupervisor({
       exePath: coreExePath(),
       extraArgs: coreExtraArgs(),
@@ -213,8 +201,7 @@ function start(): void {
         list: models.list,
         load: models.load,
         unload: models.unload,
-        downloads: models.downloads,
-        ...setup
+        downloads: models.downloads
       }
     )
 

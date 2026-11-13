@@ -3,7 +3,6 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { isCoreState, isModelList } from '../shared/core'
 import { type Api, ipcChannels } from '../shared/ipc'
 import type { Settings } from '../shared/settings'
-import { isDownloadList } from '../shared/setup'
 
 const api: Api = {
   runtime: Object.freeze({
@@ -83,25 +82,6 @@ const api: Api = {
     },
     load: (id) => ipcRenderer.invoke(ipcChannels.coreLoad, id),
     unload: (id) => ipcRenderer.invoke(ipcChannels.coreUnload, id)
-  }),
-  setup: Object.freeze({
-    hardware: () => ipcRenderer.invoke(ipcChannels.setupHardware),
-    catalog: () => ipcRenderer.invoke(ipcChannels.setupCatalog),
-    download: (catalogId) => ipcRenderer.invoke(ipcChannels.setupDownload, catalogId),
-    downloadEngine: () => ipcRenderer.invoke(ipcChannels.setupDownloadEngine),
-    cancel: (id) => ipcRenderer.invoke(ipcChannels.setupCancel, id),
-    resume: (id) => ipcRenderer.invoke(ipcChannels.setupResume, id),
-    downloads: () => ipcRenderer.invoke(ipcChannels.setupGetDownloads),
-    onDownloads: (callback) => {
-      const listener = (_event: IpcRendererEvent, items: unknown): void => {
-        if (isDownloadList(items)) callback(items)
-      }
-      ipcRenderer.on(ipcChannels.setupDownloadsChanged, listener)
-      return () => {
-        ipcRenderer.removeListener(ipcChannels.setupDownloadsChanged, listener)
-      }
-    },
-    remove: (catalogId) => ipcRenderer.invoke(ipcChannels.setupRemove, catalogId)
   })
 }
 

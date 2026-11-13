@@ -3,7 +3,6 @@
 // Keep it small; every addition must be reviewed (see AGENTS.md, "Ask first").
 import type { CoreState, ModelInfo } from './core'
 import type { Settings, SettingsPatch } from './settings'
-import type { CatalogView, DownloadItem, HardwareReport } from './setup'
 
 /** Channel names shared by the preload (sends) and main (answers), so the two can't drift apart. */
 export const ipcChannels = {
@@ -33,17 +32,7 @@ export const ipcChannels = {
   /** Main → UI: sent with the new ModelInfo[] on every change. */
   coreModelsChanged: 'core:models-changed',
   coreLoad: 'core:load',
-  coreUnload: 'core:unload',
-  setupHardware: 'setup:hardware',
-  setupCatalog: 'setup:catalog',
-  setupDownload: 'setup:download',
-  setupDownloadEngine: 'setup:download-engine',
-  setupCancel: 'setup:cancel',
-  setupResume: 'setup:resume',
-  setupRemove: 'setup:remove',
-  setupGetDownloads: 'setup:get-downloads',
-  /** Main → UI: sent with the whole DownloadItem[] queue on every change. */
-  setupDownloadsChanged: 'setup:downloads-changed'
+  coreUnload: 'core:unload'
 } as const
 
 /** The Edit menu's commands, run by Chromium on whatever is focused in the page. */
@@ -144,26 +133,6 @@ export interface CoreApi {
   unload(id: string): Promise<void>
 }
 
-/** First-run model setup: what this PC can run, the models on offer, and getting one onto the disk. */
-export interface SetupApi {
-  hardware(): Promise<HardwareReport>
-  catalog(): Promise<CatalogView>
-  /** Queues a catalog model for download; rejects with core's short reason (no space, already installed…). */
-  download(catalogId: string): Promise<void>
-  /** Queues the faster engine for NVIDIA cards (the CUDA build); same queue and events, id `engine-cuda`. */
-  downloadEngine(): Promise<void>
-  /** Cancels a download and deletes its partial file. */
-  cancel(id: string): Promise<void>
-  /** Continues a paused or failed download. */
-  resume(id: string): Promise<void>
-  /** The queue as it is now; `onDownloads` only tells about changes after this. */
-  downloads(): Promise<DownloadItem[]>
-  /** Calls back with the whole queue on every change; returns unsubscribe. */
-  onDownloads(callback: (items: DownloadItem[]) => void): () => void
-  /** Moves a downloaded catalog model's folder to the Recycle Bin (unloading it first). */
-  remove(catalogId: string): Promise<void>
-}
-
 export interface Api {
   /** Static facts about the running app; safe to read, nothing to change. */
   readonly runtime: RuntimeInfo
@@ -172,5 +141,4 @@ export interface Api {
   readonly appWindow: AppWindowApi
   readonly app: AppApi
   readonly core: CoreApi
-  readonly setup: SetupApi
 }

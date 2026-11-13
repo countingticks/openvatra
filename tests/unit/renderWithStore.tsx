@@ -15,8 +15,7 @@ import type {
   CoreApi,
   FileLocations,
   FilesApi,
-  SettingsApi,
-  SetupApi
+  SettingsApi
 } from '../../src/shared/ipc'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
 import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
@@ -144,40 +143,6 @@ interface Options {
 /** The IPC writes the window no longer makes: a leftover call fails its test. */
 const moved = (): Error => new Error('moved to core')
 
-function fakeSetup(
-  options: Options['setup'] = {},
-  coreHttp: FakeCoreHttp
-): { api: SetupApi; fake: FakeSetup } {
-  const listeners = new Set<(items: DownloadItem[]) => void>()
-  const fake: FakeSetup = {
-    emitDownloads: (items) =>
-      act(() => {
-        coreHttp.setDownloads(items)
-      })
-  }
-  const api: SetupApi = {
-    hardware: vi.fn<SetupApi['hardware']>().mockResolvedValue(options.hardware ?? exampleHardware),
-    catalog: vi
-      .fn<SetupApi['catalog']>()
-      .mockResolvedValue(
-        options.catalog && !options.catalog.entries.some((entry) => 'files' in entry)
-          ? (options.catalog as CatalogView)
-          : { entries: [], diskFreeBytes: null, recommended: null }
-      ),
-    download: vi.fn<SetupApi['download']>().mockRejectedValue(moved()),
-    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockRejectedValue(moved()),
-    cancel: vi.fn<SetupApi['cancel']>().mockRejectedValue(moved()),
-    resume: vi.fn<SetupApi['resume']>().mockRejectedValue(moved()),
-    remove: vi.fn<SetupApi['remove']>().mockRejectedValue(moved()),
-    downloads: vi.fn<SetupApi['downloads']>().mockResolvedValue(options.downloads ?? []),
-    onDownloads: (callback) => {
-      listeners.add(callback)
-      return () => listeners.delete(callback)
-    }
-  }
-  return { api, fake }
-}
-
 function fakeCore(
   start: CoreState,
   models: ModelInfo[],
@@ -277,9 +242,7 @@ export function renderWithStore(
     options.models ?? [],
     coreHttp
   )
-  const setup = fakeSetup(options.setup, coreHttp)
-  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core' | 'setup'> = {
-    setup: setup.api,
+  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
     app: { quit },
     core: core.api,
     files: {
@@ -321,7 +284,12 @@ export function renderWithStore(
     quit,
     core: core.fake,
     coreHttp,
-    setup: setup.fake,
+    setup: {
+      emitDownloads: (items) =>
+        act(() => {
+          coreHttp.setDownloads(items)
+        })
+    },
     ...render(<Provider store={store}>{ui}</Provider>)
   }
 }
