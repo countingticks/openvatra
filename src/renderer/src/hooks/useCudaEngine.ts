@@ -1,14 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useGetEnginesQuery, type EnginesBody } from '@renderer/core/generated'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { useSetup } from '@renderer/hooks/useSetup'
-import { useAppSelector } from '@renderer/store/hooks'
-import { selectSettings } from '@renderer/store/settingsSlice'
-import type { LlamaInfo } from '../../../shared/ipc'
 import type { DownloadItem } from '../../../shared/setup'
 
 export interface CudaEngine {
   /** An NVIDIA card and no llama-server of the user's own: the only case where the faster engine is on offer. */
   offered: boolean
-  status: LlamaInfo['cuda']
+  status: EnginesBody['cuda']
   /** Models are running on it right now (chosen, installed for this app's tag, and no custom path). */
   inUse: boolean
   /** The download while it is queued, running, paused or failed; undefined otherwise. */
@@ -16,21 +14,14 @@ export interface CudaEngine {
 }
 
 /**
- * What the "faster engine for NVIDIA" card and the Settings line show. Main decides what actually runs; this only
- * asks what is installed (again after the download finishes or the choice changes) and reads the queue.
+ * What the "faster engine for NVIDIA" card and the Settings line show. core decides what actually runs; this only
+ * asks it what is installed (the event stream asks again when the download finishes) and reads the queue.
  */
 export function useCudaEngine(): CudaEngine {
   const { hardware, downloads } = useSetup()
-  const { engine, llamaServerPath } = useAppSelector(selectSettings).models
-  const [status, setStatus] = useState<LlamaInfo['cuda']>('none')
-
-  const finished = downloads.some((item) => item.id === 'engine-cuda' && item.state === 'done')
-  useEffect(() => {
-    window.api.files.bundledLlama().then(
-      (info) => setStatus(info.cuda),
-      () => undefined // the card is optional; without an answer it just stays hidden
-    )
-  }, [engine, finished])
+  const { engine, llamaServerPath } = useModelSettings().value
+  // The card is optional; without an answer it just stays hidden.
+  const status = useGetEnginesQuery().data?.cuda ?? 'none'
 
   const item = downloads.find((candidate) => candidate.id === 'engine-cuda' && candidate.state !== 'done')
   const custom = llamaServerPath !== null

@@ -19,8 +19,9 @@ import type {
   SetupApi
 } from '../../src/shared/ipc'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
-import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
+import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
+import { defaultCoreModels } from '@renderer/core/modelSettings'
 import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
@@ -71,21 +72,14 @@ function toCoreCatalog(catalog: CatalogView | CoreCatalogView): CoreCatalogView 
 export interface FakeCore {
   restart: Mock<CoreApi['restart']>
   openLog: Mock<CoreApi['openLog']>
-  load: Mock<CoreApi['load']>
-  unload: Mock<CoreApi['unload']>
   /** Report a new state, as main does on every change. */
   emitState(state: CoreState): void
   /** Report a new model list, as main does on every change. */
   emitModels(models: ModelInfo[]): void
 }
 
-/** The fake first-run setup API, plus a way to play main's part. */
+/** A way to play main's part for the first-run setup; its actions now go to core (coreHttp). */
 export interface FakeSetup {
-  download: Mock<SetupApi['download']>
-  downloadEngine: Mock<SetupApi['downloadEngine']>
-  cancel: Mock<SetupApi['cancel']>
-  resume: Mock<SetupApi['resume']>
-  remove: Mock<SetupApi['remove']>
   /** Report a new download queue, as main does on every change. */
   emitDownloads(items: DownloadItem[]): void
 }
@@ -139,9 +133,16 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
-  /** The CUDA build's state main reports; default: not installed. */
+  /** The CUDA build's state main reports over IPC; default: not installed. */
   cuda?: 'none' | 'ready' | 'stale'
+  /** The models section's value core answers (rev 1), over core's defaults. */
+  modelSettings?: Partial<Models>
+  /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
+  engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
+
+/** The IPC writes the window no longer makes: a leftover call fails its test. */
+const moved = (): Error => new Error('moved to core')
 
 function fakeSetup(
   options: Options['setup'] = {},
@@ -149,11 +150,6 @@ function fakeSetup(
 ): { api: SetupApi; fake: FakeSetup } {
   const listeners = new Set<(items: DownloadItem[]) => void>()
   const fake: FakeSetup = {
-    download: vi.fn<SetupApi['download']>().mockResolvedValue(undefined),
-    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockResolvedValue(undefined),
-    cancel: vi.fn<SetupApi['cancel']>().mockResolvedValue(undefined),
-    resume: vi.fn<SetupApi['resume']>().mockResolvedValue(undefined),
-    remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
     emitDownloads: (items) =>
       act(() => {
         coreHttp.setDownloads(items)
@@ -168,11 +164,11 @@ function fakeSetup(
           ? (options.catalog as CatalogView)
           : { entries: [], diskFreeBytes: null, recommended: null }
       ),
-    download: fake.download,
-    downloadEngine: fake.downloadEngine,
-    cancel: fake.cancel,
-    resume: fake.resume,
-    remove: fake.remove,
+    download: vi.fn<SetupApi['download']>().mockRejectedValue(moved()),
+    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockRejectedValue(moved()),
+    cancel: vi.fn<SetupApi['cancel']>().mockRejectedValue(moved()),
+    resume: vi.fn<SetupApi['resume']>().mockRejectedValue(moved()),
+    remove: vi.fn<SetupApi['remove']>().mockRejectedValue(moved()),
     downloads: vi.fn<SetupApi['downloads']>().mockResolvedValue(options.downloads ?? []),
     onDownloads: (callback) => {
       listeners.add(callback)
@@ -192,8 +188,6 @@ function fakeCore(
   const fake: FakeCore = {
     restart: vi.fn<CoreApi['restart']>().mockResolvedValue(undefined),
     openLog: vi.fn<CoreApi['openLog']>().mockResolvedValue(undefined),
-    load: vi.fn<CoreApi['load']>().mockResolvedValue(undefined),
-    unload: vi.fn<CoreApi['unload']>().mockResolvedValue(undefined),
     emitState: (state) => act(() => listeners.forEach((listener) => listener(state))),
     emitModels: (list) =>
       act(() => {
@@ -213,8 +207,8 @@ function fakeCore(
       modelListeners.add(callback)
       return () => modelListeners.delete(callback)
     },
-    load: fake.load,
-    unload: fake.unload
+    load: vi.fn<CoreApi['load']>().mockRejectedValue(moved()),
+    unload: vi.fn<CoreApi['unload']>().mockRejectedValue(moved())
   }
   return { api, fake }
 }
@@ -266,6 +260,18 @@ export function renderWithStore(
     '/api/catalog',
     toCoreCatalog(options.setup?.catalog ?? { entries: [], diskFreeBytes: null, recommended: null })
   )
+  coreHttp.setConfigModels({
+    rev: 1,
+    value: { ...defaultCoreModels, ...options.modelSettings },
+    effective: {
+      llamaServerPath: 'C:\\OpenVatra\\resources\\llama\\llama-server.exe',
+      modelsDir: 'C:\\Users\\me\\OpenVatra\\Models'
+    }
+  })
+  coreHttp.answer('/api/engines', {
+    bundled: { tag: options.engines?.tag === undefined ? 'b12078' : options.engines.tag },
+    cuda: options.engines?.cuda ?? 'none'
+  })
   const core = fakeCore(
     options.coreState ?? { status: 'ready', port: 53121, version: '0.4.0', connection: exampleConnection },
     options.models ?? [],

@@ -2,6 +2,12 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Gauge } from 'lucide-react'
 import { DownloadControls } from '@renderer/components/DownloadControls'
 import { Button } from '@renderer/components/ui/button'
+import {
+  useCancelDownloadMutation,
+  useRemoveCatalogEntryMutation,
+  useResumeDownloadMutation,
+  useStartDownloadMutation
+} from '@renderer/core/generated'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText } from '@renderer/lib/setupText'
 import type { CatalogEntry, DownloadItem } from '../../../shared/setup'
@@ -13,29 +19,28 @@ interface ModelCatalogRowProps {
   recommended: boolean
   /** This entry's place in the download queue, if it has one. */
   item: DownloadItem | undefined
-  /** Called after a removal, so the list can read the catalog again. */
-  onRemoved: () => void
 }
 
 /** One catalog model: what it is, whether it fits, and the one thing you can do with it right now. */
-export function ModelCatalogRow({
-  entry,
-  recommended,
-  item,
-  onRemoved
-}: ModelCatalogRowProps): React.JSX.Element {
+export function ModelCatalogRow({ entry, recommended, item }: ModelCatalogRowProps): React.JSX.Element {
   // Both risky actions ask first, and the question says what it costs.
   const [asking, setAsking] = useState<'remove' | 'tooBig' | null>(null)
   const [problem, setProblem] = useState<string | null>(null)
   const FitIcon = fitIcons[entry.fit]
   const short = entry.diskShortBytes > 0
 
-  const act = (action: () => Promise<unknown>, after?: () => void): void => {
+  const [startDownload] = useStartDownloadMutation()
+  const [cancelDownload] = useCancelDownloadMutation()
+  const [resumeDownload] = useResumeDownloadMutation()
+  // Removing reads the catalog again through the mutation's tag.
+  const [removeEntry] = useRemoveCatalogEntryMutation()
+
+  const act = (action: () => Promise<unknown>): void => {
     setProblem(null)
     setAsking(null)
-    action().then(after, (error) => setProblem(failureReason(error)))
+    action().catch((error: unknown) => setProblem(failureReason(error)))
   }
-  const download = (): void => act(() => window.api.setup.download(entry.id))
+  const download = (): void => act(() => startDownload({ startDownload: { catalogId: entry.id } }).unwrap())
 
   return (
     <li className="flex flex-col gap-2 border-b border-border px-3 py-3 last:border-b-0">
@@ -91,8 +96,8 @@ export function ModelCatalogRow({
           item={item}
           disabled={short}
           onDownload={download}
-          onCancel={() => act(() => window.api.setup.cancel(entry.id))}
-          onResume={() => act(() => window.api.setup.resume(entry.id))}
+          onCancel={() => act(() => cancelDownload({ id: entry.id }).unwrap())}
+          onResume={() => act(() => resumeDownload({ id: entry.id }).unwrap())}
         />
       )}
 
@@ -128,7 +133,7 @@ export function ModelCatalogRow({
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => act(() => window.api.setup.remove(entry.id), onRemoved)}
+              onClick={() => act(() => removeEntry({ id: entry.id }).unwrap())}
             >
               Remove it
             </Button>

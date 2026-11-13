@@ -3,10 +3,10 @@ import { ModelRow } from '@renderer/components/settings/ModelRow'
 import { Button } from '@renderer/components/ui/button'
 import { Label } from '@renderer/components/ui/label'
 import { useCoreState } from '@renderer/hooks/useCoreState'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { useModels } from '@renderer/hooks/useModels'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
 import type { ModelInfo } from '../../../../shared/core'
+import type { ModelsChange } from '@renderer/core/modelSettings'
 import type { ModelOptions } from '../../../../shared/settings'
 
 /** A failed action has nothing useful to show here; log it (main copies page errors into main.log). */
@@ -59,8 +59,8 @@ function ModelGroup({
  * it says why and what to do: the service has a problem, the paths aren't chosen, it's starting, or the folder is empty.
  */
 export function ModelList(): React.JSX.Element {
-  const { models: settings } = useAppSelector(selectSettings)
-  const dispatch = useAppDispatch()
+  const { value: settings, update } = useModelSettings()
+  const [saveProblem, setSaveProblem] = useState<string>()
   const core = useCoreState()
   const models = useModels()
   const headingId = useId()
@@ -77,14 +77,19 @@ export function ModelList(): React.JSX.Element {
   const chosenProblem = settings.embeddingModel && !chosenIsEmbedding ? settings.embeddingModel : null
   const chosenKind = models.find((model) => model.id === chosenProblem)?.kind
 
+  function change(next: ModelsChange): void {
+    setSaveProblem(undefined)
+    update(next).catch((error: Error) => setSaveProblem(error.message))
+  }
+
   function setEmbedding(id: string | null): void {
-    dispatch(settingsChanged({ models: { embeddingModel: id } }))
+    change({ embeddingModel: id })
   }
 
   function setOptions(id: string, next: ModelOptions | undefined): void {
     // The patch carries the whole map: one model's change can't drop another's.
     const others = Object.fromEntries(Object.entries(settings.options).filter(([key]) => key !== id))
-    dispatch(settingsChanged({ models: { options: next ? { ...others, [id]: next } : others } }))
+    change({ options: next ? { ...others, [id]: next } : others })
   }
 
   let empty: string | null = null
@@ -107,6 +112,11 @@ export function ModelList(): React.JSX.Element {
           </Button>
         </div>
       </div>
+      {saveProblem && (
+        <p role="alert" className="text-[12.5px] text-destructive">
+          {saveProblem}
+        </p>
+      )}
 
       {empty ? (
         <p

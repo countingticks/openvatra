@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import { CudaEngineOffer } from '@renderer/components/CudaEngineOffer'
 import { InstalledModels } from '@renderer/components/settings/InstalledModels'
@@ -7,48 +7,40 @@ import { PathRow } from '@renderer/components/settings/PathRow'
 import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
+import { useGetEnginesQuery } from '@renderer/core/generated'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSettings, settingsChanged, settingsReplaced } from '@renderer/store/settingsSlice'
+import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
 import { modelsDialogOpened, settingsClosed } from '@renderer/store/uiSlice'
+import type { ModelsChange } from '@renderer/core/modelSettings'
 import type { PickTarget } from '../../../../shared/ipc'
 
 /** Settings → Models: the simple view (folder, installed models, get more, unload timer) and, behind *Show advanced*, the engine, embedding model and per-model options. */
 export function ModelsSection(): React.JSX.Element {
-  const { models } = useAppSelector(selectSettings)
+  const { showAdvanced } = useAppSelector(selectSettings).models
+  const { value: models, update } = useModelSettings()
   const dispatch = useAppDispatch()
   const idleId = useId()
   const advancedId = useId()
   const [problem, setProblem] = useState<string>()
-  const [bundledTag, setBundledTag] = useState<string | null>(null)
-
-  useEffect(() => {
-    // Only for the label; if main can't answer, "Bundled (Vulkan)" is still true.
-    window.api.files.bundledLlama().then(
-      ({ tag }) => setBundledTag(tag),
-      () => undefined
-    )
-  }, [])
+  // Only for the label; without core's answer, "Bundled (Vulkan)" is still true.
+  const bundledTag = useGetEnginesQuery().data?.bundled.tag ?? null
   const bundledText = `Bundled (${bundledTag ? `${bundledTag}, ` : ''}Vulkan)`
 
-  // Main shows the dialog and saves the choice, then hands back the saved settings.
+  // Main shows the dialog and saves the choice in core; the new path arrives through core's config.changed.
   async function pick(target: PickTarget): Promise<void> {
     setProblem(undefined)
     try {
-      const saved = await window.api.files.pick(target)
-      if (saved) dispatch(settingsReplaced(saved))
+      await window.api.files.pick(target)
     } catch {
       setProblem('That path could not be saved.')
     }
   }
 
-  async function switchToBundled(): Promise<void> {
+  function change(next: ModelsChange): void {
     setProblem(undefined)
-    try {
-      dispatch(settingsReplaced(await window.api.files.useBundledLlama()))
-    } catch {
-      setProblem('That setting could not be saved.')
-    }
+    update(next).catch((error: Error) => setProblem(error.message))
   }
 
   const idle = idleOptions.find((option) => option.minutes === models.idleUnloadMinutes) ?? idleOptions[1]
@@ -76,7 +68,7 @@ export function ModelsSection(): React.JSX.Element {
           options={idleOptions}
           onChange={(value) => {
             const option = idleOptions.find((candidate) => candidate.value === value)
-            if (option) dispatch(settingsChanged({ models: { idleUnloadMinutes: option.minutes } }))
+            if (option) change({ idleUnloadMinutes: option.minutes })
           }}
         />
       </SettingRow>
@@ -106,12 +98,12 @@ export function ModelsSection(): React.JSX.Element {
       >
         <Switch
           id={advancedId}
-          checked={models.showAdvanced}
+          checked={showAdvanced}
           onCheckedChange={(checked) => dispatch(settingsChanged({ models: { showAdvanced: checked } }))}
         />
       </SettingRow>
 
-      {models.showAdvanced && (
+      {showAdvanced && (
         <>
           <PathRow
             label="llama-server.exe"
@@ -122,7 +114,7 @@ export function ModelsSection(): React.JSX.Element {
             onBrowse={() => void pick('llamaServer')}
           >
             {models.llamaServerPath && (
-              <Button variant="outline" size="sm" onClick={() => void switchToBundled()}>
+              <Button variant="outline" size="sm" onClick={() => change({ llamaServerPath: null })}>
                 Use bundled
               </Button>
             )}

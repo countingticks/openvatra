@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
+import { useResumeDownloadMutation } from '@renderer/core/generated'
 import {
   Dialog,
   DialogContent,
@@ -22,6 +23,7 @@ export function ResumeDownloadsDialog(): React.JSX.Element | null {
   const { catalog, downloads } = useSetup()
   const decided = useRef(false)
   const [offered, setOffered] = useState<DownloadItem[]>([])
+  const [resumeDownload] = useResumeDownloadMutation()
 
   useEffect(() => {
     // The catalog is needed for the names; wait for it so the dialog never shows raw ids.
@@ -35,7 +37,9 @@ export function ResumeDownloadsDialog(): React.JSX.Element | null {
 
   function resume(): void {
     for (const item of offered) {
-      window.api.setup.resume(item.id).catch((error) => console.error('Could not resume a download', error))
+      resumeDownload({ id: item.id })
+        .unwrap()
+        .catch((error: unknown) => console.error('Could not resume a download', error))
     }
     setOffered([])
   }

@@ -2,11 +2,15 @@ import { useState } from 'react'
 import { Ember } from '@renderer/components/Ember'
 import { DownloadControls } from '@renderer/components/DownloadControls'
 import { Button } from '@renderer/components/ui/button'
+import {
+  useCancelDownloadMutation,
+  useResumeDownloadMutation,
+  useStartDownloadMutation
+} from '@renderer/core/generated'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText, hardwareLine } from '@renderer/lib/setupText'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSettings, settingsReplaced } from '@renderer/store/settingsSlice'
 
 interface WelcomeCardProps {
   /** Opens the Models dialog. */
@@ -16,9 +20,11 @@ interface WelcomeCardProps {
 /** Shown in the Chat tab while there are no chat models: one recommendation, one button. */
 export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.Element | null {
   const { hardware, catalog, downloads } = useSetup()
-  const modelsDir = useAppSelector(selectSettings).models.modelsDir
-  const dispatch = useAppDispatch()
+  const { modelsDir } = useModelSettings().value
   const [problem, setProblem] = useState<string | null>(null)
+  const [startDownload] = useStartDownloadMutation()
+  const [cancelDownload] = useCancelDownloadMutation()
+  const [resumeDownload] = useResumeDownloadMutation()
 
   if (!hardware || !catalog) return null
   const entry = catalog.entries.find((candidate) => candidate.id === catalog.recommended)
@@ -29,11 +35,8 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
     setProblem(null)
     action().catch((error) => setProblem(failureReason(error)))
   }
-  const change = (): void =>
-    act(async () => {
-      const saved = await window.api.files.pick('modelsDir')
-      if (saved) dispatch(settingsReplaced(saved))
-    })
+  // Main shows the dialog and saves the choice in core; the new folder arrives through core's config.changed.
+  const change = (): void => act(() => window.api.files.pick('modelsDir'))
 
   return (
     <section
@@ -58,9 +61,9 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
           <DownloadControls
             item={item}
             disabled={entry.diskShortBytes > 0}
-            onDownload={() => act(() => window.api.setup.download(entry.id))}
-            onCancel={() => act(() => window.api.setup.cancel(entry.id))}
-            onResume={() => act(() => window.api.setup.resume(entry.id))}
+            onDownload={() => act(() => startDownload({ startDownload: { catalogId: entry.id } }).unwrap())}
+            onCancel={() => act(() => cancelDownload({ id: entry.id }).unwrap())}
+            onResume={() => act(() => resumeDownload({ id: entry.id }).unwrap())}
           />
           {entry.diskShortBytes > 0 && (
             <p role="alert" className="text-sm text-destructive">

@@ -41,6 +41,35 @@ async function storeWithConfig(): Promise<{ store: AppStore; http: FakeCoreHttp;
   return { store, http, configFetches }
 }
 
+const downloadProgress = (items: { id: string; state: 'downloading' | 'done' }[]): Event => ({
+  time: 1,
+  stream: 'system',
+  type: 'download.progress',
+  v: 1,
+  data: { items: items.map((item) => ({ ...item, bytes: 1, total: 1, speed: 0 })) }
+})
+
+/** A connected store with getEngines cached and subscribed, as the faster-engine card keeps it. */
+async function storeWithEngines(): Promise<{ store: AppStore; engineFetches(): number }> {
+  const { store, http } = await storeWithConfig()
+  http.answer('/api/engines', { bundled: { tag: 'b12078' }, cuda: 'none' })
+  await store.dispatch(coreApi.endpoints.getEngines.initiate())
+  const engineFetches = (): number =>
+    http.requests.filter((request) => request.url.endsWith('/api/engines')).length
+  return { store, engineFetches }
+}
+
+/** Applies a download.progress event and waits until its items are cached (upsertQueryData settles a tick later). */
+async function applied(store: AppStore, event: Event): Promise<void> {
+  applyEvent(event, store.dispatch, store.getState)
+  await vi.waitFor(() =>
+    expect(coreApi.endpoints.listDownloads.select()(store.getState()).data).toEqual(event.data)
+  )
+}
+
+const fetchingEngines = (store: AppStore): boolean =>
+  coreApi.endpoints.getEngines.select()(store.getState()).status === QueryStatus.pending
+
 const fetchingConfig = (store: AppStore): boolean =>
   coreApi.endpoints.getConfigModels.select()(store.getState()).status === QueryStatus.pending
 
@@ -67,6 +96,30 @@ describe('applyEvent', () => {
 
     expect(fetchingConfig(store)).toBe(true)
     await vi.waitFor(() => expect(configFetches()).toBe(2))
+  })
+
+  it('refetches getEngines once when engine-cuda turns done', async () => {
+    const { store, engineFetches } = await storeWithEngines()
+    await applied(store, downloadProgress([{ id: 'engine-cuda', state: 'downloading' }]))
+    expect(fetchingEngines(store)).toBe(false)
+
+    await applied(store, downloadProgress([{ id: 'engine-cuda', state: 'done' }]))
+    await vi.waitFor(() => expect(engineFetches()).toBe(2))
+    await vi.waitFor(() => expect(fetchingEngines(store)).toBe(false))
+
+    await applied(store, downloadProgress([{ id: 'engine-cuda', state: 'done' }]))
+    expect(fetchingEngines(store)).toBe(false)
+    expect(engineFetches()).toBe(2)
+  })
+
+  it('does not refetch getEngines when another download turns done', async () => {
+    const { store, engineFetches } = await storeWithEngines()
+    await applied(store, downloadProgress([{ id: 'qwen3-8b', state: 'downloading' }]))
+
+    await applied(store, downloadProgress([{ id: 'qwen3-8b', state: 'done' }]))
+
+    expect(fetchingEngines(store)).toBe(false)
+    expect(engineFetches()).toBe(1)
   })
 
   it('changes nothing for an event type it does not know', async () => {

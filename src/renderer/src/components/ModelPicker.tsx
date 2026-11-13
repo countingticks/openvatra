@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Check, LoaderCircle } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import { useLoadModelMutation, useUnloadModelMutation } from '@renderer/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { failureReason } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
-import { useAppDispatch } from '@renderer/store/hooks'
-import { settingsChanged } from '@renderer/store/settingsSlice'
 import type { ModelInfo } from '../../../shared/core'
 
 /** The whole row is the button: clicking a model loads it, clicking the loaded one unloads it. */
@@ -15,19 +15,21 @@ function PickerRow({
 }: {
   model: ModelInfo
   /** Set while the faster (CUDA) engine is in use: a failed start may be its fault, so offer the way back. */
-  onUseStandardEngine?: () => void
+  onUseStandardEngine?: () => Promise<void>
 }): React.JSX.Element {
   const [pending, setPending] = useState(false)
   const [failure, setFailure] = useState<string>()
+  const [engineFailure, setEngineFailure] = useState<string>()
   const loaded = model.state === 'ready'
   const loading = model.state === 'loading' || pending
-  const action = loaded ? 'unload' : 'load'
+  const [load] = useLoadModelMutation()
+  const [unload] = useUnloadModelMutation()
 
   async function act(): Promise<void> {
     setPending(true)
     setFailure(undefined)
     try {
-      await window.api.core[action](model.id)
+      await (loaded ? unload : load)({ id: model.id }).unwrap()
     } catch (error) {
       setFailure(failureReason(error))
     } finally {
@@ -71,9 +73,21 @@ function PickerRow({
       </button>
       {problem && onUseStandardEngine && (
         <div className="px-2 pb-1">
-          <Button variant="outline" size="sm" onClick={onUseStandardEngine}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setEngineFailure(undefined)
+              onUseStandardEngine().catch((error: Error) => setEngineFailure(error.message))
+            }}
+          >
             Use the standard engine
           </Button>
+          {engineFailure && (
+            <p role="alert" className="pt-1 text-xs text-destructive">
+              {engineFailure}
+            </p>
+          )}
         </div>
       )}
     </li>
@@ -83,10 +97,8 @@ function PickerRow({
 /** The models core found, shown in the model button's popover while core is ready. */
 export function ModelPicker({ models }: { models: ModelInfo[] }): React.JSX.Element {
   const { inUse } = useCudaEngine()
-  const dispatch = useAppDispatch()
-  const useStandard = inUse
-    ? (): void => void dispatch(settingsChanged({ models: { engine: 'bundled' } }))
-    : undefined
+  const { update } = useModelSettings()
+  const useStandard = inUse ? (): Promise<void> => update({ engine: 'bundled' }) : undefined
   if (models.length === 0)
     return (
       <p className="text-xs text-muted-foreground">No models found. Choose a folder in Model settings.</p>
