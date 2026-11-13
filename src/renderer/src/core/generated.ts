@@ -4,6 +4,7 @@ export const addTagTypes = [
   'chats',
   'config',
   'downloads',
+  'engines',
   'events',
   'hardware',
   'models',
@@ -75,6 +76,10 @@ const injectedRtkApi = api
       resumeDownload: build.mutation<ResumeDownloadApiResponse, ResumeDownloadApiArg>({
         query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}/resume`, method: 'POST' }),
         invalidatesTags: ['downloads']
+      }),
+      getEngines: build.query<GetEnginesApiResponse, GetEnginesApiArg>({
+        query: () => ({ url: `/api/engines` }),
+        providesTags: ['engines']
       }),
       streamEvents: build.query<StreamEventsApiResponse, StreamEventsApiArg>({
         query: (queryArg) => ({
@@ -189,6 +194,8 @@ export type ResumeDownloadApiResponse = /** status 202 Accepted */ StatusBody
 export type ResumeDownloadApiArg = {
   id: string
 }
+export type GetEnginesApiResponse = /** status 200 OK */ EnginesBody
+export type GetEnginesApiArg = void
 export type StreamEventsApiResponse = /** status 200 OK */ Hello | Event
 export type StreamEventsApiArg = {
   after?: number | null
@@ -322,6 +329,15 @@ export type StartDownload = {
   catalogId?: string
   engine?: 'cuda'
 }
+export type BundledEngine = {
+  /** release tag of the llama.cpp build shipped with the app; null when unreadable */
+  tag: string | null
+}
+export type EnginesBody = {
+  bundled: BundledEngine
+  /** ready: installed for the pinned tag; stale: only an older one */
+  cuda: 'none' | 'ready' | 'stale'
+}
 export type Hello = {
   head: number
   log: string
@@ -402,6 +418,7 @@ export const {
   useStartDownloadMutation,
   useCancelDownloadMutation,
   useResumeDownloadMutation,
+  useGetEnginesQuery,
   useStreamEventsQuery,
   useGetHardwareQuery,
   useRefreshHardwareMutation,

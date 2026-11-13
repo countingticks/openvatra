@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "BundledEngine": {
+        "properties": {
+          "tag": {
+            "description": "release tag of the llama.cpp build shipped with the app; null when unreadable",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "tag"
+        ],
+        "type": "object"
+      },
       "CatalogFolder": {
         "properties": {
           "folder": {
@@ -227,6 +242,27 @@
         },
         "required": [
           "items"
+        ],
+        "type": "object"
+      },
+      "EnginesBody": {
+        "properties": {
+          "bundled": {
+            "$ref": "#/components/schemas/BundledEngine"
+          },
+          "cuda": {
+            "description": "ready: installed for the pinned tag; stale: only an older one",
+            "enum": [
+              "none",
+              "ready",
+              "stale"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundled",
+          "cuda"
         ],
         "type": "object"
       },
@@ -1485,6 +1521,38 @@
         "summary": "Resume a paused or failed download",
         "tags": [
           "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/engines": {
+      "get": {
+        "operationId": "getEngines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnginesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "The llama.cpp builds on this PC",
+        "tags": [
+          "engines"
         ],
         "x-scope": "ui"
       }
