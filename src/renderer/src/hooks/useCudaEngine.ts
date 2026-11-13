@@ -1,7 +1,7 @@
 import { useGetEnginesQuery, type EnginesBody } from '@renderer/core/generated'
 import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { useSetup } from '@renderer/hooks/useSetup'
-import type { DownloadItem } from '../../../shared/setup'
+import type { DownloadItem } from '@renderer/core/types'
 
 export interface CudaEngine {
   /** An NVIDIA card and no llama-server of the user's own: the only case where the faster engine is on offer. */

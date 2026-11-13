@@ -6,7 +6,7 @@ import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
 import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { failureReason } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
-import type { ModelInfo } from '../../../shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 
 /** The whole row is the button: clicking a model loads it, clicking the loaded one unloads it. */
 function PickerRow({

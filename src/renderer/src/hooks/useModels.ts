@@ -1,4 +1,4 @@
-import type { ModelInfo } from '../../../shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 import { selectConnection } from '../core/connectionSlice'
 import { useListModelsQuery } from '../core/generated'
 import { useAppSelector } from '../store/hooks'

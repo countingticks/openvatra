@@ -1,21 +1,6 @@
-// What the UI may know about model setup: the PC's hardware, the download catalog and the download queue.
-// These are core's JSON answers (core/internal/hw, catalog, downloads), checked where they cross a process boundary.
+// The window's view of core's catalog: GET /api/catalog carries each entry's files, the UI only needs the total size.
 
-export interface Gpu {
-  name: string
-  /** 'nvidia' | 'amd' | 'intel' | 'other', as core labels it. */
-  vendor: string
-  totalBytes: number
-  freeBytes: number
-}
-
-export interface HardwareReport {
-  gpu: Gpu | null
-  ramBytes: number
-  error?: string
-}
-
-export const fitLabels = ['fits', 'slower', 'tooBig'] as const
+const fitLabels = ['fits', 'slower', 'tooBig'] as const
 
 export interface CatalogEntry {
   id: string
@@ -41,51 +26,8 @@ export interface CatalogView {
   recommended: string | null
 }
 
-export const downloadStates = ['queued', 'downloading', 'verifying', 'paused', 'error', 'done'] as const
-
-export interface DownloadItem {
-  id: string
-  state: (typeof downloadStates)[number]
-  bytes: number
-  total: number
-  /** Bytes per second. */
-  speed: number
-  error?: string
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isDownloadItem(value: unknown): value is DownloadItem {
-  if (!isRecord(value)) return false
-  const { id, state, bytes, total, speed, error } = value
-  return (
-    typeof id === 'string' &&
-    downloadStates.includes(state as DownloadItem['state']) &&
-    typeof bytes === 'number' &&
-    typeof total === 'number' &&
-    typeof speed === 'number' &&
-    (error === undefined || typeof error === 'string')
-  )
-}
-
-/** Checks a download queue that crossed a process boundary (core → main → UI). */
-export function isDownloadList(value: unknown): value is DownloadItem[] {
-  return Array.isArray(value) && value.every(isDownloadItem)
-}
-
-export function isHardwareReport(value: unknown): value is HardwareReport {
-  if (!isRecord(value) || typeof value['ramBytes'] !== 'number') return false
-  const gpu = value['gpu']
-  if (gpu === null) return true
-  return (
-    isRecord(gpu) &&
-    typeof gpu['name'] === 'string' &&
-    typeof gpu['vendor'] === 'string' &&
-    typeof gpu['totalBytes'] === 'number' &&
-    typeof gpu['freeBytes'] === 'number'
-  )
 }
 
 /** core's catalog entries carry their files; the UI only needs the total, so this turns one into a CatalogEntry. */

@@ -11,7 +11,7 @@ import {
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { progressText } from '@renderer/lib/setupText'
-import type { DownloadItem } from '../../../shared/setup'
+import type { DownloadItem } from '@renderer/core/types'
 
 /**
  * Once per start: if downloads were left unfinished by the last run, offers to continue them. "Left over" means

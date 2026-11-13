@@ -7,7 +7,8 @@ import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@renderer/store/store'
-import type { CoreConnection, CoreState, ModelInfo } from '../../src/shared/core'
+import type { CoreConnection, CoreState } from '../../src/shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 import type {
   Api,
   AppApi,
@@ -17,7 +18,8 @@ import type {
   FilesApi,
   SettingsApi
 } from '../../src/shared/ipc'
-import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
+import type { DownloadItem, HardwareReport } from '@renderer/core/types'
+import type { CatalogView } from '@renderer/core/catalogView'
 import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
 import { defaultCoreModels } from '@renderer/core/modelSettings'

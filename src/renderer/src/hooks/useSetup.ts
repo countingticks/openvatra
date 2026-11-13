@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import {
-  parseCatalogView,
-  type CatalogView,
-  type DownloadItem,
-  type HardwareReport
-} from '../../../shared/setup'
+import { parseCatalogView, type CatalogView } from '@renderer/core/catalogView'
+import type { DownloadItem, HardwareReport } from '@renderer/core/types'
 import { selectConnection } from '../core/connectionSlice'
 import { coreApi } from '../core/coreApi'
 import { useGetCatalogQuery, useGetHardwareQuery, useListDownloadsQuery } from '../core/generated'

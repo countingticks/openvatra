@@ -4,7 +4,7 @@ import { App } from '@renderer/App'
 import { defaultCoreModels } from '@renderer/core/modelSettings'
 import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
-import type { ModelInfo } from '../../src/shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 
 const qwen: ModelInfo = {
   id: 'Qwen3-8B',

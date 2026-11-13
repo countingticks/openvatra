@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
-import type { CatalogEntry, CatalogView, DownloadItem } from '../../src/shared/setup'
+import type { DownloadItem } from '@renderer/core/types'
+import type { CatalogEntry, CatalogView } from '@renderer/core/catalogView'
 
 const GB = 1024 ** 3
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const

@@ -4,7 +4,7 @@ import { useRemoveCatalogEntryMutation } from '@renderer/core/generated'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
-import type { CatalogEntry } from '../../../../shared/setup'
+import type { CatalogEntry } from '@renderer/core/catalogView'
 
 interface InstalledRowProps {
   entry: CatalogEntry
