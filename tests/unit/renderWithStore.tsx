@@ -19,9 +19,9 @@ import type {
   SetupApi
 } from '../../src/shared/ipc'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
-import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
+import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
-import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
+import { createFakeCoreHttp, defaultCoreModels, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
 export const exampleConnection: CoreConnection = {
@@ -139,8 +139,12 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
-  /** The CUDA build's state main reports; default: not installed. */
+  /** The CUDA build's state main reports over IPC; default: not installed. */
   cuda?: 'none' | 'ready' | 'stale'
+  /** The models section's value core answers (rev 1), over core's defaults. */
+  modelSettings?: Partial<Models>
+  /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
+  engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
 
 function fakeSetup(
@@ -266,6 +270,18 @@ export function renderWithStore(
     '/api/catalog',
     toCoreCatalog(options.setup?.catalog ?? { entries: [], diskFreeBytes: null, recommended: null })
   )
+  coreHttp.setConfigModels({
+    rev: 1,
+    value: { ...defaultCoreModels, ...options.modelSettings },
+    effective: {
+      llamaServerPath: 'C:\\OpenVatra\\resources\\llama\\llama-server.exe',
+      modelsDir: 'C:\\Users\\me\\OpenVatra\\Models'
+    }
+  })
+  coreHttp.answer('/api/engines', {
+    bundled: { tag: options.engines?.tag === undefined ? 'b12078' : options.engines.tag },
+    cuda: options.engines?.cuda ?? 'none'
+  })
   const core = fakeCore(
     options.coreState ?? { status: 'ready', port: 53121, version: '0.4.0', connection: exampleConnection },
     options.models ?? [],
