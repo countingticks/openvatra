@@ -110,7 +110,9 @@ export function createHost(options: HostOptions): Host {
   // Each connect is one attempt; async steps of an older attempt must never change the state of a newer one.
   let generation = 0
   let stopping = false
-  let restarting = false
+  let restartRun: Promise<void> | null = null
+  /** The launcher that is running, if any: stop() and restart() must not leave the core it starts behind. */
+  let launching: Promise<LaunchResult> | null = null
   let attached: Core | null = null
   let restartTimer: ReturnType<typeof setTimeout> | undefined
   let crashTimes: number[] = []
@@ -235,6 +237,15 @@ export function createHost(options: HostOptions): Host {
   }
 
   function launch(): Promise<LaunchResult> {
+    const run = runLauncher()
+    launching = run
+    void run.then(() => {
+      if (launching === run) launching = null
+    })
+    return run
+  }
+
+  function runLauncher(): Promise<LaunchResult> {
     return new Promise((done) => {
       let child: ChildProcessWithoutNullStreams
       try {
@@ -385,29 +396,49 @@ export function createHost(options: HostOptions): Host {
     stopping = true
     clearTimeout(restartTimer)
     clearTimeout(watchTimer)
-    const core = attached
-    attached = null
+    // A restart in progress shuts its core down itself; its connect does nothing once stopping is set.
+    if (restartRun) await restartRun
+    const core = await takeCore()
     if (core) await shutDown(core)
   }
 
-  async function restart(): Promise<void> {
+  /** The core to shut down: the attached one, or the one a launch in flight produces (a quick Quit). */
+  async function takeCore(): Promise<Core | null> {
+    const launched = launching ? await launching : null
+    const core = attached ?? (launched?.kind === 'started' ? launched.core : null)
+    attached = null
+    return core
+  }
+
+  function restart(): Promise<void> {
     // A double click must not start two connects; after stop() the app is quitting.
-    if (stopping || restarting) return
-    restarting = true
-    try {
-      clearTimeout(restartTimer)
-      clearTimeout(watchTimer)
-      generation++ // ends the current attempt without counting a crash
-      // Said before the old core goes: requests must be refused instead of reaching a core that is exiting.
-      set({ status: 'starting' })
-      const core = attached
-      attached = null
-      if (core) await shutDown(core)
-      crashTimes = []
-      if (!stopping) connectNow()
-    } finally {
-      restarting = false
+    if (stopping || restartRun) return Promise.resolve()
+    const run = restartNow().finally(() => {
+      restartRun = null
+    })
+    restartRun = run
+    return run
+  }
+
+  async function restartNow(): Promise<void> {
+    const hung = current.status === 'problem' && current.reason === notAnswering
+    clearTimeout(restartTimer)
+    clearTimeout(watchTimer)
+    generation++ // ends the current attempt without counting a crash
+    // Said before the old core goes: requests must be refused instead of reaching a core that is exiting.
+    set({ status: 'starting' })
+    const core = await takeCore()
+    if (core) await shutDown(core)
+    else if (hung) {
+      // It holds the lock but does not answer, so asking it to shut down is pointless.
+      const found = await readDiscovery()
+      if (found) {
+        kill(found.pid)
+        await waitGone(found.pid)
+      }
     }
+    crashTimes = []
+    if (!stopping) connectNow()
   }
 
   async function request(path: string, init: RequestInit = {}): Promise<Response> {

@@ -488,3 +488,169 @@ describe('core host: health watch', () => {
     expect(requests(fetch, '/health')).toHaveLength(0)
   })
 })
+
+describe('core host: stop and restart', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  /** Core behaves like the real one on POST /shutdown: it exits at once and removes its core.json. */
+  function exitOnShutdown(world: World): void {
+    world.answer = (url) => {
+      if (url.endsWith('/shutdown')) {
+        world.file = null
+        world.alive.clear()
+      }
+      return undefined
+    }
+  }
+
+  it('stop() posts /shutdown with the shell token and resolves once the pid is gone, without kill', async () => {
+    const { world, host, fetch, kill } = setUp({ file: discovery() })
+    await settle()
+    const stopped = vi.fn()
+    void host.stop().then(stopped)
+    await settle()
+    const [url, init] = requests(fetch, '/shutdown')[0]
+    expect(url).toBe('http://127.0.0.1:53121/shutdown')
+    expect(bearer(init)).toBe(`Bearer ${fileToken}`)
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(stopped).not.toHaveBeenCalled()
+
+    world.alive.delete(4242)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(stopped).toHaveBeenCalled()
+    expect(kill).not.toHaveBeenCalled()
+  })
+
+  it('stop() kills a core that never exits after 8 s, then resolves', async () => {
+    const { host, kill, log } = setUp({ file: discovery() })
+    await settle()
+    const stopped = vi.fn()
+    void host.stop().then(stopped)
+    await settle()
+    await vi.advanceTimersByTimeAsync(7_750)
+    expect(kill).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(kill).toHaveBeenCalledWith(4242)
+    expect(stopped).toHaveBeenCalled()
+    expect(log.warn).toHaveBeenCalledWith('core: did not exit within 8 s, killing it')
+  })
+
+  it('stop() during a launch waits for the ready line, then shuts that core down; no connect afterwards', async () => {
+    const set = setUp()
+    await settle()
+    const stopped = vi.fn()
+    void set.host.stop().then(stopped)
+    await settle()
+    expect(stopped).not.toHaveBeenCalled()
+
+    await launcherSucceeds(set, set.children[0])
+    const [url, init] = requests(set.fetch, '/shutdown')[0]
+    expect(url).toBe('http://127.0.0.1:53122/shutdown')
+    expect(bearer(init)).toBe(`Bearer ${launchedToken}`)
+    set.world.alive.delete(5151)
+    await vi.advanceTimersByTimeAsync(250)
+    expect(stopped).toHaveBeenCalled()
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(set.spawn).toHaveBeenCalledTimes(1)
+    expect(requests(set.fetch, '/api/tokens')).toHaveLength(0)
+    expect(set.states.map((state) => state.status)).not.toContain('ready')
+  })
+
+  it('stop() with nothing attached resolves without a request', async () => {
+    const { host, fetch } = setUp({}, () => {
+      throw new Error('ENOENT')
+    })
+    await settle()
+    await host.stop()
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('restart() shuts the attached core down, connects again and forgets earlier crashes', async () => {
+    const set = setUp()
+    await settle()
+    set.children[0].child.exit(1)
+    await settle()
+    await vi.advanceTimersByTimeAsync(1_000)
+    await settle()
+    set.children[1].child.exit(1)
+    await settle()
+    await vi.advanceTimersByTimeAsync(5_000)
+    await settle()
+    await launcherSucceeds(set, set.children[2])
+    expect(set.states.at(-1)?.status).toBe('ready')
+
+    exitOnShutdown(set.world)
+    await set.host.restart()
+    await settle()
+    expect(requests(set.fetch, '/shutdown')).toHaveLength(1)
+    expect(set.spawn).toHaveBeenCalledTimes(4)
+
+    // Two crashes after the restart still lead to a reconnect: the old ones were forgotten.
+    set.children[3].child.exit(1)
+    await settle()
+    await vi.advanceTimersByTimeAsync(1_000)
+    await settle()
+    expect(set.spawn).toHaveBeenCalledTimes(5)
+    set.children[4].child.exit(1)
+    await settle()
+    await vi.advanceTimersByTimeAsync(5_000)
+    await settle()
+    expect(set.spawn).toHaveBeenCalledTimes(6)
+    set.children[5].child.exit(1)
+    await settle()
+    expect(set.states.at(-1)).toMatchObject({
+      status: 'problem',
+      reason: expect.stringContaining('giving up')
+    })
+  })
+
+  it("restart() of a core that is running but not answering kills the file's pid, then launches", async () => {
+    const set = setUp({
+      file: discovery(),
+      answer: (url) => (url.endsWith('/api/version') ? 'silent' : undefined)
+    })
+    await vi.advanceTimersByTimeAsync(2_000)
+    await settle()
+    set.children[0].child.exit(3)
+    await settle()
+    await vi.advanceTimersByTimeAsync(2_000)
+    await settle()
+    set.children[1].child.exit(3)
+    await settle()
+    expect(set.states.at(-1)).toEqual({ status: 'problem', reason: 'core is running but not answering' })
+
+    set.kill.mockImplementation((pid: number) => set.world.alive.delete(pid))
+    set.world.answer = (url) => (url.endsWith('/api/version') ? 'refuse' : undefined)
+    await set.host.restart()
+    expect(set.kill).toHaveBeenCalledWith(4242)
+    await settle()
+    expect(set.spawn).toHaveBeenCalledTimes(3)
+  })
+
+  it('ignores a second restart() while the first runs: one shutdown, one connect', async () => {
+    const set = setUp({ file: discovery() })
+    await settle()
+    exitOnShutdown(set.world)
+    void set.host.restart()
+    void set.host.restart()
+    await settle()
+    expect(requests(set.fetch, '/shutdown')).toHaveLength(1)
+    expect(set.spawn).toHaveBeenCalledTimes(1)
+  })
+
+  it('restart() after stop() does nothing', async () => {
+    const set = setUp({ file: discovery() })
+    await settle()
+    exitOnShutdown(set.world)
+    await set.host.stop()
+    const requestsBefore = set.fetch.mock.calls.length
+    const statesBefore = set.states.length
+    await set.host.restart()
+    await settle()
+    expect(set.fetch.mock.calls.length).toBe(requestsBefore)
+    expect(set.states.length).toBe(statesBefore)
+    expect(set.spawn).not.toHaveBeenCalled()
+  })
+})
