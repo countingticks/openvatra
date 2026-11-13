@@ -818,6 +818,41 @@
         "x-scope": "shell"
       }
     },
+    "/api/catalog/{id}/remove": {
+      "post": {
+        "operationId": "removeCatalogEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_catalog_entry, no_models_folder, outside_models_folder, not_installed, unload_timeout, trash_failed, internal."
+          }
+        },
+        "summary": "Move a downloaded model to the Recycle Bin",
+        "tags": [
+          "catalog"
+        ],
+        "x-scope": "ui"
+      }
+    },
     "/api/chats": {
       "get": {
         "operationId": "listChats",

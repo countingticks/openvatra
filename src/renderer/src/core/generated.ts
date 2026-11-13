@@ -20,6 +20,10 @@ const injectedRtkApi = api
         query: () => ({ url: `/api/catalog` }),
         providesTags: ['catalog']
       }),
+      removeCatalogEntry: build.mutation<RemoveCatalogEntryApiResponse, RemoveCatalogEntryApiArg>({
+        query: (queryArg) => ({ url: `/api/catalog/${queryArg.id}/remove`, method: 'POST' }),
+        invalidatesTags: ['catalog']
+      }),
       listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
         query: () => ({ url: `/api/chats` }),
         providesTags: ['chats']
@@ -121,6 +125,10 @@ const injectedRtkApi = api
 export { injectedRtkApi as generatedApi }
 export type GetCatalogApiResponse = /** status 200 OK */ View
 export type GetCatalogApiArg = void
+export type RemoveCatalogEntryApiResponse = unknown
+export type RemoveCatalogEntryApiArg = {
+  id: string
+}
 export type ListChatsApiResponse = /** status 200 OK */ Chat[]
 export type ListChatsApiArg = void
 export type CreateChatApiResponse = /** status 201 Created */ Chat
@@ -380,6 +388,7 @@ export type VersionBody = {
 }
 export const {
   useGetCatalogQuery,
+  useRemoveCatalogEntryMutation,
   useListChatsQuery,
   useCreateChatMutation,
   useDeleteChatMutation,

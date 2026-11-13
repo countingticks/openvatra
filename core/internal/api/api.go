@@ -28,6 +28,7 @@ type Deps struct {
 	Config     Config // nil only in tests: the config routes answer 503
 	Hardware   Hardware
 	Catalog    Catalog
+	Removal    Removal // nil only in tests that do not call the route
 	Downloads  Downloads
 	Chats      *chat.Service // nil when the chat database could not be opened
 	Log        event.Log
@@ -76,7 +77,7 @@ func routes(d Deps, t *tokens) []Route {
 		"Core's OpenAPI document", openapiHandler(d)))
 	routes = append(routes, modelRoutes(d)...)
 	routes = append(routes, hardwareRoutes(d.Hardware)...)
-	routes = append(routes, catalogRoutes(d.Catalog)...)
+	routes = append(routes, catalogRoutes(d.Catalog, d.Removal)...)
 	routes = append(routes, downloadRoutes(d.Downloads)...)
 	routes = append(routes, configRoutes(d.Config)...)
 	routes = append(routes, chatRoutes(d.Chats)...)
