@@ -6,7 +6,7 @@ import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@renderer/store/store'
-import type { CoreState, ModelInfo } from '../../src/shared/core'
+import type { CoreConnection, CoreState, ModelInfo } from '../../src/shared/core'
 import type {
   Api,
   AppApi,
@@ -19,6 +19,12 @@ import type {
 } from '../../src/shared/ipc'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
+
+/** A connection a ready core hands the window. */
+export const exampleConnection: CoreConnection = {
+  baseUrl: 'http://127.0.0.1:53121',
+  token: 'a'.repeat(64)
+}
 
 export const exampleLocations: FileLocations = {
   settingsFile: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\settings.json',

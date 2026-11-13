@@ -1,14 +1,22 @@
 import { app, session, shell, type WebContents } from 'electron'
+import { allowLoopbackRequest, loopbackPatterns } from './loopbackFilter'
 import { isAppUrl, isExternalWebUrl } from './urlPolicy'
 
 /**
  * Guards that keep every window showing only the app's own UI (AGENTS.md "Security rules").
- * Call once, before the first window is created. `appUrl` is the URL the main window loads.
+ * Call once, before the first window is created. `appUrl` is the URL the main window loads; `corePort` gives
+ * core's port while it is ready.
  */
-export function applySecurityPolicy(appUrl: string): void {
+export function applySecurityPolicy(appUrl: string, corePort: () => number | undefined): void {
   // Camera, microphone, location, notifications...: nothing is granted unless a feature explicitly needs it.
   session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
   session.defaultSession.setPermissionCheckHandler(() => false)
+
+  // The page may reach core, and no other local service. The port is read per request: a restarted core on a
+  // new port needs no reload. Main's own fetch does not pass through the session, so it is not affected.
+  session.defaultSession.webRequest.onBeforeRequest({ urls: loopbackPatterns }, (details, callback) =>
+    callback({ cancel: !allowLoopbackRequest(details.url, corePort(), appUrl) })
+  )
 
   app.on('web-contents-created', (_event, contents) => guardContents(contents, appUrl))
 }

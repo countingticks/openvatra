@@ -1,11 +1,11 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { CatalogEntry, CatalogView, DownloadItem } from '../../src/shared/setup'
 
 const GB = 1024 ** 3
-const ready = { status: 'ready', port: 1234, version: '1' } as const
+const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 
 const entry = (patch: Partial<CatalogEntry>): CatalogEntry => ({
   id: 'qwen3-8b',

@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { ModelInfo } from '../../src/shared/core'
 
 const qwen: ModelInfo = {
@@ -11,7 +11,7 @@ const qwen: ModelInfo = {
   sizeBytes: 5 * 1024 ** 3,
   kind: 'chat'
 }
-const ready = { status: 'ready', port: 1234, version: '1' } as const
+const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 
 const button = (): HTMLElement => screen.getByRole('button', { name: /^Model:/ })
 
@@ -22,7 +22,11 @@ async function openPopover(): Promise<HTMLElement> {
 
 describe('model button', () => {
   it('sits in the Chat tab and says "No model" with the state in words', async () => {
-    renderWithStore(<App />, {}, { coreState: { status: 'ready', port: 1234, version: '1' } })
+    renderWithStore(
+      <App />,
+      {},
+      { coreState: { status: 'ready', port: 1234, version: '1', connection: exampleConnection } }
+    )
 
     expect(button()).toHaveTextContent('No model')
     await waitFor(() => expect(button()).toHaveAccessibleName('Model: no model, Ready'))

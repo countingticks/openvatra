@@ -1,3 +1,5 @@
+import { createServer } from 'http'
+import type { AddressInfo } from 'net'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
 
@@ -159,6 +161,46 @@ test('window.open never creates an app window', async () => {
   expect(result).toBe(true)
   await expect.poll(openedExternally).toContain('https://example.org/popup')
   expect(app.windows()).toHaveLength(1)
+})
+
+test("the page reaches core's port and no other loopback port", async () => {
+  // Stands in for llama-server or any other local service the page must not reach.
+  let received = 0
+  const other = createServer((_request, response) => {
+    received++
+    response.end('reached')
+  })
+  await new Promise<void>((resolve) => other.listen(0, '127.0.0.1', resolve))
+  try {
+    const { port } = other.address() as AddressInfo
+    const blocked = await mainWindow.evaluate(async (url) => {
+      try {
+        await fetch(url)
+        return false
+      } catch {
+        return true
+      }
+    }, `http://127.0.0.1:${port}/`)
+    expect(blocked).toBe(true)
+    expect(received).toBe(0)
+  } finally {
+    await new Promise((resolve) => other.close(resolve))
+  }
+
+  await expect
+    .poll(() => mainWindow.evaluate(async () => (await window.api.core.getState()).status), {
+      timeout: 30_000
+    })
+    .toBe('ready')
+  const answer = await mainWindow.evaluate(async () => {
+    const state = await window.api.core.getState()
+    if (state.status !== 'ready') throw new Error('core is not ready')
+    const { baseUrl, token } = state.connection
+    const response = await fetch(`${baseUrl}/api/version`, { headers: { Authorization: `Bearer ${token}` } })
+    return { status: response.status, body: (await response.json()) as { api?: unknown } }
+  })
+  expect(answer.status).toBe(200)
+  expect(answer.body.api).toBe(1)
 })
 
 test('links to local files or other protocols go nowhere', async () => {

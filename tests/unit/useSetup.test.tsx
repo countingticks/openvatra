@@ -1,10 +1,10 @@
 import { screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { useSetup } from '@renderer/hooks/useSetup'
-import { renderWithStore } from './renderWithStore'
+import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { CatalogView } from '../../src/shared/setup'
 
-const ready = { status: 'ready', port: 1234, version: '1' } as const
+const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 const catalog: CatalogView = { entries: [], diskFreeBytes: 7, recommended: null }
 
 function Probe(): React.JSX.Element {

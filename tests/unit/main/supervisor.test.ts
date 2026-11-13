@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import type { ChildProcessWithoutNullStreams } from 'child_process'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { createSupervisor, type CoreState, type Supervisor } from '../../../src/main/core/supervisor'
 
 // A stand-in for the child process: we write to its stdout and emit 'exit' ourselves.
@@ -21,27 +21,52 @@ function fakeChild(): FakeChild {
 
 const readyLine = (port = 53121): string => JSON.stringify({ event: 'ready', port, version: '0.1.0' }) + '\n'
 
+/** The ui tokens the fake core issues, in order: one per POST /api/tokens. */
+const uiTokens = ['b'.repeat(64), 'c'.repeat(64)]
+
+/** A fake network: `answer` gives the fields of the response core would send for a URL. */
+function fakeFetch(answer: (url: string) => Partial<Response>): Mock<typeof fetch> {
+  return vi.fn<typeof fetch>(async (input) => answer(String(input)) as Response)
+}
+
+/** A core that answers every request OK and issues the next ui token on POST /api/tokens. */
+function coreFetch(): Mock<typeof fetch> {
+  let issued = 0
+  return fakeFetch((url) =>
+    url.endsWith('/api/tokens')
+      ? { ok: true, status: 201, json: async () => ({ token: uiTokens[issued++ % uiTokens.length] }) }
+      : { ok: true, status: 200 }
+  )
+}
+
+interface Log {
+  info: ReturnType<typeof vi.fn>
+  warn: ReturnType<typeof vi.fn>
+}
+
 interface SetUp extends FakeChild {
   states: CoreState[]
   spawn: ReturnType<typeof vi.fn>
   fetch: typeof fetch
+  log: Log
   supervisor: Supervisor
 }
 
-function setUp(fetchImpl: typeof fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 })): SetUp {
+function setUp(fetchImpl: typeof fetch = coreFetch()): SetUp {
   const fake = fakeChild()
   const states: CoreState[] = []
   const spawn = vi.fn().mockReturnValue(fake.process)
+  const log = { info: vi.fn(), warn: vi.fn() }
   const supervisor = createSupervisor({
     exePath: 'core.exe',
     logsDir: 'logs',
     onState: (state) => states.push(state),
-    log: { info: vi.fn(), warn: vi.fn() },
+    log,
     spawn,
     fetch: fetchImpl
   })
   supervisor.start()
-  return { ...fake, states, spawn, supervisor, fetch: fetchImpl }
+  return { ...fake, states, spawn, log, supervisor, fetch: fetchImpl }
 }
 
 describe('core supervisor', () => {
@@ -67,7 +92,44 @@ describe('core supervisor', () => {
     expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:53121/health', {
       headers: { Authorization: `Bearer ${token}` }
     })
-    expect(states.at(-1)).toEqual({ status: 'ready', port: 53121, version: '0.1.0' })
+    expect(states.at(-1)).toMatchObject({ status: 'ready', port: 53121, version: '0.1.0' })
+  })
+
+  it('after /health, asks core for a ui token with the shell token and hands it over when ready', async () => {
+    const { child, states, spawn, fetch } = setUp()
+    child.stdout.write(readyLine())
+    await vi.advanceTimersByTimeAsync(0)
+
+    const token = (spawn.mock.calls[0][1] as NodeJS.ProcessEnv)['OPENVATRA_CORE_TOKEN']
+    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:53121/api/tokens', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{"scope":"ui"}'
+    })
+    expect(states.at(-1)).toEqual({
+      status: 'ready',
+      port: 53121,
+      version: '0.1.0',
+      connection: { baseUrl: 'http://127.0.0.1:53121', token: uiTokens[0] }
+    })
+  })
+
+  it.each([
+    ['a 500', { ok: false, status: 500, json: async () => ({}) }],
+    ['a 201 without a token', { ok: true, status: 201, json: async () => ({}) }]
+  ])('treats %s from /api/tokens as a failed start: child killed, restart scheduled', async (_, answer) => {
+    const { child, states, spawn } = setUp(
+      fakeFetch((url) => (url.endsWith('/api/tokens') ? answer : { ok: true, status: 200 }))
+    )
+    child.stdout.write(readyLine())
+    await vi.advanceTimersByTimeAsync(0)
+    expect(states.at(-1)).toMatchObject({
+      status: 'problem',
+      reason: expect.stringContaining('core did not issue a ui token')
+    })
+    expect(child.kill).toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(spawn).toHaveBeenCalledTimes(2)
   })
 
   it('ignores output that is not the ready line', async () => {
@@ -125,22 +187,23 @@ describe('core supervisor', () => {
     function setUpMany(): SetUp & { children: FakeChild[] } {
       const children: FakeChild[] = []
       const states: CoreState[] = []
-      const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      const fetchImpl = coreFetch()
       const spawn = vi.fn().mockImplementation(() => {
         const fake = fakeChild()
         children.push(fake)
         return fake.process
       })
+      const log = { info: vi.fn(), warn: vi.fn() }
       const supervisor = createSupervisor({
         exePath: 'core.exe',
         logsDir: 'logs',
         onState: (state) => states.push(state),
-        log: { info: vi.fn(), warn: vi.fn() },
+        log,
         spawn,
         fetch: fetchImpl
       })
       supervisor.start()
-      return { ...children[0], children, states, spawn, supervisor, fetch: fetchImpl }
+      return { ...children[0], children, states, spawn, log, supervisor, fetch: fetchImpl }
     }
 
     it('restarts after 1 s, then after 5 s, and gives up on the third crash', async () => {
@@ -255,11 +318,11 @@ describe('core supervisor', () => {
     })
 
     it('kills core at once when /shutdown cannot be reached', async () => {
-      const { child, supervisor } = setUp(
-        vi.fn().mockResolvedValueOnce({ ok: true, status: 200 }).mockRejectedValue(new Error('refused'))
-      )
+      const fetchImpl = coreFetch()
+      const { child, supervisor } = setUp(fetchImpl)
       child.stdout.write(readyLine())
       await vi.advanceTimersByTimeAsync(0)
+      fetchImpl.mockRejectedValue(new Error('refused'))
       void supervisor.stop()
       await vi.advanceTimersByTimeAsync(0)
       expect(child.kill).toHaveBeenCalled()
@@ -283,17 +346,18 @@ describe('core supervisor', () => {
         return fake.process
       })
       const states: CoreState[] = []
-      const fetchImpl = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+      const fetchImpl = coreFetch()
+      const log = { info: vi.fn(), warn: vi.fn() }
       const supervisor = createSupervisor({
         exePath: 'core.exe',
         logsDir: 'logs',
         onState: (state) => states.push(state),
-        log: { info: vi.fn(), warn: vi.fn() },
+        log,
         spawn,
         fetch: fetchImpl
       })
       supervisor.start()
-      return { ...children[0], children, states, spawn, supervisor, fetch: fetchImpl }
+      return { ...children[0], children, states, spawn, log, supervisor, fetch: fetchImpl }
     }
 
     it('shuts the old core down, then starts a new one without counting it as a crash', async () => {
@@ -315,6 +379,25 @@ describe('core supervisor', () => {
       expect(spawn).toHaveBeenCalledTimes(2)
       expect(states.map((state) => state.status)).not.toContain('problem')
       expect(states.at(-1)).toEqual({ status: 'starting' })
+    })
+
+    it("hands over the new core's ui token after a restart, and never logs a ui token", async () => {
+      const { children, states, log, supervisor } = setUpRestartable()
+      children[0].child.stdout.write(readyLine())
+      await vi.advanceTimersByTimeAsync(0)
+      void supervisor.restart()
+      children[0].child.emit('exit', 0)
+      await vi.advanceTimersByTimeAsync(0)
+      children[1].child.stdout.write(readyLine(53122))
+      await vi.advanceTimersByTimeAsync(0)
+
+      expect(states.at(-1)).toMatchObject({
+        status: 'ready',
+        connection: { baseUrl: 'http://127.0.0.1:53122', token: uiTokens[1] }
+      })
+      const lines = [...log.info.mock.calls, ...log.warn.mock.calls].map((call) => String(call[0]))
+      expect(lines).toContain('core: ready')
+      for (const token of uiTokens) expect(lines.some((line) => line.includes(token))).toBe(false)
     })
 
     it('starts over after core gave up, forgetting the old crashes', async () => {
@@ -382,7 +465,7 @@ describe('core supervisor: onReady and request', () => {
   }
 
   it('calls onReady once core is healthy, not before', async () => {
-    const { child, onReady } = start(vi.fn().mockResolvedValue({ ok: true, status: 200 }))
+    const { child, onReady } = start(coreFetch())
     expect(onReady).not.toHaveBeenCalled()
     child.stdout.write(readyLine())
     await vi.advanceTimersByTimeAsync(0)
@@ -390,11 +473,11 @@ describe('core supervisor: onReady and request', () => {
   })
 
   it('sends any request with the token and hands back the response, whatever its status', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 })
+    const fetchMock = coreFetch()
     const { child, spawn, supervisor } = start(fetchMock)
     child.stdout.write(readyLine(53121))
     await vi.advanceTimersByTimeAsync(0)
-    const notFound = { ok: false, status: 404 }
+    const notFound = { ok: false, status: 404 } as Response
     fetchMock.mockResolvedValueOnce(notFound)
 
     expect(await supervisor.request('/api/state')).toBe(notFound)

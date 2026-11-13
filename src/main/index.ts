@@ -21,6 +21,7 @@ import { createSettingsService } from './settingsService'
 import { createSettingsStore } from './settingsStore'
 import { applyTheme } from './theme'
 import { type AppTray, createTray } from './tray'
+import { devServerOrigin } from './urlPolicy'
 import { createMainWindow, hideOnClose } from './window'
 
 // The only URL the app window may show: the dev server while developing, the bundled index.html otherwise.
@@ -62,6 +63,9 @@ function coreExtraArgs(): string[] {
   // Test seam: a catalog file that may name a local server. Never reachable in an installed app.
   const file = process.env['OPENVATRA_TEST_CATALOG']
   if (!app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && file) args.push('--test-catalog', file)
+  // A file:// page sends no Origin, so only the dev server's origin needs allowing.
+  const origin = devServerOrigin(appUrl)
+  if (origin) args.push('--origin', origin)
   return args
 }
 
@@ -104,7 +108,10 @@ function start(): void {
     electronApp.setAppUserModelId('com.countingticks.openvatra')
 
     // Before any window exists, so every window and web view is guarded from its first moment.
-    applySecurityPolicy(appUrl)
+    applySecurityPolicy(appUrl, () => {
+      const state = core?.state()
+      return state?.status === 'ready' ? state.port : undefined
+    })
 
     // No Electron menu: the app draws its own (≡ in the title bar), and Alt must reach it instead of revealing a
     // hidden native menu bar. Editing shortcuts (Ctrl+C/V/Z…) are handled by Chromium itself, menu or not.

@@ -1,11 +1,11 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { CatalogEntry, DownloadItem } from '../../src/shared/setup'
 
 const GB = 1024 ** 3
-const ready = { status: 'ready', port: 1234, version: '1' } as const
+const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 
 const entry = (id: string, name: string): CatalogEntry => ({
   id,
