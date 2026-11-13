@@ -23,3 +23,9 @@ func WriteDiscovery(dataDir string, d Discovery) error { return errors.ErrUnsupp
 func Detach(exe string, args []string, dataDir string, timeout time.Duration) (Ready, error) {
 	return Ready{}, errors.ErrUnsupported
 }
+
+var ErrNoProcess = errors.New("no such process")
+
+func WatchParent(pid int, onExit func()) error { return errors.ErrUnsupported }
+
+func WaitExit(pid int, timeout time.Duration) (bool, error) { return false, errors.ErrUnsupported }
