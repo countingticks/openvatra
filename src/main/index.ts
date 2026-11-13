@@ -182,6 +182,7 @@ function start(): void {
       settings,
       appUrl,
       { settingsFile: settingsPath, logsFolder: logsFolder() },
+      configClient,
       {
         state: core.state,
         restart: core.restart

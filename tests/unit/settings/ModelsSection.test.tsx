@@ -155,7 +155,7 @@ describe('Settings → Models', () => {
     it('Browse… asks main to pick, and shows the folder core then reports', async () => {
       const { coreHttp, pick } = await openModels({}, { coreState: ready })
       await waitFor(() => expect(coreHttp.openStreams()).toBe(1))
-      pick.mockResolvedValueOnce(null)
+      pick.mockResolvedValueOnce(true)
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for Models folder' }))
       expect(pick).toHaveBeenCalledWith('modelsDir')
@@ -163,6 +163,16 @@ describe('Settings → Models', () => {
       configChanged(coreHttp, 2)
 
       expect(await screen.findByText('E:\\gguf')).toBeInTheDocument()
+    })
+
+    it('shows no alert when the path was saved', async () => {
+      const { pick } = await openModels({}, { coreState: ready })
+      pick.mockResolvedValueOnce(true)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Browse for Models folder' }))
+
+      await waitFor(() => expect(pick).toHaveBeenCalledWith('modelsDir'))
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('changes nothing when the dialog is cancelled, and says so when saving fails', async () => {

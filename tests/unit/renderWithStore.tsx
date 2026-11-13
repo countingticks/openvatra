@@ -195,7 +195,7 @@ export function renderWithStore(
   const openFolder = vi.fn<FilesApi['openFolder']>().mockResolvedValue(undefined)
   const appWindow = fakeAppWindow(options.maximized ?? false)
   const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
-  const pick = vi.fn<FilesApi['pick']>().mockResolvedValue(null)
+  const pick = vi.fn<FilesApi['pick']>().mockResolvedValue(false)
   const coreHttp = createFakeCoreHttp()
   vi.stubGlobal('fetch', coreHttp.fetch)
   coreHttp.setModels(options.models ?? [])

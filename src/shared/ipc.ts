@@ -72,11 +72,11 @@ export interface FilesApi {
   /** Opens that folder in File Explorer; rejects if it can't. */
   openFolder(folder: AppFolder): Promise<void>
   /**
-   * Shows Windows' own Open dialog for that path and saves the choice. The UI never sends a path: core runs
-   * llama-server.exe, so only a file the user picked in the system dialog may become it. Resolves with the saved
-   * settings, or null if the user cancelled.
+   * Shows Windows' own Open dialog for that path and saves the choice in core. The UI never sends a path:
+   * core runs llama-server.exe, so only a file the user picked in the system dialog may become it. true: saved;
+   * false: the user cancelled.
    */
-  pick(target: PickTarget): Promise<Settings | null>
+  pick(target: PickTarget): Promise<boolean>
 }
 
 export interface RuntimeInfo {
