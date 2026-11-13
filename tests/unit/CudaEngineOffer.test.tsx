@@ -4,9 +4,9 @@ import { App } from '@renderer/App'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import { defaultSettings, type ModelsSettings } from '../../src/shared/settings'
 import type { ModelInfo } from '../../src/shared/core'
-import { renderWithStore } from './renderWithStore'
+import { exampleConnection, renderWithStore } from './renderWithStore'
 
-const ready = { status: 'ready', port: 1234, version: '1' } as const
+const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 const stopped: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, sizeBytes: 1, kind: 'chat' }
 const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 

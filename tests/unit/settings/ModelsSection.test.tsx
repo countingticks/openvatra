@@ -4,9 +4,9 @@ import { App } from '@renderer/App'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState, ModelInfo } from '../../../src/shared/core'
 import { defaultSettings, type ModelsSettings, type Settings } from '../../../src/shared/settings'
-import { renderWithStore } from '../renderWithStore'
+import { exampleConnection, renderWithStore } from '../renderWithStore'
 
-const ready: CoreState = { status: 'ready', port: 1234, version: '1' }
+const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
 const chosen: ModelsSettings = {
   ...defaultSettings.models,
   llamaServerPath: 'C:\\llama\\llama-server.exe',

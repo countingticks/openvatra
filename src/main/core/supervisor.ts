@@ -159,14 +159,46 @@ export function createSupervisor(options: SupervisorOptions): Supervisor {
         headers: { Authorization: `Bearer ${attempt.token}` }
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      if (attempt.failed || stopping) return
-      attempt.port = port
-      set({ status: 'ready', port, version })
-      options.onReady?.()
     } catch (error) {
       fail(attempt, `core did not answer /health: ${String(error)}`)
       attempt.child.kill() // it is running but useless; the restart must not leave it behind
+      return
     }
+    if (attempt.failed || stopping) return
+
+    // The window talks to core itself, with a token that can do less than the shell token (scope ui).
+    let uiToken: string
+    try {
+      uiToken = await issueUiToken(attempt.token, port)
+    } catch (error) {
+      fail(attempt, `core did not issue a ui token: ${String(error)}`)
+      attempt.child.kill()
+      return
+    }
+    if (attempt.failed || stopping) return
+    attempt.port = port
+    set({
+      status: 'ready',
+      port,
+      version,
+      connection: { baseUrl: `http://127.0.0.1:${port}`, token: uiToken }
+    })
+    options.onReady?.()
+  }
+
+  async function issueUiToken(shellToken: string, port: number): Promise<string> {
+    const response = await doFetch(`http://127.0.0.1:${port}/api/tokens`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${shellToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope: 'ui' })
+    })
+    if (response.status !== 201) throw new Error(`HTTP ${response.status}`)
+    const data: unknown = await response.json()
+    const token =
+      typeof data === 'object' && data !== null ? (data as Record<string, unknown>).token : undefined
+    if (typeof token !== 'string' || !/^[0-9a-f]{64}$/.test(token))
+      throw new Error('no valid token in the answer')
+    return token
   }
 
   function stop(): Promise<void> {
