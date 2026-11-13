@@ -39,6 +39,10 @@ type ModelOptions struct {
 	Args string `json:"args"`
 }
 
+// ShellOnly lists the paths: a program path the page could set would be a program core starts, so only main sets
+// them (the user picks them in a file dialog); a ui token may only reset them to null.
+func (Models) ShellOnly() []string { return []string{"llamaServerPath", "modelsDir"} }
+
 // DefaultModels are the values before anything was chosen; the same as settings.json v6's defaults.
 func DefaultModels() Models {
 	minutes := 15

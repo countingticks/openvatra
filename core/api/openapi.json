@@ -1288,7 +1288,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, internal."
+            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, shell_only_field, internal."
           }
         },
         "summary": "Replace the models config section if rev is still current",

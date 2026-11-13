@@ -74,7 +74,7 @@ func sectionRoutes(cfg Config, sec config.SectionType) []Route {
 			WithErrors("internal"),
 		jsonRoute(http.MethodPut, path, UI, "putConfig"+title,
 			fmt.Sprintf("Replace the %s config section if rev is still current", name), in, out,
-			func(_ context.Context, body any) (any, error) {
+			func(ctx context.Context, body any) (any, error) {
 				v := reflect.ValueOf(body)
 				rev := int(v.Field(0).Int())
 				if rev < 0 {
@@ -87,6 +87,11 @@ func sectionRoutes(cfg Config, sec config.SectionType) []Route {
 				if err != nil {
 					return nil, err
 				}
+				if callerScope(ctx) == UI && sec.ShellOnly != nil {
+					if err := checkShellOnly(cfg, name, sec.ShellOnly, rev, value); err != nil {
+						return nil, err
+					}
+				}
 				entry, err := cfg.Put(name, rev, value)
 				if errors.Is(err, config.ErrConflict) {
 					current, _ := cfg.Section(name)
@@ -98,6 +103,34 @@ func sectionRoutes(cfg Config, sec config.SectionType) []Route {
 				}
 				return entry, nil
 			}).
-			WithErrors("invalid_request", "invalid_config", "config_conflict", "config_unavailable", "internal"),
+			WithErrors("invalid_request", "invalid_config", "config_conflict", "config_unavailable", "shell_only_field",
+				"internal"),
 	}
+}
+
+// checkShellOnly refuses a ui caller's value that sets a shell-only field to anything but null or what is stored.
+// With a stale rev it checks nothing: Put then answers config_conflict, so the comparison never uses another
+// revision's values.
+func checkShellOnly(cfg Config, name string, fields []string, rev int, value []byte) error {
+	stored, err := cfg.Section(name)
+	if err != nil {
+		return err
+	}
+	if stored.Rev != rev {
+		return nil
+	}
+	var now, next map[string]any
+	if err := json.Unmarshal(stored.Value, &now); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(value, &next); err != nil {
+		return err
+	}
+	for _, f := range fields {
+		if v := next[f]; v != nil && !reflect.DeepEqual(v, now[f]) {
+			return &Error{Status: http.StatusForbidden, Code: "shell_only_field",
+				Message: f + " can only be set by the app; a ui token may only reset it to null"}
+		}
+	}
+	return nil
 }
