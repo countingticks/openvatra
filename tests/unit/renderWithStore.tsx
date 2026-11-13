@@ -1,7 +1,8 @@
 // Renders UI inside a real Redux store, so component tests exercise the actual reducers. Only the IPC to the main
-// process is faked: settings answer like main does (with the whole saved file), window.api.files answers with
-// example paths, and window.api.appWindow records the window buttons and can report maximize changes the way main
-// would. tests/setup.ts removes the fake window.api after each test.
+// process and core's HTTP side are faked: settings answer like main does (with the whole saved file),
+// window.api.files answers with example paths, window.api.appWindow records the window buttons and can report
+// maximize changes the way main would, and fetch is a fake core (coreHttp). tests/setup.ts removes the fakes after
+// each test.
 import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
@@ -19,6 +20,7 @@ import type {
 } from '../../src/shared/ipc'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
+import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
 export const exampleConnection: CoreConnection = {
@@ -89,6 +91,8 @@ interface Rendered extends RenderResult {
   appWindow: FakeAppWindow
   quit: Mock<AppApi['quit']>
   core: FakeCore
+  /** core's HTTP side, stubbed in as fetch: what the window's data layer reaches over loopback. */
+  coreHttp: FakeCoreHttp
   setup: FakeSetup
 }
 
@@ -220,6 +224,8 @@ export function renderWithStore(
     appWindow: appWindow.api
   }
   vi.stubGlobal('api', api)
+  const coreHttp = createFakeCoreHttp()
+  vi.stubGlobal('fetch', coreHttp.fetch)
 
   const settingsListeners = new Set<(settings: Settings) => void>()
   const onChange: SettingsApi['onChange'] = (callback) => {
@@ -231,7 +237,11 @@ export function renderWithStore(
     act(() => settingsListeners.forEach((listener) => listener(settings)))
   }
 
-  const store = createAppStore({ settings: { update: saveSettings, onChange }, initialSettings: current })
+  const store = createAppStore({
+    settings: { update: saveSettings, onChange },
+    initialSettings: current,
+    core: core.api
+  })
   return {
     store,
     saveSettings,
@@ -242,6 +252,7 @@ export function renderWithStore(
     appWindow: appWindow.fake,
     quit,
     core: core.fake,
+    coreHttp,
     setup: setup.fake,
     ...render(<Provider store={store}>{ui}</Provider>)
   }

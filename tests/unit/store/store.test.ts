@@ -8,7 +8,9 @@ import {
   tabSelected,
   wentBack
 } from '@renderer/store/uiSlice'
-import type { SettingsApi } from '../../../src/shared/ipc'
+import { selectConnection } from '@renderer/core/connectionSlice'
+import type { CoreConnection, CoreState } from '../../../src/shared/core'
+import type { CoreApi, SettingsApi } from '../../../src/shared/ipc'
 import { defaultSettings, type Settings } from '../../../src/shared/settings'
 
 interface FakeSettings {
@@ -204,5 +206,72 @@ describe('back and forward', () => {
     })
 
     expect(store.getState().ui).toMatchObject({ activeTab: 'code', back: [], forward: [] })
+  })
+})
+
+interface FakeCoreState {
+  core: Pick<CoreApi, 'getState' | 'onState'>
+  /** Plays main's core:state push. */
+  push(state: CoreState): void
+  /** Answers the store's getState call. */
+  answer(state: CoreState): void
+}
+
+function fakeCoreState(): FakeCoreState {
+  let listener: ((state: CoreState) => void) | undefined
+  let answer: (state: CoreState) => void = () => {}
+  return {
+    core: {
+      getState: () => new Promise((resolve) => (answer = resolve)),
+      onState: (callback) => {
+        listener = callback
+        return () => (listener = undefined)
+      }
+    },
+    push: (state) => listener?.(state),
+    answer: (state) => answer(state)
+  }
+}
+
+const connection: CoreConnection = { baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }
+const ready = (to: CoreConnection): CoreState => ({
+  status: 'ready',
+  port: 53121,
+  version: '1.0.0',
+  connection: to
+})
+
+describe("core's connection", () => {
+  it('a ready state pushed by main sets the connection; a starting state clears it', () => {
+    const fake = fakeCoreState()
+    const store = createAppStore({ settings: fakeSettings(), core: fake.core })
+
+    fake.push(ready(connection))
+    expect(selectConnection(store.getState())).toEqual(connection)
+
+    fake.push({ status: 'starting' })
+    expect(selectConnection(store.getState())).toBeNull()
+  })
+
+  it("ignores getState's answer when a newer state was already pushed", async () => {
+    const fake = fakeCoreState()
+    const store = createAppStore({ settings: fakeSettings(), core: fake.core })
+
+    fake.push(ready(connection))
+    fake.answer({ status: 'starting' })
+    await settle()
+
+    expect(selectConnection(store.getState())).toEqual(connection)
+  })
+
+  it('keeps the same object when an equal connection is pushed twice', () => {
+    const fake = fakeCoreState()
+    const store = createAppStore({ settings: fakeSettings(), core: fake.core })
+
+    fake.push(ready(connection))
+    const first = selectConnection(store.getState())
+    fake.push(ready({ ...connection }))
+
+    expect(selectConnection(store.getState())).toBe(first)
   })
 })
