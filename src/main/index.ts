@@ -108,7 +108,10 @@ function start(): void {
     electronApp.setAppUserModelId('com.countingticks.openvatra')
 
     // Before any window exists, so every window and web view is guarded from its first moment.
-    applySecurityPolicy(appUrl)
+    applySecurityPolicy(appUrl, () => {
+      const state = core?.state()
+      return state?.status === 'ready' ? state.port : undefined
+    })
 
     // No Electron menu: the app draws its own (≡ in the title bar), and Alt must reach it instead of revealing a
     // hidden native menu bar. Editing shortcuts (Ctrl+C/V/Z…) are handled by Chromium itself, menu or not.

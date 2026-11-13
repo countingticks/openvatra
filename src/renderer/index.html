@@ -9,7 +9,11 @@
       script-src 'self'         no inline or remote scripts, no eval
       style-src ... 'unsafe-inline'  components set inline style attributes (no code can run from CSS)
       img-src 'self' data:      own images, plus small images Vite inlines as data: URLs
-      connect-src 'self'        no network requests elsewhere (local AI services are added when they're used)
+      connect-src 'self' http://127.0.0.1:*
+                                own files, plus loopback HTTP so the page can call core directly. Core's port
+                                changes every run, so the CSP cannot name it; main's request filter
+                                (src/main/loopbackFilter.ts) cancels every loopback request except to core's
+                                current port, so llama-server and other local services stay out of reach.
       object-src 'none'         no plugins
       base-uri 'none'           a page can't redirect its relative links elsewhere
       form-action 'none'        forms can't post anywhere
@@ -18,7 +22,7 @@
     -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://127.0.0.1:*; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'"
     />
   </head>
 
