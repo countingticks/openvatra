@@ -57,7 +57,7 @@ describe('back and forward', () => {
   })
 
   it('the menu Go → Back works too', async () => {
-    renderWithStore(<App />)
+    renderWithStore(<App />, {}, { coreState: { status: 'starting' } })
     openTab('Code')
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }))

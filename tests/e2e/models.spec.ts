@@ -60,6 +60,36 @@ function isRunning(pid: number): boolean {
   }
 }
 
+type CoreStateInPage = { status: string; connection?: { baseUrl: string } }
+type PageWithApi = { api: { core: { getState(): Promise<CoreStateInPage>; restart(): Promise<void> } } }
+
+test('after a core restart the models list fills again without reloading the page', async () => {
+  const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
+  await modelButton.click()
+  await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
+
+  await mainWindow.evaluate(() => {
+    ;(window as unknown as { __marker: number }).__marker = 1
+  })
+  const baseUrl = await mainWindow.evaluate(
+    async () => (await (window as unknown as PageWithApi).api.core.getState()).connection?.baseUrl
+  )
+  await mainWindow.evaluate(() => (window as unknown as PageWithApi).api.core.restart())
+
+  // A new core run has a new port and token; the window follows without a reload.
+  await expect
+    .poll(() =>
+      mainWindow.evaluate(async () => {
+        const state = await (window as unknown as PageWithApi).api.core.getState()
+        return state.status === 'ready' ? state.connection?.baseUrl : undefined
+      })
+    )
+    .not.toBe(baseUrl)
+  await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
+  expect(await mainWindow.evaluate(() => (window as unknown as { __marker: number }).__marker)).toBe(1)
+  await mainWindow.keyboard.press('Escape')
+})
+
 test('loads a model from the popover, and quitting leaves no core.exe behind', async () => {
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
   await expect(modelButton).toHaveAccessibleName('Model: no model, Ready')

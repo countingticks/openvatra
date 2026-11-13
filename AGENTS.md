@@ -43,6 +43,7 @@ npm run fetch:llama  # download the pinned llama.cpp build (resources/llama/llam
 npm run build:core   # go build -C core → resources/core/core.exe (dev and build run it; needs Go, see core/go.mod)
 npm run build        # build core, typecheck, production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
+npm run gen:api      # regenerate core/api/openapi.json and src/renderer/src/core/generated.ts from core's routes
 npm run test:e2e     # build, then launch the real app with Playwright (tests/e2e); full output
                      # (quiet: npm run check -- --e2e, or -- tests/e2e/<name>.spec.ts for some specs)
 ```
@@ -59,6 +60,8 @@ src/main/        Electron main process: windows, tray, settings, starting servic
 src/preload/     the only bridge between UI and main; exposes a typed window.api
 src/shared/      types shared by main and renderer (IPC contract, settings schema)
 src/renderer/    React UI
+  src/core/      generated core client (RTK Query), base query and the event stream
+core/api/        openapi.json, the committed contract of core's HTTP API
 core/            Go module (`core.exe`): listens on 127.0.0.1 only, every request needs a per-run token and a
                  matching Host header; bundled into the app as an extra resource, built by `npm run build:core`
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
@@ -73,13 +76,15 @@ vendor/          git submodules (Open WebUI); never edit files here
 - TypeScript strict; no `any`. Named exports.
 - Files `camelCase.ts`; React components `PascalCase.tsx`, one component per file.
 - Prettier formatting (2 spaces, single quotes, no semicolons); ESLint must pass.
-- The renderer never uses Node APIs or the file system directly. Everything privileged goes through
-  `window.api`, typed in `src/shared/ipc.ts`.
+- The renderer uses no Node APIs; it reaches core over loopback HTTP with a `ui` token, and everything else
+  privileged goes through `window.api`, typed in `src/shared/ipc.ts`.
 - Keep comments for the _why_; the code should say the _what_.
 
 ## Security rules
 
-- Every window: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, strict CSP.
+- Every window: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, strict CSP. Its
+  `connect-src 'self' http://127.0.0.1:*` is narrowed to core's port by main's request filter; core checks the
+  Origin header and answers CORS only for the dev server's origin.
 - Never load remote web pages inside the app; open external links in the default browser (http/https only).
 - Services listen on `127.0.0.1` only. `core` also requires its token on every request; never log the token.
 - Never commit secrets, tokens, keys, `.env` files or model files.

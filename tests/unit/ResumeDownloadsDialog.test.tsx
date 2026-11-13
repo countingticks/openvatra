@@ -83,7 +83,11 @@ describe('offer to resume unfinished downloads', () => {
   })
 
   it('waits for core to be ready', async () => {
-    renderWithStore(<App />, {}, { setup: { catalog, downloads: [paused('qwen3-8b')] } })
+    renderWithStore(
+      <App />,
+      {},
+      { coreState: { status: 'starting' }, setup: { catalog, downloads: [paused('qwen3-8b')] } }
+    )
 
     await act(async () => {})
     expect(screen.queryByText(/didn't finish downloading/)).not.toBeInTheDocument()
