@@ -1,5 +1,5 @@
-// core's model settings (GET and PUT /api/config/models). core owns them; main reads them to compose the window's
-// Settings and writes the user's changes. No Electron imports, so tests need only a fake `request`.
+// core's model settings (GET and PUT /api/config/models). core owns them; main writes only the v6 import and a path
+// the user picked in its file dialog. No Electron imports, so tests need only a fake `request`.
 import { z } from 'zod'
 import { engines, type LegacyModels } from '../../shared/settings'
 import { coreErrorMessage } from './coreError'

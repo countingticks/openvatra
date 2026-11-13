@@ -98,7 +98,7 @@ export const settingsSchema = z.object({
 export const legacyModelsSchema = z.object({
   /** Full path to llama-server.exe; null = the default engine. */
   llamaServerPath: z.string().min(1).nullable().default(null),
-  /** null = the default folder (`%USERPROFILE%OpenVatraModels`). */
+  /** null = the default folder (`%USERPROFILE%\OpenVatra\Models`). */
   modelsDir: z.string().min(1).nullable().default(null),
   /** A model id (its file name without .gguf). */
   embeddingModel: modelId.nullable().default(null),
