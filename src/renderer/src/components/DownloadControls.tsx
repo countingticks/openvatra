@@ -1,6 +1,6 @@
 import { Button } from '@renderer/components/ui/button'
 import { progressText } from '@renderer/lib/setupText'
-import type { DownloadItem } from '../../../shared/setup'
+import type { DownloadItem } from '@renderer/core/types'
 
 /** Download / progress + Cancel / Resume for one catalog model; shared by the welcome card and the Models dialog. */
 interface DownloadControlsProps {

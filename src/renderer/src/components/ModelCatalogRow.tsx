@@ -10,7 +10,8 @@ import {
 } from '@renderer/core/generated'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText } from '@renderer/lib/setupText'
-import type { CatalogEntry, DownloadItem } from '../../../shared/setup'
+import type { DownloadItem } from '@renderer/core/types'
+import type { CatalogEntry } from '@renderer/core/catalogView'
 
 const fitIcons = { fits: CheckCircle2, slower: Gauge, tooBig: AlertTriangle }
 

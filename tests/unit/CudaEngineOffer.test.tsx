@@ -5,7 +5,7 @@ import { defaultCoreModels } from '@renderer/core/modelSettings'
 import type { Models } from '@renderer/core/generated'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import { defaultSettings, type ModelsSettings } from '../../src/shared/settings'
-import type { ModelInfo } from '../../src/shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 import { coreWrites, type FakeCoreHttp } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 
@@ -27,7 +27,7 @@ function show(
   return renderWithStore(
     <App />,
     { models: { ...defaultSettings.models, showAdvanced, cudaOfferDismissed } },
-    { coreState: ready, cuda, engines: { cuda }, models: list, modelSettings: core }
+    { coreState: ready, engines: { cuda }, models: list, modelSettings: core }
   )
 }
 

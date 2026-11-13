@@ -1,17 +1,13 @@
-import { app, Menu, shell, type BrowserWindow } from 'electron'
-import { mkdir } from 'fs/promises'
+import { app, Menu, type BrowserWindow } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettingsFile, type SettingsFile } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
-import { bundledLlamaDir, cudaStatus, llamaManifestPath, readBundledTag, readPinnedTag } from './bundledLlama'
 import { createConfigClient } from './core/configClient'
 import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
 import { createModelSettings } from './core/modelSettings'
-import { createModelsClient } from './core/modelsClient'
-import { createSetupClient } from './core/setupClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -46,16 +42,30 @@ function enginesDir(): string {
   )
 }
 
+/** The folder holding llama-server.exe: `<resources>/llama` installed, `resources/llama/bin` in development. */
+function bundledLlamaDir(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'llama')
+    : join(app.getAppPath(), 'resources', 'llama', 'bin')
+}
+
+/** The pin file: beside the exe's folder in development (it is not inside bin/), inside it once installed. */
+function llamaManifestPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'llama', 'llama.json')
+    : join(app.getAppPath(), 'resources', 'llama', 'llama.json')
+}
+
 // core learns which CUDA build is pinned from the same llama.json the bundled build is checked against.
 function coreExtraArgs(): string[] {
   const args = [
     '--llama-manifest',
-    llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath()),
+    llamaManifestPath(),
     '--engines-dir',
     enginesDir(),
     // Core resolves the default llama-server from it when no path is chosen.
     '--llama-dir',
-    bundledLlamaDir(app.isPackaged, process.resourcesPath, app.getAppPath()),
+    bundledLlamaDir(),
     // Chats, attachments and documents: next to settings.json, so one folder holds the user's data.
     '--data-dir',
     join(app.getPath('userData'), 'data')
@@ -127,7 +137,6 @@ function start(): void {
     const store = createSettingsStore(settingsPath, await loadSettingsAtStartup(settingsPath))
     // Created (not started) before the IPC handlers, which need it; started after the window, which never waits for
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
-    const llamaDir = bundledLlamaDir(app.isPackaged, process.resourcesPath, app.getAppPath())
     const request = (path: string, init?: RequestInit): Promise<Response> =>
       core?.request(path, init) ?? Promise.reject(new Error('core is not running'))
     // core owns the model settings (paths, engine, arguments); main keeps the last answer to compose Settings.
@@ -143,19 +152,6 @@ function start(): void {
     }
     // Every change, wherever it came from (the UI, a file dialog, core's engine switch), reaches the window.
     settings.onChange((value) => sendToWindow(ipcChannels.settingsChanged, value))
-    const manifest = llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath())
-    const pinnedTag = (): Promise<string | null> => readPinnedTag(manifest)
-    const models = createModelsClient({
-      request,
-      onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
-      onDownloads: (items) => sendToWindow(ipcChannels.setupDownloadsChanged, items),
-      onConfig: modelSettings.noteChanged,
-      onReset: () =>
-        void modelSettings
-          .refresh()
-          .catch((error) => log.warn('Could not read the model settings from core', error)),
-      log
-    })
     /** On every ready: a v6 user's values go to core once, then main reads what core has. */
     async function syncModelSettings(): Promise<void> {
       const legacy = store.get().legacyModels
@@ -173,29 +169,12 @@ function start(): void {
           )
       }
     }
-    const setup = createSetupClient({
-      request,
-      modelsDir: () => modelSettings.entry()?.effective.modelsDir,
-      makeDir: async (path) => void (await mkdir(path, { recursive: true })),
-      trash: (path) => shell.trashItem(path),
-      models: models.list,
-      unload: models.unload,
-      downloads: models.downloads,
-      log
-    })
     core = createSupervisor({
       exePath: coreExePath(),
       extraArgs: coreExtraArgs(),
       logsDir: logsFolder(),
-      onState: (state) => {
-        // The list only means something while core is up; a new one arrives once it is ready again.
-        if (state.status !== 'ready') models.stop()
-        sendToWindow(ipcChannels.coreStateChanged, state)
-      },
-      onReady: () => {
-        models.start()
-        void syncModelSettings()
-      },
+      onState: (state) => sendToWindow(ipcChannels.coreStateChanged, state),
+      onReady: () => void syncModelSettings(),
       log
     })
     // Before the window, so the UI's first request always finds a handler.
@@ -203,18 +182,9 @@ function start(): void {
       settings,
       appUrl,
       { settingsFile: settingsPath, logsFolder: logsFolder() },
-      async () => ({
-        tag: await readBundledTag(llamaDir),
-        cuda: await cudaStatus(enginesDir(), await pinnedTag())
-      }),
       {
         state: core.state,
-        restart: core.restart,
-        list: models.list,
-        load: models.load,
-        unload: models.unload,
-        downloads: models.downloads,
-        ...setup
+        restart: core.restart
       }
     )
 

@@ -107,18 +107,16 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     app: Object.keys(window.api.app).sort(),
     appFrozen: Object.isFrozen(window.api.app),
     core: Object.keys(window.api.core).sort(),
-    coreFrozen: Object.isFrozen(window.api.core),
-    setup: Object.keys(window.api.setup).sort(),
-    setupFrozen: Object.isFrozen(window.api.setup)
+    coreFrozen: Object.isFrozen(window.api.core)
   }))
 
   expect(shape).toEqual({
-    api: ['app', 'appWindow', 'core', 'files', 'runtime', 'settings', 'setup'],
+    api: ['app', 'appWindow', 'core', 'files', 'runtime', 'settings'],
     // Added in 024 (core-config): main pushes saved settings.
     settings: ['get', 'onChange', 'update'],
     settingsFrozen: true,
-    // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders. T56 (2026-11-03): the bundled llama.cpp's tag, and going back to it.
-    files: ['bundledLlama', 'locations', 'openFolder', 'pick', 'useBundledLlama'],
+    // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders. (T56's bundledLlama/useBundledLlama went in 040: core answers them.)
+    files: ['locations', 'openFolder', 'pick'],
     filesFrozen: true,
     // Added in T27 (approved 2026-11-02): the window buttons, acting only on the sender's own window.
     // T28 adds edit: one of six named Edit commands, checked against an allow-list in main.
@@ -128,21 +126,8 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     app: ['quit'],
     appFrozen: true,
     // Added in T37: watch the models service, restart it, open its log. Never its token.
-    core: ['getState', 'load', 'models', 'onModels', 'onState', 'openLog', 'restart', 'unload'],
-    coreFrozen: true,
-    // Added in T62: the first-model flow: hardware, catalog, and download/cancel/resume/remove.
-    setup: [
-      'cancel',
-      'catalog',
-      'download',
-      'downloadEngine',
-      'downloads',
-      'hardware',
-      'onDownloads',
-      'remove',
-      'resume'
-    ],
-    setupFrozen: true
+    core: ['getState', 'onState', 'openLog', 'restart'],
+    coreFrozen: true
   })
 })
 

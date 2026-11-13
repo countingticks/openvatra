@@ -1,7 +1,7 @@
 import { act, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { useSetup } from '@renderer/hooks/useSetup'
-import type { HardwareReport } from '../../src/shared/setup'
+import type { HardwareReport } from '@renderer/core/types'
 import { exampleCatalogEntry, exampleConnection, exampleHardware, renderWithStore } from './renderWithStore'
 
 const running = { id: 'qwen3-4b', state: 'downloading', bytes: 1, total: 10, speed: 1 } as const

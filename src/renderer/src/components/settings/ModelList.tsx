@@ -5,7 +5,7 @@ import { Label } from '@renderer/components/ui/label'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { useModels } from '@renderer/hooks/useModels'
-import type { ModelInfo } from '../../../../shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 import type { ModelsChange } from '@renderer/core/modelSettings'
 import type { ModelOptions } from '../../../../shared/settings'
 

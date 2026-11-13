@@ -5,7 +5,8 @@ import { coreApi } from '@renderer/core/coreApi'
 import type { Models } from '@renderer/core/generated'
 import { defaultCoreModels } from '@renderer/core/modelSettings'
 import { settingsOpened } from '@renderer/store/uiSlice'
-import type { CoreState, ModelInfo } from '../../../src/shared/core'
+import type { CoreState } from '../../../src/shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 import { defaultSettings, type ModelsSettings } from '../../../src/shared/settings'
 import { coreWrites, type FakeCoreHttp } from '../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../renderWithStore'
@@ -123,7 +124,7 @@ describe('Settings → Models', () => {
     })
 
     it('"Use bundled" asks core to forget the custom path, and shows the bundled build again', async () => {
-      const { coreHttp, useBundledLlama } = await openModels(
+      const { coreHttp } = await openModels(
         { llamaServerPath: 'C:\\llama\\llama-server.exe' },
         { coreState: ready }
       )
@@ -132,7 +133,6 @@ describe('Settings → Models', () => {
 
       expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
       expect(putValues(coreHttp)).toEqual([{ ...defaultCoreModels, llamaServerPath: null }])
-      expect(useBundledLlama).not.toHaveBeenCalled()
       expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
     })
 

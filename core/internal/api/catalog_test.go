@@ -25,13 +25,6 @@ func (stubCatalog) View() catalog.View {
 	}
 }
 
-func (stubCatalog) Folder(id string) (string, error) {
-	if id != "qwen" {
-		return "", catalog.ErrUnknown
-	}
-	return `D:\Models\qwen`, nil
-}
-
 func getCatalog(t *testing.T, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -52,20 +45,10 @@ func TestCatalogEndpoint(t *testing.T) {
 	}
 }
 
-func TestCatalogFolderEndpoint(t *testing.T) {
-	tests := []struct {
-		path   string
-		status int
-		want   string
-	}{
-		{"/api/catalog/qwen/folder", http.StatusOK, `{"folder":"D:\\Models\\qwen"}`},
-		{"/api/catalog/other/folder", http.StatusNotFound, `"error":"unknown_model"`},
-	}
-	for _, tt := range tests {
-		rec := getCatalog(t, tt.path)
-		if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
-			t.Errorf("%s: status = %d, body = %s", tt.path, rec.Code, rec.Body.String())
-		}
+// The folder route moved into core's removal: nothing asks main for a folder any more.
+func TestCatalogFolderRouteIsGone(t *testing.T) {
+	if rec := getCatalog(t, "/api/catalog/qwen/folder"); rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
 

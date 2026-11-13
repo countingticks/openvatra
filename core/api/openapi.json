@@ -16,17 +16,6 @@
         ],
         "type": "object"
       },
-      "CatalogFolder": {
-        "properties": {
-          "folder": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "folder"
-        ],
-        "type": "object"
-      },
       "Chat": {
         "properties": {
           "createdAt": {
@@ -811,48 +800,6 @@
           "catalog"
         ],
         "x-scope": "ui"
-      }
-    },
-    "/api/catalog/{id}/folder": {
-      "get": {
-        "operationId": "getCatalogFolder",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CatalogFolder"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: unknown_model, no_models_folder, internal."
-          }
-        },
-        "summary": "The folder a catalog model lives in",
-        "tags": [
-          "catalog"
-        ],
-        "x-scope": "shell"
       }
     },
     "/api/catalog/{id}/remove": {

@@ -18,7 +18,7 @@ const outFile = path.join(coreDir, 'generated.ts')
 const normalize = (text) => text.replaceAll('\r\n', '\n')
 
 // Routes the renderer never calls through RTK Query: the OpenAI proxy, the chat streams (slice 5), shutdown and
-// token issuing (main), the folder opener (main) and the document itself.
+// token issuing (main) and the document itself.
 const skipped = [
   'openaiModels',
   'openaiChatCompletions',
@@ -27,7 +27,6 @@ const skipped = [
   'regenerate',
   'shutdown',
   'issueToken',
-  'getCatalogFolder',
   'getOpenapi'
 ]
 

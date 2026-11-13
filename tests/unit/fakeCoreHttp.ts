@@ -4,8 +4,8 @@
 
 import type { Models, ModelsEffective } from '../../src/renderer/src/core/generated'
 import { defaultCoreModels } from '../../src/renderer/src/core/modelSettings'
-import type { ModelInfo } from '../../src/shared/core'
-import type { DownloadItem } from '../../src/shared/setup'
+import type { ModelInfo } from '@renderer/core/types'
+import type { DownloadItem } from '@renderer/core/types'
 
 export interface CoreRequest {
   url: string

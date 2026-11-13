@@ -7,7 +7,8 @@ import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@renderer/store/store'
-import type { CoreConnection, CoreState, ModelInfo } from '../../src/shared/core'
+import type { CoreConnection, CoreState } from '../../src/shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 import type {
   Api,
   AppApi,
@@ -15,10 +16,10 @@ import type {
   CoreApi,
   FileLocations,
   FilesApi,
-  SettingsApi,
-  SetupApi
+  SettingsApi
 } from '../../src/shared/ipc'
-import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
+import type { DownloadItem, HardwareReport } from '@renderer/core/types'
+import type { CatalogView } from '@renderer/core/catalogView'
 import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
 import { defaultCoreModels } from '@renderer/core/modelSettings'
@@ -114,8 +115,6 @@ interface Rendered extends RenderResult {
   openFolder: Mock<FilesApi['openFolder']>
   /** Answers like main after the user picked a path; set its result per test. Default: cancelled (null). */
   pick: Mock<FilesApi['pick']>
-  /** Answers like main after "Use bundled"; set its result per test. */
-  useBundledLlama: Mock<FilesApi['useBundledLlama']>
   appWindow: FakeAppWindow
   quit: Mock<AppApi['quit']>
   core: FakeCore
@@ -133,58 +132,14 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
-  /** The CUDA build's state main reports over IPC; default: not installed. */
-  cuda?: 'none' | 'ready' | 'stale'
   /** The models section's value core answers (rev 1), over core's defaults. */
   modelSettings?: Partial<Models>
   /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
 
-/** The IPC writes the window no longer makes: a leftover call fails its test. */
-const moved = (): Error => new Error('moved to core')
-
-function fakeSetup(
-  options: Options['setup'] = {},
-  coreHttp: FakeCoreHttp
-): { api: SetupApi; fake: FakeSetup } {
-  const listeners = new Set<(items: DownloadItem[]) => void>()
-  const fake: FakeSetup = {
-    emitDownloads: (items) =>
-      act(() => {
-        coreHttp.setDownloads(items)
-      })
-  }
-  const api: SetupApi = {
-    hardware: vi.fn<SetupApi['hardware']>().mockResolvedValue(options.hardware ?? exampleHardware),
-    catalog: vi
-      .fn<SetupApi['catalog']>()
-      .mockResolvedValue(
-        options.catalog && !options.catalog.entries.some((entry) => 'files' in entry)
-          ? (options.catalog as CatalogView)
-          : { entries: [], diskFreeBytes: null, recommended: null }
-      ),
-    download: vi.fn<SetupApi['download']>().mockRejectedValue(moved()),
-    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockRejectedValue(moved()),
-    cancel: vi.fn<SetupApi['cancel']>().mockRejectedValue(moved()),
-    resume: vi.fn<SetupApi['resume']>().mockRejectedValue(moved()),
-    remove: vi.fn<SetupApi['remove']>().mockRejectedValue(moved()),
-    downloads: vi.fn<SetupApi['downloads']>().mockResolvedValue(options.downloads ?? []),
-    onDownloads: (callback) => {
-      listeners.add(callback)
-      return () => listeners.delete(callback)
-    }
-  }
-  return { api, fake }
-}
-
-function fakeCore(
-  start: CoreState,
-  models: ModelInfo[],
-  coreHttp: FakeCoreHttp
-): { api: CoreApi; fake: FakeCore } {
+function fakeCore(start: CoreState, coreHttp: FakeCoreHttp): { api: CoreApi; fake: FakeCore } {
   const listeners = new Set<(state: CoreState) => void>()
-  const modelListeners = new Set<(models: ModelInfo[]) => void>()
   const fake: FakeCore = {
     restart: vi.fn<CoreApi['restart']>().mockResolvedValue(undefined),
     openLog: vi.fn<CoreApi['openLog']>().mockResolvedValue(undefined),
@@ -201,14 +156,7 @@ function fakeCore(
       return () => listeners.delete(callback)
     },
     restart: fake.restart,
-    openLog: fake.openLog,
-    models: vi.fn<CoreApi['models']>().mockResolvedValue(models),
-    onModels: (callback) => {
-      modelListeners.add(callback)
-      return () => modelListeners.delete(callback)
-    },
-    load: vi.fn<CoreApi['load']>().mockRejectedValue(moved()),
-    unload: vi.fn<CoreApi['unload']>().mockRejectedValue(moved())
+    openLog: fake.openLog
   }
   return { api, fake }
 }
@@ -248,9 +196,6 @@ export function renderWithStore(
   const appWindow = fakeAppWindow(options.maximized ?? false)
   const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
   const pick = vi.fn<FilesApi['pick']>().mockResolvedValue(null)
-  const useBundledLlama = vi
-    .fn<FilesApi['useBundledLlama']>()
-    .mockImplementation(async () => ({ ...current, models: { ...current.models, llamaServerPath: null } }))
   const coreHttp = createFakeCoreHttp()
   vi.stubGlobal('fetch', coreHttp.fetch)
   coreHttp.setModels(options.models ?? [])
@@ -274,22 +219,15 @@ export function renderWithStore(
   })
   const core = fakeCore(
     options.coreState ?? { status: 'ready', port: 53121, version: '0.4.0', connection: exampleConnection },
-    options.models ?? [],
     coreHttp
   )
-  const setup = fakeSetup(options.setup, coreHttp)
-  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core' | 'setup'> = {
-    setup: setup.api,
+  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
     app: { quit },
     core: core.api,
     files: {
       locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations),
       openFolder,
-      pick,
-      bundledLlama: vi
-        .fn<FilesApi['bundledLlama']>()
-        .mockResolvedValue({ tag: 'b12078', cuda: options.cuda ?? 'none' }),
-      useBundledLlama
+      pick
     },
     appWindow: appWindow.api
   }
@@ -316,12 +254,16 @@ export function renderWithStore(
     emitSettings,
     openFolder,
     pick,
-    useBundledLlama,
     appWindow: appWindow.fake,
     quit,
     core: core.fake,
     coreHttp,
-    setup: setup.fake,
+    setup: {
+      emitDownloads: (items) =>
+        act(() => {
+          coreHttp.setDownloads(items)
+        })
+    },
     ...render(<Provider store={store}>{ui}</Provider>)
   }
 }

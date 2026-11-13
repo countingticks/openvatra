@@ -9,7 +9,8 @@ import { stateDot } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import { useAppDispatch } from '@renderer/store/hooks'
 import { modelsDialogOpened, settingsOpened } from '@renderer/store/uiSlice'
-import type { CoreState, ModelInfo } from '../../../shared/core'
+import type { CoreState } from '../../../shared/core'
+import type { ModelInfo } from '@renderer/core/types'
 
 /** The words come first so the dot's colour is never the only signal (colour-blind users, screen readers). */
 function describe(
