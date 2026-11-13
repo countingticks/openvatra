@@ -1,19 +1,13 @@
-import { useEffect, useState } from 'react'
 import type { ModelInfo } from '../../../shared/core'
+import { selectConnection } from '../core/connectionSlice'
+import { useListModelsQuery } from '../core/generated'
+import { useAppSelector } from '../store/hooks'
 
-/** Every model in the models folder with its state, live. Empty until main answers, and while core isn't ready. */
+const none: ModelInfo[] = []
+
+/** Every model in the models folder with its state, live. Empty until core answers, and while there is no connection. */
 export function useModels(): ModelInfo[] {
-  const [models, setModels] = useState<ModelInfo[] | null>(null)
-
-  useEffect(() => {
-    // Same order as useCoreState: subscribe first, so a change during the first request isn't lost.
-    const unsubscribe = window.api.core.onModels(setModels)
-    window.api.core
-      .models()
-      .then((initial) => setModels((current) => current ?? initial))
-      .catch((error) => console.error('Could not read the model list', error))
-    return unsubscribe
-  }, [])
-
-  return models ?? []
+  const connection = useAppSelector(selectConnection)
+  const { data } = useListModelsQuery(undefined, { skip: connection === null })
+  return connection === null ? none : (data?.models ?? none)
 }

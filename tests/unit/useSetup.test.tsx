@@ -15,7 +15,7 @@ function Probe(): React.JSX.Element {
 describe('useSetup', () => {
   it('waits for core to be ready before asking it, then asks again after a restart', async () => {
     const errors = vi.spyOn(console, 'error')
-    const { core } = renderWithStore(<Probe />, {}, { setup: { catalog } })
+    const { core } = renderWithStore(<Probe />, {}, { coreState: { status: 'starting' }, setup: { catalog } })
     const { hardware, catalog: readCatalog } = window.api.setup
 
     expect(hardware).not.toHaveBeenCalled()
@@ -31,5 +31,29 @@ describe('useSetup', () => {
     core.emitState(ready)
     await vi.waitFor(() => expect(readCatalog).toHaveBeenCalledTimes(2))
     expect(errors).not.toHaveBeenCalled()
+  })
+
+  it('follows the download queue core streams', async () => {
+    function Queue(): React.JSX.Element {
+      const { downloads } = useSetup()
+      return <p>{downloads.map((item) => `${item.id} ${item.state}`).join(', ') || 'empty'}</p>
+    }
+    const running = { id: 'qwen3-4b', state: 'downloading', bytes: 1, total: 10, speed: 1 } as const
+    const { setup } = renderWithStore(<Queue />, {}, { setup: { downloads: [running] } })
+    expect(await screen.findByText('qwen3-4b downloading')).toBeInTheDocument()
+
+    setup.emitDownloads([{ ...running, state: 'paused' }])
+
+    expect(await screen.findByText('qwen3-4b paused')).toBeInTheDocument()
+  })
+
+  it('has an empty queue without a connection', async () => {
+    function Queue(): React.JSX.Element {
+      return <p>{`${useSetup().downloads.length} downloads`}</p>
+    }
+    const running = { id: 'qwen3-4b', state: 'downloading', bytes: 1, total: 10, speed: 1 } as const
+    renderWithStore(<Queue />, {}, { coreState: { status: 'starting' }, setup: { downloads: [running] } })
+
+    expect(await screen.findByText('0 downloads')).toBeInTheDocument()
   })
 })

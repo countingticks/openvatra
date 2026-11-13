@@ -263,7 +263,8 @@ describe('Settings → Models', () => {
 
       core.emitModels([qwen])
 
-      expect(screen.queryByText(/nomic-embed/)).not.toBeInTheDocument()
+      // The list now arrives over core's stream, so the change shows a moment later.
+      await waitFor(() => expect(screen.queryByText(/nomic-embed/)).not.toBeInTheDocument())
       expect(screen.queryByRole('region', { name: 'Embedding models' })).not.toBeInTheDocument()
     })
 

@@ -157,7 +157,6 @@ function fakeSetup(
     emitDownloads: (items) =>
       act(() => {
         coreHttp.setDownloads(items)
-        listeners.forEach((listener) => listener(items))
       })
   }
   const api: SetupApi = {
@@ -199,7 +198,6 @@ function fakeCore(
     emitModels: (list) =>
       act(() => {
         coreHttp.setModels(list)
-        modelListeners.forEach((listener) => listener(list))
       })
   }
   const api: CoreApi = {
