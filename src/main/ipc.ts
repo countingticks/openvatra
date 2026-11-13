@@ -12,9 +12,10 @@ import {
 } from '../shared/ipc'
 import type { CoreState } from '../shared/core'
 import type { Settings } from '../shared/settings'
+import type { ConfigClient } from './core/configClient'
 import type { Supervisor } from './core/supervisor'
 import { log } from './logger'
-import { type SettingsService, updateErrorMessage } from './settingsService'
+import type { SettingsService } from './settingsService'
 import { isAppUrl } from './urlPolicy'
 
 const appFolderSchema = z.enum(appFolders)
@@ -28,6 +29,7 @@ export function registerIpcHandlers(
   settings: SettingsService,
   appUrl: string,
   locations: FileLocations,
+  config: Pick<ConfigClient, 'getModels' | 'setModelPath'>,
   core: CoreControl
 ): void {
   const folders: Record<AppFolder, string> = {
@@ -54,10 +56,10 @@ export function registerIpcHandlers(
     try {
       return await settings.update(patch)
     } catch (error) {
-      // Details go to the log; the UI gets a short message (core's sentence for a model setting), not our internals.
+      // Details go to the log; the UI gets a short message, not our internals.
       log.warn('Settings update rejected', error)
       // Electron sends only the message to the UI; the cause stays in main.
-      throw new Error(updateErrorMessage(error), { cause: error })
+      throw new Error('Settings could not be updated', { cause: error })
     }
   })
 
@@ -123,41 +125,43 @@ export function registerIpcHandlers(
     }
   })
 
-  /** Core keeps the paths now; its refusal ("not running", its own sentence) is what the window shows. */
-  async function setModelPath(key: 'llamaServerPath' | 'modelsDir', path: string | null): Promise<Settings> {
-    try {
-      return await settings.setModelPath(key, path)
-    } catch (error) {
-      log.warn(`Could not set ${key}`, error)
-      throw new Error(updateErrorMessage(error), { cause: error })
-    }
-  }
-
   // The UI only names what to pick; the path comes from Windows' own dialog, so it is always the user's choice.
-  ipcMain.handle(ipcChannels.filesPick, async (event, target: unknown): Promise<Settings | null> => {
+  ipcMain.handle(ipcChannels.filesPick, async (event, target: unknown): Promise<boolean> => {
     const window = senderWindow(event)
     const parsed = pickTargetSchema.safeParse(target)
     if (!parsed.success) {
       log.warn('Refused to pick an unknown path', target)
       throw new Error('Unknown path')
     }
-    const { models } = settings.get()
+    const key = parsed.data === 'llamaServer' ? 'llamaServerPath' : 'modelsDir'
+    // Only a starting folder: the dialog still opens when core can't be read.
+    const current = await config
+      .getModels()
+      .then((entry) => entry.value[key] ?? undefined)
+      .catch(() => undefined)
     const result =
       parsed.data === 'llamaServer'
         ? await dialog.showOpenDialog(window, {
             title: 'Choose llama-server.exe',
-            defaultPath: models.llamaServerPath ?? undefined,
+            defaultPath: current,
             filters: [{ name: 'llama-server', extensions: ['exe'] }],
             properties: ['openFile']
           })
         : await dialog.showOpenDialog(window, {
             title: 'Choose the models folder',
-            defaultPath: models.modelsDir ?? undefined,
+            defaultPath: current,
             properties: ['openDirectory']
           })
     const [path] = result.filePaths
-    if (result.canceled || !path) return null
-    return setModelPath(parsed.data === 'llamaServer' ? 'llamaServerPath' : 'modelsDir', path)
+    if (result.canceled || !path) return false
+    try {
+      await config.setModelPath(key, path)
+      return true
+    } catch (error) {
+      log.warn(`Could not set ${key}`, error)
+      // Electron sends only the message to the UI; the cause stays in main.
+      throw new Error(error instanceof Error ? error.message : String(error), { cause: error })
+    }
   })
 
   // The UI names one of our folders; it can never make Explorer open (or run) a path of its choosing.

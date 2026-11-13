@@ -162,6 +162,20 @@ describe('welcome card', () => {
     await waitFor(() => expect(pick).toHaveBeenCalledWith('modelsDir'))
   })
 
+  it('shows no alert when the folder was saved, and the reason when it was not', async () => {
+    const { pick } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
+    expect(await screen.findByText(/OpenVatra\\Models folder/)).toBeInTheDocument()
+    pick.mockResolvedValueOnce(true)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change…' }))
+    await waitFor(() => expect(pick).toHaveBeenCalledTimes(1))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    pick.mockRejectedValueOnce(new Error("Error invoking remote method 'files:pick': Error: disk full"))
+    fireEvent.click(screen.getByRole('button', { name: 'Change…' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('disk full')
+  })
+
   it('is not shown once there is a chat model, or while the service is starting', async () => {
     renderWithStore(<App />, {}, { coreState: ready, models: [chatModel], setup: { catalog } })
     expect(await screen.findByRole('heading', { name: 'Chat' })).toBeInTheDocument()

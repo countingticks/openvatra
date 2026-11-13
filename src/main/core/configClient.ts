@@ -1,11 +1,11 @@
-// core's model settings (GET and PUT /api/config/models). core owns them; main reads them to compose the window's
-// Settings and writes the user's changes. No Electron imports, so tests need only a fake `request`.
+// core's model settings (GET and PUT /api/config/models). core owns them; main writes only the v6 import and a path
+// the user picked in its file dialog. No Electron imports, so tests need only a fake `request`.
 import { z } from 'zod'
-import { engines, type ModelsSettings } from '../../shared/settings'
+import { engines, type LegacyModels } from '../../shared/settings'
 import { coreErrorMessage } from './coreError'
 
-/** The `models` section as core stores it: ModelsSettings without the two view preferences. */
-export type CoreModels = Omit<ModelsSettings, 'showAdvanced' | 'cudaOfferDismissed'>
+/** The `models` section as core stores it: the same six keys as a v6 file's `legacyModels`. */
+export type CoreModels = LegacyModels
 
 export interface ModelsEntry {
   rev: number // 0 = never written; value is the defaults
@@ -58,6 +58,8 @@ export class ConfigUnavailableError extends Error {
 export interface ConfigClient {
   getModels(): Promise<ModelsEntry>
   putModels(rev: number, value: CoreModels): Promise<ModelsEntry>
+  /** GETs the models section, sets key to path, PUTs it with that rev; one more try on a conflict. */
+  setModelPath(key: 'llamaServerPath' | 'modelsDir', path: string): Promise<void>
 }
 
 const path = '/api/config/models'
@@ -88,15 +90,27 @@ async function answer(response: Response): Promise<ModelsEntry> {
 export function createConfigClient(
   request: (path: string, init?: RequestInit) => Promise<Response>
 ): ConfigClient {
+  const getModels = async (): Promise<ModelsEntry> => answer(await request(path))
+  const putModels = async (rev: number, value: CoreModels): Promise<ModelsEntry> =>
+    answer(
+      await request(path, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rev, value })
+      })
+    )
   return {
-    getModels: async () => answer(await request(path)),
-    putModels: async (rev, value) =>
-      answer(
-        await request(path, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rev, value })
-        })
-      )
+    getModels,
+    putModels,
+    setModelPath: async (key, chosen) => {
+      const base = await getModels()
+      try {
+        await putModels(base.rev, { ...base.value, [key]: chosen })
+      } catch (error) {
+        if (!(error instanceof ConfigConflictError)) throw error
+        // Someone else wrote first (core's engine switch): apply the path to theirs, once.
+        await putModels(error.current.rev, { ...error.current.value, [key]: chosen })
+      }
+    }
   }
 }

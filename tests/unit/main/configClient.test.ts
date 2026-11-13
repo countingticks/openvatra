@@ -117,4 +117,65 @@ describe('config client', () => {
 
     await expect(createConfigClient(request).getModels()).rejects.toBe(down)
   })
+
+  describe('setModelPath', () => {
+    const put = (call: unknown[]): { rev: number; value: CoreModels } =>
+      JSON.parse((call[1] as RequestInit).body as string)
+
+    it('PUTs the read rev with only the one key changed', async () => {
+      const request = vi
+        .fn<Request>()
+        .mockResolvedValueOnce(json(entry(3)))
+        .mockResolvedValueOnce(json(entry(4)))
+
+      await createConfigClient(request).setModelPath('modelsDir', 'E:\\Models')
+
+      expect(request).toHaveBeenCalledTimes(2)
+      expect(put(request.mock.calls[1])).toEqual({ rev: 3, value: { ...value, modelsDir: 'E:\\Models' } })
+    })
+
+    it('a conflict PUTs again on the current entry, keeping its other values', async () => {
+      const current = entry(5, { ...value, engine: 'cuda' })
+      const request = vi
+        .fn<Request>()
+        .mockResolvedValueOnce(json(entry(3)))
+        .mockResolvedValueOnce(json({ error: 'config_conflict', message: 'changed', current }, 409))
+        .mockResolvedValueOnce(json(entry(6)))
+
+      await createConfigClient(request).setModelPath('llamaServerPath', 'C:\\llama\\llama-server.exe')
+
+      expect(put(request.mock.calls[2])).toEqual({
+        rev: 5,
+        value: { ...current.value, llamaServerPath: 'C:\\llama\\llama-server.exe' }
+      })
+    })
+
+    it('a second conflict rejects with ConfigConflictError', async () => {
+      const conflict = (rev: number): Response =>
+        json({ error: 'config_conflict', message: 'changed', current: entry(rev) }, 409)
+      const request = vi
+        .fn<Request>()
+        .mockResolvedValueOnce(json(entry(3)))
+        .mockResolvedValueOnce(conflict(4))
+        .mockResolvedValueOnce(conflict(5))
+
+      await expect(createConfigClient(request).setModelPath('modelsDir', 'E:\\M')).rejects.toBeInstanceOf(
+        ConfigConflictError
+      )
+      expect(request).toHaveBeenCalledTimes(3)
+    })
+
+    it('a 503 on the GET rejects with ConfigUnavailableError and PUTs nothing', async () => {
+      const request = vi
+        .fn<Request>()
+        .mockResolvedValue(
+          json({ error: 'config_unavailable', message: 'config storage is not available' }, 503)
+        )
+
+      await expect(createConfigClient(request).setModelPath('modelsDir', 'E:\\M')).rejects.toBeInstanceOf(
+        ConfigUnavailableError
+      )
+      expect(request).toHaveBeenCalledTimes(1)
+    })
+  })
 })

@@ -4,7 +4,6 @@ import { App } from '@renderer/App'
 import { defaultCoreModels } from '@renderer/core/modelSettings'
 import type { Models } from '@renderer/core/generated'
 import { settingsOpened } from '@renderer/store/uiSlice'
-import { defaultSettings, type ModelsSettings } from '../../src/shared/settings'
 import type { ModelInfo } from '@renderer/core/types'
 import { coreWrites, type FakeCoreHttp } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
@@ -13,20 +12,19 @@ const ready = { status: 'ready', port: 1234, version: '1', connection: exampleCo
 const stopped: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, sizeBytes: 1, kind: 'chat' }
 const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 
+/** The two window flags that sit beside core's models section in a test's arguments. */
+type Preferences = Partial<Models> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
+
 /** The window's preferences go to the saved settings, the rest is core's models section. */
 function show(
   cuda: 'none' | 'ready' | 'stale',
-  models: Partial<ModelsSettings> = {},
+  models: Preferences = {},
   list: ModelInfo[] = [stopped]
 ): ReturnType<typeof renderWithStore> {
-  const {
-    showAdvanced = defaultSettings.models.showAdvanced,
-    cudaOfferDismissed = defaultSettings.models.cudaOfferDismissed,
-    ...core
-  } = models
+  const { showAdvanced, cudaOfferDismissed, ...core } = models
   return renderWithStore(
     <App />,
-    { models: { ...defaultSettings.models, showAdvanced, cudaOfferDismissed } },
+    { showAdvancedModels: showAdvanced ?? false, cudaOfferDismissed: cudaOfferDismissed ?? false },
     { coreState: ready, engines: { cuda }, models: list, modelSettings: core }
   )
 }
@@ -55,8 +53,8 @@ describe('faster engine for NVIDIA', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
-    expect(store.getState().settings.models.cudaOfferDismissed).toBe(true)
-    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ models: { cudaOfferDismissed: true } }))
+    expect(store.getState().settings.cudaOfferDismissed).toBe(true)
+    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ cudaOfferDismissed: true }))
     expect(screen.queryByRole('region', { name: 'Faster engine for your NVIDIA card' })).toBeNull()
   })
 
@@ -77,7 +75,7 @@ describe('faster engine for NVIDIA', () => {
   it('offers "Use the faster engine" when core reports it installed', async () => {
     const { store } = renderWithStore(
       <App />,
-      { models: { ...defaultSettings.models, cudaOfferDismissed: true } },
+      { cudaOfferDismissed: true },
       { coreState: ready, engines: { cuda: 'ready' }, models: [stopped] }
     )
     act(() => {

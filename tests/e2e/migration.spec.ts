@@ -83,13 +83,21 @@ test.describe('a version-6 settings file with model settings', () => {
   test('moves the model settings into core and keeps showing them', async () => {
     const onDisk = async (): Promise<Record<string, unknown>> =>
       JSON.parse(await readFile(join(userDataDir, 'settings.json'), 'utf8')) as Record<string, unknown>
+    // core's own section, read with the connection the window has; null while core is not ready.
     const models = (): Promise<unknown> =>
-      mainWindow.evaluate(async () => (await (window as WithApi).api.settings.get()).models)
+      mainWindow.evaluate(async () => {
+        const state = await (window as WithApi).api.core.getState()
+        if (state.status !== 'ready') return null
+        const { baseUrl, token } = state.connection
+        const response = await fetch(baseUrl + '/api/config/models', {
+          headers: { Authorization: 'Bearer ' + token }
+        })
+        return response.ok ? ((await response.json()) as { value: unknown }).value : null
+      })
     const imported = {
       modelsDir,
       idleUnloadMinutes: 30,
-      options: { qwen: { args: '-c 8192' } },
-      showAdvanced: true
+      options: { qwen: { args: '-c 8192' } }
     }
 
     await expect.poll(models).toMatchObject(imported)
@@ -102,6 +110,9 @@ test.describe('a version-6 settings file with model settings', () => {
       })
       .toBe(true)
     expect(await models()).toMatchObject(imported)
+    expect((await mainWindow.evaluate(() => (window as WithApi).api.settings.get())).showAdvancedModels).toBe(
+      true
+    )
 
     const file = await onDisk()
     expect(file).toMatchObject({ schemaVersion: 7, showAdvancedModels: true })

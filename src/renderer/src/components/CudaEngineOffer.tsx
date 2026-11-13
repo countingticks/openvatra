@@ -21,7 +21,7 @@ const size = 'about 700 MB'
  */
 export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React.JSX.Element | null {
   const { offered, status, inUse, item } = useCudaEngine()
-  const dismissed = useAppSelector(selectSettings).models.cudaOfferDismissed
+  const dismissed = useAppSelector(selectSettings).cudaOfferDismissed
   const dispatch = useAppDispatch()
   const [problem, setProblem] = useState<string>()
   const { update } = useModelSettings()
@@ -80,7 +80,7 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
           <Button
             variant="outline"
             size="sm"
-            onClick={() => dispatch(settingsChanged({ models: { cudaOfferDismissed: true } }))}
+            onClick={() => dispatch(settingsChanged({ cudaOfferDismissed: true }))}
           >
             Not now
           </Button>
