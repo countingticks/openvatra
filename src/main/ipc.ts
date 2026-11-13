@@ -13,7 +13,7 @@ import {
 import type { CoreState } from '../shared/core'
 import type { Settings } from '../shared/settings'
 import type { ConfigClient } from './core/configClient'
-import type { Supervisor } from './core/supervisor'
+import type { Host } from './core/host'
 import { log } from './logger'
 import type { SettingsService } from './settingsService'
 import { isAppUrl } from './urlPolicy'
@@ -22,8 +22,8 @@ const appFolderSchema = z.enum(appFolders)
 const editCommandSchema = z.enum(editCommands)
 const pickTargetSchema = z.enum(pickTargets)
 
-/** The parts of the supervisor the UI may use. */
-export type CoreControl = Pick<Supervisor, 'state' | 'restart'>
+/** The parts of the host client the UI may use. */
+export type CoreControl = Pick<Host, 'state' | 'restart'>
 
 export function registerIpcHandlers(
   settings: SettingsService,
