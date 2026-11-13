@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -172,5 +173,29 @@ func TestUseMMProj(t *testing.T) {
 		if got := r.UseMMProj(id); got != want {
 			t.Errorf("UseMMProj(%q) = %v, want %v", id, got, want)
 		}
+	}
+}
+
+func TestOptionWithoutArgs(t *testing.T) {
+	m := DefaultModels()
+	m.Options["m"] = ModelOptions{}
+	data, err := json.Marshal(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"options":{"m":{}}`) {
+		t.Errorf("written as %s, want the option as {}", data)
+	}
+	var back Models
+	if err := json.Unmarshal(data, &back); err != nil || back.Options["m"] != (ModelOptions{}) {
+		t.Errorf("read back as %+v, %v", back.Options, err)
+	}
+
+	var stored Models
+	if err := json.Unmarshal([]byte(`{"options":{"m":{"args":""}},"engine":"bundled"}`), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if args := stored.Resolve(Env{}).Args("m"); args != nil {
+		t.Errorf(`{"args": ""} reads as arguments %v`, args)
 	}
 }

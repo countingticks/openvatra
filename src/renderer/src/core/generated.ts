@@ -299,11 +299,11 @@ export type ModelsEffective = {
   modelsDir: string
 }
 export type ModelOptions = {
-  args: string
+  args?: string
 }
 export type Models = {
   embeddingModel: string | null
-  engine: string
+  engine: 'bundled' | 'cuda'
   idleUnloadMinutes: number | null
   llamaServerPath: string | null
   modelsDir: string | null

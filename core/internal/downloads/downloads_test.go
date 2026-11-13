@@ -111,6 +111,20 @@ func TestStartDownloadsAndFinishes(t *testing.T) {
 	}
 }
 
+// Nothing makes the models folder beforehand: the default one does not exist until the first download.
+func TestStartCreatesTheModelsFolder(t *testing.T) {
+	f := newFixture(t, false, "a")
+	models := f.dir
+	f.dir = filepath.Join(models, "not", "yet")
+	if err := f.m.Start("a"); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor(t, "a", Done)
+	if got, err := os.ReadFile(filepath.Join(f.dir, "a", "a.gguf")); err != nil || string(got) != string(payload) {
+		t.Fatalf("file wrong: %v", err)
+	}
+}
+
 func TestOnlyOneAtATime(t *testing.T) {
 	f := newFixture(t, true, "a", "b")
 	_ = f.m.Start("a")

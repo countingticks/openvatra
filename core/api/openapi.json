@@ -526,9 +526,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "args"
-        ],
         "type": "object"
       },
       "ModelStateEvent": {
@@ -574,6 +571,10 @@
             ]
           },
           "engine": {
+            "enum": [
+              "bundled",
+              "cuda"
+            ],
             "type": "string"
           },
           "idleUnloadMinutes": {
