@@ -44,12 +44,9 @@ func startSleeper(t *testing.T) *exec.Cmd {
 }
 
 func TestRunStopsWhenTheParentEnds(t *testing.T) {
-	t.Setenv(tokenEnv, "")
 	parent := startSleeper(t)
 	dir := t.TempDir()
-	_, done := startCoreWith(t, []string{"--data-dir", dir, "--parent-pid", strconv.Itoa(parent.Process.Pid)},
-		strings.NewReader(""))
-	readDiscovery(t, dir) // serving
+	_, done := startCoreWith(t, []string{"--data-dir", dir, "--parent-pid", strconv.Itoa(parent.Process.Pid)})
 
 	if err := parent.Process.Kill(); err != nil {
 		t.Fatal(err)
@@ -62,12 +59,7 @@ func TestRunStopsWhenTheParentEnds(t *testing.T) {
 func coreExe(t *testing.T, logDir string, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], args...)
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(strings.ToUpper(kv), tokenEnv+"=") {
-			cmd.Env = append(cmd.Env, kv)
-		}
-	}
-	cmd.Env = append(cmd.Env, coreMainEnv+"=1", logDirEnv+"="+logDir)
+	cmd.Env = append(os.Environ(), coreMainEnv+"=1", logDirEnv+"="+logDir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
@@ -106,7 +98,7 @@ func TestDetachStartsACoreThatOutlivesTheLauncher(t *testing.T) {
 		t.Fatalf("ready pid = %d, want the started core's", ready.PID)
 	}
 
-	d := readDiscovery(t, dir)
+	d := waitDiscovery(t, dir)
 	if d.PID != ready.PID {
 		t.Fatalf("core.json pid = %d, ready line pid = %d", d.PID, ready.PID)
 	}
@@ -129,7 +121,6 @@ func TestDetachStartsACoreThatOutlivesTheLauncher(t *testing.T) {
 }
 
 func TestRunRefusesAParentThatIsGone(t *testing.T) {
-	t.Setenv(tokenEnv, "")
 	parent := startSleeper(t)
 	if err := parent.Process.Kill(); err != nil {
 		t.Fatal(err)
@@ -137,8 +128,7 @@ func TestRunRefusesAParentThatIsGone(t *testing.T) {
 	parent.Wait()
 	dir := t.TempDir()
 
-	err := run([]string{"--data-dir", dir, "--parent-pid", strconv.Itoa(parent.Process.Pid)}, strings.NewReader(""),
-		io.Discard, io.Discard)
+	err := run([]string{"--data-dir", dir, "--parent-pid", strconv.Itoa(parent.Process.Pid)}, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "not running") {
 		t.Fatalf("err = %v, want one saying the parent is not running", err)
 	}
