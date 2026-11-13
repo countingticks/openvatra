@@ -11,6 +11,7 @@ import type { CoreApi, SettingsApi } from '../../../shared/ipc'
 import { defaultSettings, type Settings, type SettingsPatch } from '../../../shared/settings'
 import { connectionChanged, connectionSlice } from '../core/connectionSlice'
 import { coreApi } from '../core/coreApi'
+import { followCoreStream } from '../core/stream'
 import { settingsChanged, settingsReplaced, settingsSlice } from './settingsSlice'
 import { initialUiState, sidebarToggled, tabSelected, uiSlice, wentBack, wentForward } from './uiSlice'
 
@@ -94,7 +95,12 @@ export function createAppStore({ settings, initialSettings, core }: AppStoreOpti
   // Main may change settings on its own (the CUDA download switches the engine). One store per window, so the
   // subscription lives as long as the window and is never removed. The ui slice is the window's own state.
   settings.onChange((pushed) => store.dispatch(settingsReplaced(pushed)))
-  if (core) followCoreState(core, store.dispatch)
+  if (core) {
+    // Started before core's state arrives, so the first ready state opens the stream. Like the settings
+    // subscription, it lives as long as the window.
+    followCoreStream({ dispatch: store.dispatch, getState: store.getState, subscribe: store.subscribe })
+    followCoreState(core, store.dispatch)
+  }
   return store
 }
 

@@ -33,17 +33,29 @@ const json = (body: unknown, status = 200): Response =>
 
 type FetchMock = Mock<typeof globalThis.fetch>
 
+/** What fetch was called with, whether RTK passed a Request or a URL and init. */
+const asRequest = (input: RequestInfo | URL, init?: RequestInit): Request =>
+  input instanceof Request ? input : new Request(input, init)
+
+/**
+ * Stubs fetch with answer for every request but the window's event stream (which the store opens once it has a
+ * connection, and which is left pending here: it is not what these tests are about).
+ */
 function stubFetch(answer: () => Response): FetchMock {
-  const fetch = vi.fn<typeof globalThis.fetch>(async () => answer())
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) =>
+    new URL(asRequest(input, init).url).pathname === '/api/events'
+      ? new Promise<Response>(() => {})
+      : answer()
+  )
   vi.stubGlobal('fetch', fetch)
   return fetch
 }
 
-/** What fetch was called with, whether RTK passed a Request or a URL and init. */
-function sent(fetch: FetchMock, call = 0): Request {
-  const [input, init] = fetch.mock.calls[call]
-  return input instanceof Request ? input : new Request(input, init)
-}
+/** The requests the generated endpoints made, in order. */
+const sent = (fetch: FetchMock): Request[] =>
+  fetch.mock.calls
+    .map(([input, init]) => asRequest(input, init))
+    .filter((request) => new URL(request.url).pathname !== '/api/events')
 
 async function getVersion(store: AppStore): Promise<{ data?: unknown; error?: unknown }> {
   const request = store.dispatch(coreApi.endpoints.getVersion.initiate(undefined, { forceRefetch: true }))
@@ -75,7 +87,7 @@ describe('coreBaseQuery', () => {
     const result = await getVersion(store)
 
     expect(result.data).toEqual({ api: 1, version: '1.0.0' })
-    const request = sent(fetch)
+    const [request] = sent(fetch)
     expect(request.url).toBe('http://127.0.0.1:53121/api/version')
     expect(request.headers.get('Authorization')).toBe(`Bearer ${connection.token}`)
   })
@@ -89,7 +101,7 @@ describe('coreBaseQuery', () => {
     push(ready({ baseUrl: 'http://127.0.0.1:53999', token: 'b'.repeat(64) }))
     await getVersion(store)
 
-    const request = sent(fetch, 1)
+    const request = sent(fetch)[1]
     expect(request.url).toBe('http://127.0.0.1:53999/api/version')
     expect(request.headers.get('Authorization')).toBe(`Bearer ${'b'.repeat(64)}`)
   })
