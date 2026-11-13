@@ -2,7 +2,10 @@
 
 package host
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // OpenVatra ships for Windows only. These stand-ins keep `go vet` and the tests
 // working on other systems.
@@ -16,3 +19,7 @@ func Lock(dataDir string) (*FolderLock, error) { return nil, errors.ErrUnsupport
 func (l *FolderLock) Close() error { return nil }
 
 func WriteDiscovery(dataDir string, d Discovery) error { return errors.ErrUnsupported }
+
+func Detach(exe string, args []string, dataDir string, timeout time.Duration) (Ready, error) {
+	return Ready{}, errors.ErrUnsupported
+}
