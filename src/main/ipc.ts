@@ -10,7 +10,6 @@ import {
   type AppFolder,
   type FileLocations
 } from '../shared/ipc'
-import type { LlamaInfo } from '../shared/ipc'
 import type { CoreState } from '../shared/core'
 import type { Settings } from '../shared/settings'
 import type { Supervisor } from './core/supervisor'
@@ -29,7 +28,6 @@ export function registerIpcHandlers(
   settings: SettingsService,
   appUrl: string,
   locations: FileLocations,
-  llamaInfo: () => Promise<LlamaInfo>,
   core: CoreControl
 ): void {
   const folders: Record<AppFolder, string> = {
@@ -160,17 +158,6 @@ export function registerIpcHandlers(
     const [path] = result.filePaths
     if (result.canceled || !path) return null
     return setModelPath(parsed.data === 'llamaServer' ? 'llamaServerPath' : 'modelsDir', path)
-  })
-
-  ipcMain.handle(ipcChannels.filesBundledLlama, async (event): Promise<LlamaInfo> => {
-    assertFromApp(event)
-    return llamaInfo()
-  })
-
-  // Takes no argument: "none chosen" is the only value the UI can ask for, so it can't smuggle in a path.
-  ipcMain.handle(ipcChannels.filesUseBundledLlama, async (event): Promise<Settings> => {
-    assertFromApp(event)
-    return setModelPath('llamaServerPath', null)
   })
 
   // The UI names one of our folders; it can never make Explorer open (or run) a path of its choosing.

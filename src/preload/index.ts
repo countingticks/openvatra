@@ -32,9 +32,7 @@ const api: Api = {
   files: Object.freeze({
     locations: () => ipcRenderer.invoke(ipcChannels.filesLocations),
     openFolder: (folder) => ipcRenderer.invoke(ipcChannels.filesOpenFolder, folder),
-    pick: (target) => ipcRenderer.invoke(ipcChannels.filesPick, target),
-    bundledLlama: () => ipcRenderer.invoke(ipcChannels.filesBundledLlama),
-    useBundledLlama: () => ipcRenderer.invoke(ipcChannels.filesUseBundledLlama)
+    pick: (target) => ipcRenderer.invoke(ipcChannels.filesPick, target)
   }),
   appWindow: Object.freeze({
     minimize: () => ipcRenderer.invoke(ipcChannels.windowMinimize),

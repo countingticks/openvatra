@@ -27,7 +27,7 @@ function show(
   return renderWithStore(
     <App />,
     { models: { ...defaultSettings.models, showAdvanced, cudaOfferDismissed } },
-    { coreState: ready, cuda, engines: { cuda }, models: list, modelSettings: core }
+    { coreState: ready, engines: { cuda }, models: list, modelSettings: core }
   )
 }
 

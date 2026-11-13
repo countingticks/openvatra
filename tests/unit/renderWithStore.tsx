@@ -113,8 +113,6 @@ interface Rendered extends RenderResult {
   openFolder: Mock<FilesApi['openFolder']>
   /** Answers like main after the user picked a path; set its result per test. Default: cancelled (null). */
   pick: Mock<FilesApi['pick']>
-  /** Answers like main after "Use bundled"; set its result per test. */
-  useBundledLlama: Mock<FilesApi['useBundledLlama']>
   appWindow: FakeAppWindow
   quit: Mock<AppApi['quit']>
   core: FakeCore
@@ -132,8 +130,6 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
-  /** The CUDA build's state main reports over IPC; default: not installed. */
-  cuda?: 'none' | 'ready' | 'stale'
   /** The models section's value core answers (rev 1), over core's defaults. */
   modelSettings?: Partial<Models>
   /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
@@ -198,9 +194,6 @@ export function renderWithStore(
   const appWindow = fakeAppWindow(options.maximized ?? false)
   const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
   const pick = vi.fn<FilesApi['pick']>().mockResolvedValue(null)
-  const useBundledLlama = vi
-    .fn<FilesApi['useBundledLlama']>()
-    .mockImplementation(async () => ({ ...current, models: { ...current.models, llamaServerPath: null } }))
   const coreHttp = createFakeCoreHttp()
   vi.stubGlobal('fetch', coreHttp.fetch)
   coreHttp.setModels(options.models ?? [])
@@ -232,11 +225,7 @@ export function renderWithStore(
     files: {
       locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations),
       openFolder,
-      pick,
-      bundledLlama: vi
-        .fn<FilesApi['bundledLlama']>()
-        .mockResolvedValue({ tag: 'b12078', cuda: options.cuda ?? 'none' }),
-      useBundledLlama
+      pick
     },
     appWindow: appWindow.api
   }
@@ -263,7 +252,6 @@ export function renderWithStore(
     emitSettings,
     openFolder,
     pick,
-    useBundledLlama,
     appWindow: appWindow.fake,
     quit,
     core: core.fake,

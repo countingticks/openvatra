@@ -13,8 +13,6 @@ export const ipcChannels = {
   filesLocations: 'files:locations',
   filesOpenFolder: 'files:open-folder',
   filesPick: 'files:pick',
-  filesBundledLlama: 'files:bundled-llama',
-  filesUseBundledLlama: 'files:use-bundled-llama',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
@@ -79,16 +77,6 @@ export interface FilesApi {
    * settings, or null if the user cancelled.
    */
   pick(target: PickTarget): Promise<Settings | null>
-  /** The engines: the bundled build's release tag (e.g. "b12078", null if unreadable) and the CUDA build's state. */
-  bundledLlama(): Promise<LlamaInfo>
-  /** Goes back to the bundled llama-server (saves "none chosen"); resolves with the saved settings. */
-  useBundledLlama(): Promise<Settings>
-}
-
-/** `cuda`: `ready` = installed for this app's tag; `stale` = only an older one (offer the update); `none`. */
-export interface LlamaInfo {
-  tag: string | null
-  cuda: 'none' | 'ready' | 'stale'
 }
 
 export interface RuntimeInfo {

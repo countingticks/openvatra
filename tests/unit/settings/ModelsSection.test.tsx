@@ -123,7 +123,7 @@ describe('Settings → Models', () => {
     })
 
     it('"Use bundled" asks core to forget the custom path, and shows the bundled build again', async () => {
-      const { coreHttp, useBundledLlama } = await openModels(
+      const { coreHttp } = await openModels(
         { llamaServerPath: 'C:\\llama\\llama-server.exe' },
         { coreState: ready }
       )
@@ -132,7 +132,6 @@ describe('Settings → Models', () => {
 
       expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
       expect(putValues(coreHttp)).toEqual([{ ...defaultCoreModels, llamaServerPath: null }])
-      expect(useBundledLlama).not.toHaveBeenCalled()
       expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
     })
 
