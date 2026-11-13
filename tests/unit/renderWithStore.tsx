@@ -21,7 +21,8 @@ import type {
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
 import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
-import { createFakeCoreHttp, defaultCoreModels, type FakeCoreHttp } from './fakeCoreHttp'
+import { defaultCoreModels } from '@renderer/core/modelSettings'
+import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
 export const exampleConnection: CoreConnection = {

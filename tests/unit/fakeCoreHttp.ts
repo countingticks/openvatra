@@ -3,6 +3,7 @@
 // so the real base query and event stream run against it.
 
 import type { Models, ModelsEffective } from '../../src/renderer/src/core/generated'
+import { defaultCoreModels } from '../../src/renderer/src/core/modelSettings'
 import type { ModelInfo } from '../../src/shared/core'
 import type { DownloadItem } from '../../src/shared/setup'
 
@@ -50,16 +51,6 @@ export const coreWrites = (fake: FakeCoreHttp): { method: string; path: string; 
   fake.requests
     .filter((request) => request.method !== 'GET')
     .map((request) => ({ method: request.method, path: new URL(request.url).pathname, body: request.body }))
-
-/** core's defaults for the models section (config.DefaultModels). */
-export const defaultCoreModels: Readonly<Models> = {
-  embeddingModel: null,
-  engine: 'bundled',
-  idleUnloadMinutes: 15,
-  llamaServerPath: null,
-  modelsDir: null,
-  options: {}
-}
 
 type Frame = { event?: 'hello'; data: unknown }
 
