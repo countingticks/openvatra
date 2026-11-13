@@ -17,7 +17,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/api/openapi"
 )
 
-// Scope is who may call a route. Recorded on every row; enforced from slice 2.
+// Scope is who may call a route. The gate finds the caller's; newMux compares it with the row's.
 type Scope int
 
 const (
@@ -135,7 +135,12 @@ func newMux(routes []Route, logger *slog.Logger) *http.ServeMux {
 		}
 		info := requestInfo{logger: logger, op: rt.OperationID}
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-			h(w, r.WithContext(context.WithValue(r.Context(), requestInfoKey{}, info)))
+			r = r.WithContext(context.WithValue(r.Context(), requestInfoKey{}, info))
+			if !covers(callerScope(r.Context()), rt.Scope) {
+				writeError(w, r, &Error{Status: http.StatusForbidden, Code: "forbidden_scope", Message: "this token may not call this route"})
+				return
+			}
+			h(w, r)
 		})
 	}
 	return mux

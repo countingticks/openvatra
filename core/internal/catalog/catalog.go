@@ -163,7 +163,7 @@ func FitFor(needsGB int, r hw.Report) string {
 // Item is an entry as GET /api/catalog shows it for this PC.
 type Item struct {
 	Entry
-	Fit       string `json:"fit"`
+	Fit       string `json:"fit" enum:"fits,slower,tooBig"`
 	Installed bool   `json:"installed"`
 	// DiskShortBytes is how much space is missing to download it (with diskSpare left over); 0 when it fits or is
 	// unknown, so an unreadable drive never blocks a download.

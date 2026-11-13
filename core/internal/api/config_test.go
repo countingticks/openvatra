@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -210,5 +211,93 @@ func TestOneRoutePairPerSection(t *testing.T) {
 	rec := configCall(t, cfg, http.MethodGet, "/api/config/search", "")
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != `{"rev":0,"value":{"on":false}}` {
 		t.Fatalf("GET search = %d %s", rec.Code, got)
+	}
+}
+
+// configClient is one handler kept across calls, so a ui token issued through POST /api/tokens stays live.
+type configClient struct {
+	t  *testing.T
+	h  http.Handler
+	ui string
+}
+
+// newConfigClient stores both paths with the shell token (rev 1) and issues a ui token.
+func newConfigClient(t *testing.T) *configClient {
+	t.Helper()
+	c := &configClient{t: t, h: testHandler(t, Deps{Config: configStore(t, true)})}
+	rec := c.call(testToken, http.MethodPost, "/api/tokens", `{"scope":"ui"}`)
+	var tok TokenBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &tok); rec.Code != http.StatusCreated || err != nil {
+		t.Fatalf("issue = %d %s", rec.Code, rec.Body)
+	}
+	c.ui = tok.Token
+	if rec := c.put(testToken, 0, `"C:/llama/llama-server.exe"`, `"D:/models"`, 15); rec.Code != http.StatusOK {
+		t.Fatalf("shell put = %d %s", rec.Code, rec.Body)
+	}
+	return c
+}
+
+func (c *configClient) call(token, method, path, body string) *httptest.ResponseRecorder {
+	c.t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Host = "127.0.0.1:53121"
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	c.h.ServeHTTP(rec, req)
+	return rec
+}
+
+// put sends the models section with the given JSON for the two paths and idleUnloadMinutes.
+func (c *configClient) put(token string, rev int, llama, dir string, minutes int) *httptest.ResponseRecorder {
+	c.t.Helper()
+	body := fmt.Sprintf(`{"rev":%d,"value":{"llamaServerPath":%s,"modelsDir":%s,"idleUnloadMinutes":%d,`+
+		`"options":{},"engine":"bundled"}}`, rev, llama, dir, minutes)
+	return c.call(token, http.MethodPut, "/api/config/models", body)
+}
+
+func (c *configClient) rev() int {
+	c.t.Helper()
+	return decodeEntry(c.t, c.call(testToken, http.MethodGet, "/api/config/models", "").Body.String()).Rev
+}
+
+func TestUITokenMayOnlyResetShellOnlyFields(t *testing.T) {
+	const llama, dir = `"C:/llama/llama-server.exe"`, `"D:/models"`
+	cases := []struct {
+		name       string
+		shell      bool
+		rev        int
+		llama, dir string
+		status     int
+		code       string
+	}{
+		{"ui changes llamaServerPath", false, 1, `"C:/evil/llama-server.exe"`, dir, 403, "shell_only_field"},
+		{"ui sets modelsDir to null", false, 1, llama, "null", 200, ""},
+		{"ui keeps both paths and changes idleUnloadMinutes", false, 1, llama, dir, 200, ""},
+		{"ui with a stale rev and a changed path", false, 0, `"C:/evil/llama-server.exe"`, dir, 409, "config_conflict"},
+		{"shell changes llamaServerPath", true, 1, `"C:/other/llama-server.exe"`, dir, 200, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newConfigClient(t)
+			token := c.ui
+			if tc.shell {
+				token = testToken
+			}
+			rec := c.put(token, tc.rev, tc.llama, tc.dir, 30)
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d %s, want %d", rec.Code, rec.Body, tc.status)
+			}
+			if tc.code != "" && errorBody(t, rec)["error"] != tc.code {
+				t.Fatalf("body = %s, want %s", rec.Body, tc.code)
+			}
+			if tc.status == 403 {
+				if !strings.Contains(rec.Body.String(), "llamaServerPath can only be set by the app") {
+					t.Fatalf("message does not name the field: %s", rec.Body)
+				}
+				if rev := c.rev(); rev != 1 {
+					t.Fatalf("stored rev = %d after a refused put, want 1", rev)
+				}
+			}
+		})
 	}
 }

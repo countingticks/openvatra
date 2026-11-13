@@ -46,7 +46,11 @@ type SectionEntry struct {
 type SectionType struct {
 	Name             string
 	Value, Effective reflect.Type
+	ShellOnly        []string // nil when the section has none
 }
+
+// ShellOnlyFields is implemented by a section whose listed JSON fields only the shell token may set.
+type ShellOnlyFields interface{ ShellOnly() []string }
 
 // section is one registered section. value is always a T; decode and effective are typed closures made by Register.
 type section struct {
@@ -57,6 +61,7 @@ type section struct {
 	raw       []byte // json.Marshal(value), so Section doesn't marshal it again
 	decode    func(data []byte) (any, error)
 	effective func(any) any // nil = none
+	shellOnly []string
 }
 
 // Store holds every section. Reads take only mu; Puts run one at a time under putMu, so a slow disk never blocks a
@@ -97,6 +102,9 @@ func Register[T Validator, E any](s *Store, name string, defaults T, effective f
 	sec := &section{
 		typ:    reflect.TypeFor[T](),
 		decode: func(data []byte) (any, error) { return decodeStrict[T](data) },
+	}
+	if so, ok := any(defaults).(ShellOnlyFields); ok {
+		sec.shellOnly = so.ShellOnly()
 	}
 	if effective != nil {
 		sec.effType = reflect.TypeFor[E]()
@@ -140,7 +148,7 @@ func (s *Store) Sections() []SectionType {
 	out := make([]SectionType, 0, len(s.order))
 	for _, name := range s.order {
 		sec := s.sections[name]
-		out = append(out, SectionType{Name: name, Value: sec.typ, Effective: sec.effType})
+		out = append(out, SectionType{Name: name, Value: sec.typ, Effective: sec.effType, ShellOnly: sec.shellOnly})
 	}
 	return out
 }

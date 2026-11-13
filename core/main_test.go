@@ -423,3 +423,17 @@ func TestOpenAPIOutputIsADocument(t *testing.T) {
 		t.Errorf("openapi %q, info.version %q", doc.OpenAPI, doc.Info.Version)
 	}
 }
+
+func TestOriginFlag(t *testing.T) {
+	for _, bad := range []string{"http://localhost:5173/app", "http://localhost:5173/", "http://localhost:5173?q",
+		"http://localhost:5173#f", "localhost:5173", "null"} {
+		err := run([]string{"--origin", bad}, strings.NewReader(""), io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "--origin") {
+			t.Fatalf("--origin %s: err = %v, want one naming --origin", bad, err)
+		}
+	}
+	args := []string{"--origin", "http://localhost:5173", "--origin", "http://127.0.0.1:5173", "--openapi"}
+	if err := run(args, strings.NewReader(""), io.Discard); err != nil {
+		t.Fatalf("two valid --origin values: %v", err)
+	}
+}

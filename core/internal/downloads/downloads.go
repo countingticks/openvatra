@@ -32,7 +32,7 @@ const (
 // DownloadItem is one download as the "downloads" event shows it. ID is the catalog id.
 type DownloadItem struct {
 	ID    string `json:"id"`
-	State State  `json:"state"`
+	State State  `json:"state" enum:"queued,downloading,verifying,paused,error,done"`
 	Bytes int64  `json:"bytes"`
 	Total int64  `json:"total"`
 	Speed int64  `json:"speed"` // bytes per second over the last half second or so

@@ -159,6 +159,14 @@
             "type": "integer"
           },
           "state": {
+            "enum": [
+              "queued",
+              "downloading",
+              "verifying",
+              "paused",
+              "error",
+              "done"
+            ],
             "type": "string"
           },
           "total": {
@@ -329,6 +337,11 @@
             "type": "array"
           },
           "fit": {
+            "enum": [
+              "fits",
+              "slower",
+              "tooBig"
+            ],
             "type": "string"
           },
           "id": {
@@ -439,6 +452,11 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "chat",
+              "embedding",
+              "unreadable"
+            ],
             "type": "string"
           },
           "projector": {
@@ -448,6 +466,12 @@
             "type": "integer"
           },
           "state": {
+            "enum": [
+              "stopped",
+              "loading",
+              "ready",
+              "error"
+            ],
             "type": "string"
           }
         },
@@ -641,6 +665,30 @@
         },
         "required": [
           "status"
+        ],
+        "type": "object"
+      },
+      "TokenBody": {
+        "properties": {
+          "token": {
+            "description": "a ui-scoped token for this core run; send it as Authorization: Bearer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "TokenRequest": {
+        "properties": {
+          "scope": {
+            "description": "only \"ui\" can be issued",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
         ],
         "type": "object"
       },
@@ -1240,7 +1288,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, internal."
+            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, shell_only_field, internal."
           }
         },
         "summary": "Replace the models config section if rev is still current",
@@ -1712,6 +1760,48 @@
           "openapi"
         ],
         "x-scope": "ui"
+      }
+    },
+    "/api/tokens": {
+      "post": {
+        "operationId": "issueToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, invalid_scope."
+          }
+        },
+        "summary": "Issue a token for the app's window",
+        "tags": [
+          "tokens"
+        ],
+        "x-scope": "shell"
       }
     },
     "/api/version": {

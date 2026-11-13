@@ -16,7 +16,7 @@ const (
 // ModelState is what the router knows about one model.
 type ModelState struct {
 	ID    string `json:"id"`
-	State string `json:"state"`
+	State string `json:"state" enum:"stopped,loading,ready,error"`
 	Busy  bool   `json:"busy"`
 	Error string `json:"error,omitempty"`
 }

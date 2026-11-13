@@ -314,6 +314,19 @@ func TestSectionsListsRegistrationOrderAndTypes(t *testing.T) {
 	}
 }
 
+func TestSectionsListsTheModelsSectionsShellOnlyFields(t *testing.T) {
+	s := New(nil, nil)
+	Register[Models, struct{}](s, ModelsSection, DefaultModels(), nil)
+	Register[testSection, struct{}](s, testName, testDefaults, nil)
+	got := s.Sections()
+	if want := []string{"llamaServerPath", "modelsDir"}; !reflect.DeepEqual(got[0].ShellOnly, want) {
+		t.Fatalf("models ShellOnly = %v, want %v", got[0].ShellOnly, want)
+	}
+	if got[1].ShellOnly != nil {
+		t.Fatalf("%s ShellOnly = %v, want nil", testName, got[1].ShellOnly)
+	}
+}
+
 func TestNilEffectiveHasNoType(t *testing.T) {
 	s := New(nil, nil)
 	Register[testSection, struct{}](s, testName, testDefaults, nil)

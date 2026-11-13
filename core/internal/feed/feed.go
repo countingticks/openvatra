@@ -36,7 +36,7 @@ type Model struct {
 	// Projector is the detected vision projector's file name (never its path); left out when there is none.
 	Projector string `json:"projector,omitempty"`
 	// Kind is chat, embedding or unreadable, read from the GGUF header; Error says why a file is unreadable.
-	Kind  models.Kind `json:"kind"`
+	Kind  models.Kind `json:"kind" enum:"chat,embedding,unreadable"`
 	Error string      `json:"error,omitempty"`
 }
 
