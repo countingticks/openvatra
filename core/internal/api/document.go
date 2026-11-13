@@ -32,6 +32,6 @@ func documentOf(routes []Route, version string) []byte {
 		}
 		ops = append(ops, op)
 	}
-	return openapi.Build(openapi.Info{Title: "OpenVatra core", Version: version, APILevel: 1}, ops, r,
+	return openapi.Build(openapi.Info{Title: "OpenVatra core", Version: version, APILevel: APILevel}, ops, r,
 		reflect.TypeFor[ErrorBody]())
 }

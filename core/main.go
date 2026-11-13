@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,7 +16,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
@@ -25,6 +30,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/feed"
+	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -52,13 +58,26 @@ const shutdownGrace = 5 * time.Second
 const defaultContext = "16384"
 
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+	err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "core:", err)
-		os.Exit(1)
+	}
+	os.Exit(exitCode(err))
+}
+
+// exitCode maps run's result to the process exit code: 0 clean, 3 another core holds the folder, 1 anything else.
+func exitCode(err error) int {
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, host.ErrRunning):
+		return host.ExitRunning
+	default:
+		return 1
 	}
 }
 
-func run(args []string, stdin io.Reader, stdout io.Writer) error {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	// For the end-to-end tests only: main passes it solely when unpackaged with OPENVATRA_E2E=1.
@@ -70,6 +89,10 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Without it core knows no default engine and runs no model until a path is chosen.
 	llamaDir := fs.String("llama-dir", "", "folder holding the bundled llama-server.exe")
 	openapi := fs.Bool("openapi", false, "print the OpenAPI document to stdout and exit")
+	// So a killed e2e test leaves no orphan core behind.
+	parentPID := fs.Int("parent-pid", 0, "pid whose exit stops core (e2e tests)")
+	detach := fs.Bool("detach", false, "start a core detached from this process, print its ready line and exit")
+	stopFlag := fs.Bool("stop", false, "stop the core running on --data-dir and exit")
 	// Pages from these origins may call core (with a token); main passes the dev server's in development only.
 	var origins []string
 	fs.Func("origin", "an origin (scheme://host[:port]) whose pages may call core; repeatable", func(v string) error {
@@ -84,6 +107,16 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 			return fmt.Errorf("--origin %q is not scheme://host[:port]", o)
 		}
 	}
+	var modes []string
+	for name, on := range map[string]bool{"--openapi": *openapi, "--detach": *detach, "--stop": *stopFlag} {
+		if on {
+			modes = append(modes, name)
+		}
+	}
+	if len(modes) > 1 {
+		slices.Sort(modes)
+		return fmt.Errorf("%s cannot be used together", strings.Join(modes, " and "))
+	}
 
 	// Nothing is opened or read: the document comes from the route table alone, so it needs no token.
 	if *openapi {
@@ -92,11 +125,28 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		_, err := stdout.Write(api.Document(api.Deps{Version: version, Config: cfg}))
 		return err
 	}
+	if *dataDir == "" {
+		return errors.New("--data-dir is required")
+	}
 
-	// Fail closed: without a token every request would have to be refused anyway.
+	// Both run before the logs, the lock and the job object: the launcher must never join a kill-on-close job, or
+	// the core it starts would die with it.
+	if *stopFlag {
+		return stopCore(*dataDir, stderr)
+	}
+	if *detach {
+		return detachCore(dropFlags(args, []string{"detach"}, nil), *dataDir, stdout, stderr)
+	}
+
+	// Child mode: the app started us and passed the token. Otherwise core makes its own and publishes it in core.json.
 	token := os.Getenv(tokenEnv)
-	if token == "" {
-		return fmt.Errorf("%s is not set", tokenEnv)
+	childMode := token != ""
+	if !childMode {
+		t, err := newShellToken()
+		if err != nil {
+			return err
+		}
+		token = t
 	}
 
 	logger, logOut, logCloser, err := logs.Setup(os.Getenv(logDirEnv))
@@ -106,6 +156,30 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	defer logCloser.Close()
 	logger.Info("core starting", "version", version)
 	defer logger.Info("core stopped")
+
+	// Before the database and the port: two cores must never share openvatra.db. Closed last, after everything else.
+	lock, err := host.Lock(*dataDir)
+	if errors.Is(err, host.ErrLocked) {
+		logger.Warn("another core is running on this data folder")
+		return host.ErrRunning
+	}
+	if err != nil {
+		return fmt.Errorf("lock data folder: %w", err)
+	}
+	defer lock.Close()
+
+	// stop is the single "please exit" signal; /shutdown, the parent's exit and stdin's EOF fire it.
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	if *parentPID != 0 {
+		err := host.WatchParent(*parentPID, stop)
+		if errors.Is(err, host.ErrNoProcess) {
+			return fmt.Errorf("parent process %d is not running", *parentPID)
+		}
+		if err != nil {
+			return fmt.Errorf("watch parent process %d: %w", *parentPID, err)
+		}
+	}
 
 	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
 	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
@@ -119,18 +193,16 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	var chatStore *store.Store
 	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
 	eventLog := event.MemoryLog(bus)
-	if *dataDir != "" {
-		if db, err := store.Open(*dataDir, bus); err != nil {
-			logger.Error("open chat database", "err", err)
-		} else {
-			defer db.Close()
-			chatStore, cfgDB, eventLog = db, db, db.Log()
-			if err := db.RenameErr(); err != nil {
-				logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
-			}
-			if ro := db.ReadOnly(); ro != nil {
-				logger.Warn("chat database is read-only", "err", ro)
-			}
+	if db, err := store.Open(*dataDir, bus); err != nil {
+		logger.Error("open chat database", "err", err)
+	} else {
+		defer db.Close()
+		chatStore, cfgDB, eventLog = db, db, db.Log()
+		if err := db.RenameErr(); err != nil {
+			logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
+		}
+		if ro := db.ReadOnly(); ro != nil {
+			logger.Warn("chat database is read-only", "err", ro)
 		}
 	}
 
@@ -143,14 +215,32 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// With port 0 the real port is only known after listening.
 	actualPort := ln.Addr().(*net.TCPAddr).Port
 	logger.Info("listening", "port", actualPort)
-	if err := writeReady(stdout, actualPort); err != nil {
+	if err := writeReady(stdout, actualPort, os.Getpid()); err != nil {
 		return err
 	}
 
-	// stop is the single "please exit" signal; both triggers below fire it.
-	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
-	go watchStdin(stdin, stop)
+	// Fatal when it fails: a core nobody can find would hold the lock for nothing. The token goes in the file only.
+	d := host.Discovery{PID: os.Getpid(), Port: actualPort, Token: token, Version: version, API: api.APILevel,
+		Args: hostArgs(args), StartedAt: time.Now().UTC()}
+	if d.Exe, err = exePath(); err == nil {
+		err = host.WriteDiscovery(*dataDir, d)
+	}
+	if err != nil {
+		ln.Close()
+		return fmt.Errorf("write core.json: %w", err)
+	}
+	logger.Info("wrote core.json", "port", actualPort, "pid", d.PID)
+	defer func() {
+		if err := host.RemoveDiscovery(*dataDir, d.PID); err != nil {
+			logger.Warn("could not remove core.json", "err", err)
+		}
+	}()
+
+	// Only the app's child core reads stdin: a core started with --detach or from a terminal has stdin on NUL or a
+	// console and must not stop at its EOF.
+	if childMode {
+		go watchStdin(stdin, stop)
+	}
 	if chatStore != nil && chatStore.ReadOnly() == nil {
 		go trimSystemEvents(ctx, chatStore, 24*time.Hour, time.Now, logger)
 	}
@@ -351,13 +441,144 @@ func watchStdin(stdin io.Reader, onClose func()) {
 	onClose()
 }
 
+// newShellToken makes the shell token of a core that was not given one: 32 random bytes as lowercase hex.
+func newShellToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("make token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// dropFlags removes the named bool flags and the named flags that take a value, order kept.
+func dropFlags(args []string, bools, valued []string) []string {
+	out := []string{}
+	for i := 0; i < len(args); i++ {
+		name, hasValue, ok := flagName(args[i])
+		switch {
+		case ok && slices.Contains(bools, name):
+		case ok && slices.Contains(valued, name):
+			if !hasValue {
+				i++ // the value is the next argument
+			}
+		default:
+			out = append(out, args[i])
+		}
+	}
+	return out
+}
+
+// flagName splits "-name", "--name" or either with "=value" into the name and whether the value is attached.
+func flagName(arg string) (name string, hasValue, ok bool) {
+	if !strings.HasPrefix(arg, "-") || arg == "-" || arg == "--" {
+		return "", false, false
+	}
+	name = strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-")
+	name, _, hasValue = strings.Cut(name, "=")
+	return name, hasValue, true
+}
+
+// hostArgs is the fingerprint part of our arguments: everything but the flags that only say how this run started.
+func hostArgs(args []string) []string {
+	return dropFlags(args, []string{"detach"}, []string{"port", "parent-pid"})
+}
+
+// exePath is this executable's real path, symlinks resolved, so two starts of the same build compare equal.
+func exePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
+}
+
 // writeReady prints the one JSON line main waits for.
-func writeReady(w io.Writer, port int) error {
+func writeReady(w io.Writer, port, pid int) error {
 	return json.NewEncoder(w).Encode(map[string]any{
 		"event":   "ready",
 		"port":    port,
+		"pid":     pid,
 		"version": version,
 	})
+}
+
+// detachTimeout is how long the launcher waits for the core it started to write core.json.
+const detachTimeout = 15 * time.Second
+
+// detachCore starts this exe with args as a core that outlives us and prints its ready line. The core is the same
+// build, so the ready line's version is ours.
+func detachCore(args []string, dataDir string, stdout, stderr io.Writer) error {
+	exe, err := exePath()
+	if err != nil {
+		return err
+	}
+	r, err := host.Detach(exe, args, dataDir, detachTimeout)
+	if errors.Is(err, host.ErrRunning) {
+		if _, err := fmt.Fprintln(stdout, `{"event":"running"}`); err != nil {
+			return err
+		}
+		return host.ErrRunning
+	}
+	if err != nil {
+		return err
+	}
+	if !r.Breakaway {
+		fmt.Fprintln(stderr, "core: started without breakaway from the job; it may stop with its starter")
+	}
+	return writeReady(stdout, r.Port, r.PID)
+}
+
+// Vars so tests can shorten them.
+var (
+	stopRequestTimeout = 3 * time.Second // a core that does not answer /shutdown by then counts as hung
+	stopWait           = 8 * time.Second // how long a stopping core gets to exit
+)
+
+// stopCore asks the core named by dataDir's core.json to shut down and waits for it to exit. No core, or a stale file
+// whose core does not answer as ours, is not an error: there is nothing to stop. It never kills and never deletes
+// core.json, and the token never reaches stderr.
+func stopCore(dataDir string, stderr io.Writer) error {
+	d, err := host.ReadDiscovery(dataDir)
+	if errors.Is(err, host.ErrNoDiscovery) {
+		fmt.Fprintln(stderr, "core: no core is running")
+		return nil
+	}
+	if err != nil {
+		fmt.Fprintln(stderr, "core: core.json is unreadable:", err)
+		return nil
+	}
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/shutdown", d.Port), nil)
+	if err != nil {
+		fmt.Fprintf(stderr, "core: no core from core.json is running (%v)\n", err)
+		return nil
+	}
+	req.Header.Set("Authorization", "Bearer "+d.Token)
+	resp, err := (&http.Client{Timeout: stopRequestTimeout}).Do(req)
+	var netErr net.Error
+	switch {
+	case err == nil:
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusAccepted {
+			fmt.Fprintf(stderr, "core: no core from core.json is running (status %d)\n", resp.StatusCode)
+			return nil
+		}
+	case errors.As(err, &netErr) && netErr.Timeout():
+		// Connected but no answer: a hung core, so wait on its pid as after a 202.
+	default:
+		// A refused connection: the file is stale and its pid may already belong to another process.
+		fmt.Fprintf(stderr, "core: no core from core.json is running (%v)\n", err)
+		return nil
+	}
+
+	exited, err := host.WaitExit(d.PID, stopWait)
+	if err != nil {
+		return err
+	}
+	if !exited {
+		return fmt.Errorf("core (pid %d) is still running", d.PID)
+	}
+	return nil
 }
 
 // sectionWriter is the part of the config store switchToCUDA uses.
