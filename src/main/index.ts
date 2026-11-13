@@ -7,7 +7,6 @@ import { defaultSettingsFile, type SettingsFile } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { createConfigClient } from './core/configClient'
 import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
-import { createModelSettings } from './core/modelSettings'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -139,35 +138,22 @@ function start(): void {
     // core. Every state change is pushed to the window (nothing to push to before it exists or after it closed).
     const request = (path: string, init?: RequestInit): Promise<Response> =>
       core?.request(path, init) ?? Promise.reject(new Error('core is not running'))
-    // core owns the model settings (paths, engine, arguments); main keeps the last answer to compose Settings.
     const configClient = createConfigClient(request)
-    const modelSettings = createModelSettings({
-      client: configClient,
-      isReady: () => core?.state().status === 'ready',
-      log
-    })
-    const settings = createSettingsService(store, modelSettings)
+    const settings = createSettingsService(store)
     const sendToWindow = (channel: string, value: unknown): void => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, value)
     }
-    // Every change, wherever it came from (the UI, a file dialog, core's engine switch), reaches the window.
+    // Every change, wherever it came from, reaches the window.
     settings.onChange((value) => sendToWindow(ipcChannels.settingsChanged, value))
-    /** On every ready: a v6 user's values go to core once, then main reads what core has. */
+    /** On every ready: a v6 user's values go to core once, then leave the file. */
     async function syncModelSettings(): Promise<void> {
       const legacy = store.get().legacyModels
-      let outcome: ImportOutcome | undefined
-      if (legacy) outcome = await importLegacyModels(configClient, legacy, log)
-      await modelSettings
-        .refresh()
-        .catch((error) => log.warn('Could not read the model settings from core', error))
-      // After the read, so the window goes from the old values straight to core's, never through the defaults.
-      if (outcome && outcome !== 'retry-later') {
-        await store
-          .dropLegacyModels()
-          .catch((error) =>
-            log.warn('Could not remove the imported model settings from settings.json', error)
-          )
-      }
+      if (!legacy) return
+      const outcome: ImportOutcome = await importLegacyModels(configClient, legacy, log)
+      if (outcome === 'retry-later') return
+      await store
+        .dropLegacyModels()
+        .catch((error) => log.warn('Could not remove the imported model settings from settings.json', error))
     }
     core = createSupervisor({
       exePath: coreExePath(),

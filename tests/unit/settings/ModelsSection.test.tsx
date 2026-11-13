@@ -7,13 +7,15 @@ import { defaultCoreModels } from '@renderer/core/modelSettings'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState } from '../../../src/shared/core'
 import type { ModelInfo } from '@renderer/core/types'
-import { defaultSettings, type ModelsSettings } from '../../../src/shared/settings'
 import { coreWrites, type FakeCoreHttp } from '../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
-const chosen: ModelsSettings = {
-  ...defaultSettings.models,
+/** The two window flags that sit beside core's models section in a test's arguments. */
+type Preferences = Partial<Models> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
+
+const chosen: Preferences = {
+  ...defaultCoreModels,
   llamaServerPath: 'C:\\llama\\llama-server.exe',
   modelsDir: 'D:\\models',
   showAdvanced: true
@@ -61,18 +63,14 @@ const configChanged = (http: FakeCoreHttp, rev: number): void =>
  * core's models section.
  */
 async function openModels(
-  models: Partial<ModelsSettings> = chosen,
+  models: Preferences = chosen,
   options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
 ): Promise<Rendered & { section: HTMLElement }> {
   // Most tests are about the advanced view, so it is on unless a test says otherwise.
-  const {
-    showAdvanced = true,
-    cudaOfferDismissed = defaultSettings.models.cudaOfferDismissed,
-    ...core
-  } = models
+  const { showAdvanced = true, cudaOfferDismissed = false, ...core } = models
   const rendered = renderWithStore(
     <App />,
-    { models: { ...defaultSettings.models, showAdvanced, cudaOfferDismissed } },
+    { showAdvancedModels: showAdvanced, cudaOfferDismissed },
     { modelSettings: core, ...options }
   )
   act(() => {
@@ -242,7 +240,7 @@ describe('Settings → Models', () => {
 
       fireEvent.click(screen.getByRole('switch', { name: 'Show advanced' }))
 
-      await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ models: { showAdvanced: true } }))
+      await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ showAdvancedModels: true }))
       expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument()
       expect(await screen.findByText('Qwen3-8B-Q4_K_M')).toBeInTheDocument()
@@ -414,9 +412,7 @@ describe('Settings → Models', () => {
   })
 
   describe('per-model options', () => {
-    async function openOptions(
-      options: ModelsSettings['options'] = {}
-    ): Promise<Rendered & { group: HTMLElement }> {
+    async function openOptions(options: Models['options'] = {}): Promise<Rendered & { group: HTMLElement }> {
       const rendered = await openModels({ ...chosen, options }, { coreState: ready, models: [qwen, nomic] })
       // The arguments box starts from what core has, so wait for core's answer (its folder shows) first.
       await screen.findByText('D:\\models')

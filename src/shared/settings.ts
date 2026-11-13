@@ -63,23 +63,6 @@ const modelOptionsById = z.record(modelId, modelOptionsSchema)
 export const engines = ['bundled', 'cuda'] as const
 const engine = z.enum(engines)
 
-/** The window's view of the model settings: core's `models` section plus the two view preferences from the file. */
-export const modelsSettingsSchema = z.object({
-  /** Full path to llama-server.exe; null = the default engine, resolved by core. */
-  llamaServerPath: z.string().min(1).nullable().default(null),
-  /** null = the default folder (`%USERPROFILE%\OpenVatra\Models`), resolved by core. */
-  modelsDir: z.string().min(1).nullable().default(null),
-  /** A model id (its file name without .gguf). */
-  embeddingModel: modelId.nullable().default(null),
-  idleUnloadMinutes: idleUnloadMinutes.default(15),
-  options: modelOptionsById.default({}),
-  engine: engine.default('bundled'),
-  /** Show the full model list and technical details instead of the simple view. */
-  showAdvanced: z.boolean().default(false),
-  /** The user said "no thanks" to the faster NVIDIA engine offer. */
-  cudaOfferDismissed: z.boolean().default(false)
-})
-
 /** The window's last normal (not maximized) position and size, in DIPs. */
 export const windowBoundsSchema = z.object({
   x: z.number(),
@@ -102,30 +85,37 @@ const topLevelShape = {
   closeToTrayNoticeShown: z.boolean().default(false)
 }
 
-/** The window's Settings (IPC): the file's keys, with `models` composed by main from core and the file. */
+/** The window's Settings (IPC): the file's keys without `legacyModels`. Core owns everything about models. */
 export const settingsSchema = z.object({
-  ...topLevelShape,
-  // prefault, not default: the empty object still runs through the field defaults above.
-  models: modelsSettingsSchema.prefault({})
-})
-
-/** The six keys core owns, with the v6 defaults; also the shape of `legacyModels`. */
-export const legacyModelsSchema = modelsSettingsSchema.omit({ showAdvanced: true, cudaOfferDismissed: true })
-
-/** settings.json (v7). */
-export const settingsFileSchema = z.object({
   ...topLevelShape,
   /** Show the full model list and technical details instead of the simple view. */
   showAdvancedModels: z.boolean().default(false),
   /** The user said "no thanks" to the faster NVIDIA engine offer. */
-  cudaOfferDismissed: z.boolean().default(false),
+  cudaOfferDismissed: z.boolean().default(false)
+})
+
+/** A v6 user's six model keys, with the v6 defaults; the shape of `legacyModels` until core has taken them. */
+export const legacyModelsSchema = z.object({
+  /** Full path to llama-server.exe; null = the default engine. */
+  llamaServerPath: z.string().min(1).nullable().default(null),
+  /** null = the default folder (`%USERPROFILE%OpenVatraModels`). */
+  modelsDir: z.string().min(1).nullable().default(null),
+  /** A model id (its file name without .gguf). */
+  embeddingModel: modelId.nullable().default(null),
+  idleUnloadMinutes: idleUnloadMinutes.default(15),
+  options: modelOptionsById.default({}),
+  engine: engine.default('bundled')
+})
+
+/** settings.json (v7). */
+export const settingsFileSchema = settingsSchema.extend({
   /** A v6 user's model settings, kept until core has taken them (src/main/core/legacyImport.ts). */
   legacyModels: legacyModelsSchema.optional()
 })
 
 export type Settings = z.infer<typeof settingsSchema>
 export type SettingsFile = z.infer<typeof settingsFileSchema>
-export type ModelsSettings = z.infer<typeof modelsSettingsSchema>
+export type LegacyModels = z.infer<typeof legacyModelsSchema>
 export type ModelOptions = z.infer<typeof modelOptionsSchema>
 export type WindowBounds = z.infer<typeof windowBoundsSchema>
 
@@ -150,36 +140,14 @@ export const settingsPatchSchema = z.strictObject({
   closeAction: closeAction.optional(),
   sidebarOpen: sidebarOpen.optional(),
   motion: motion.optional(),
-  // No paths: core runs llamaServerPath, so only main's own file dialog may set it (files.pick), never the UI.
-  models: z
-    .strictObject({
-      embeddingModel: modelId.nullable().optional(),
-      idleUnloadMinutes: idleUnloadMinutes.optional(),
-      /** The whole map: the UI sends every model's options, not one model's. */
-      options: modelOptionsById.optional(),
-      engine: engine.optional(),
-      showAdvanced: z.boolean().optional(),
-      cudaOfferDismissed: z.boolean().optional()
-    })
-    .optional()
+  showAdvancedModels: z.boolean().optional(),
+  cudaOfferDismissed: z.boolean().optional()
 })
 
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>
 
-/** Drops keys whose value is undefined: an optional key left out means "no change", not "store undefined". */
-function defined<T extends object>(patch: T): Partial<T> {
-  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined)) as Partial<T>
-}
-
-/**
- * The one merge rule, used by main (to save) and the UI (to show the change at once): top-level keys replace,
- * `models` merges key by key, so changing the embedding model keeps the paths.
- */
+/** Top-level keys replace; undefined means no change. */
 export function applyPatch(settings: Settings, patch: SettingsPatch): Settings {
-  const { models, ...rest } = patch
-  return {
-    ...settings,
-    ...defined(rest),
-    ...(models && { models: { ...settings.models, ...defined(models) } })
-  }
+  const changes = Object.entries(patch).filter(([, value]) => value !== undefined)
+  return { ...settings, ...Object.fromEntries(changes) }
 }

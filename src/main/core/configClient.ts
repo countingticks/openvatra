@@ -1,11 +1,11 @@
 // core's model settings (GET and PUT /api/config/models). core owns them; main reads them to compose the window's
 // Settings and writes the user's changes. No Electron imports, so tests need only a fake `request`.
 import { z } from 'zod'
-import { engines, type ModelsSettings } from '../../shared/settings'
+import { engines, type LegacyModels } from '../../shared/settings'
 import { coreErrorMessage } from './coreError'
 
-/** The `models` section as core stores it: ModelsSettings without the two view preferences. */
-export type CoreModels = Omit<ModelsSettings, 'showAdvanced' | 'cudaOfferDismissed'>
+/** The `models` section as core stores it: the same six keys as a v6 file's `legacyModels`. */
+export type CoreModels = LegacyModels
 
 export interface ModelsEntry {
   rev: number // 0 = never written; value is the defaults

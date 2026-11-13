@@ -15,7 +15,7 @@ import type { Settings } from '../shared/settings'
 import type { ConfigClient } from './core/configClient'
 import type { Supervisor } from './core/supervisor'
 import { log } from './logger'
-import { type SettingsService, updateErrorMessage } from './settingsService'
+import type { SettingsService } from './settingsService'
 import { isAppUrl } from './urlPolicy'
 
 const appFolderSchema = z.enum(appFolders)
@@ -56,10 +56,10 @@ export function registerIpcHandlers(
     try {
       return await settings.update(patch)
     } catch (error) {
-      // Details go to the log; the UI gets a short message (core's sentence for a model setting), not our internals.
+      // Details go to the log; the UI gets a short message, not our internals.
       log.warn('Settings update rejected', error)
       // Electron sends only the message to the UI; the cause stays in main.
-      throw new Error(updateErrorMessage(error), { cause: error })
+      throw new Error('Settings could not be updated', { cause: error })
     }
   })
 

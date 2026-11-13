@@ -18,7 +18,7 @@ import type { PickTarget } from '../../../../shared/ipc'
 
 /** Settings → Models: the simple view (folder, installed models, get more, unload timer) and, behind *Show advanced*, the engine, embedding model and per-model options. */
 export function ModelsSection(): React.JSX.Element {
-  const { showAdvanced } = useAppSelector(selectSettings).models
+  const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
   const { value: models, update } = useModelSettings()
   const dispatch = useAppDispatch()
   const idleId = useId()
@@ -99,7 +99,7 @@ export function ModelsSection(): React.JSX.Element {
         <Switch
           id={advancedId}
           checked={showAdvanced}
-          onCheckedChange={(checked) => dispatch(settingsChanged({ models: { showAdvanced: checked } }))}
+          onCheckedChange={(checked) => dispatch(settingsChanged({ showAdvancedModels: checked }))}
         />
       </SettingRow>
 
