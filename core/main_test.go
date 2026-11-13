@@ -63,43 +63,58 @@ func TestWriteReadyIsOneJSONLine(t *testing.T) {
 	}
 }
 
-func TestWatchStdinFiresWhenPipeCloses(t *testing.T) {
-	r, w := io.Pipe()
-	fired := make(chan struct{})
-	go watchStdin(r, func() { close(fired) })
-
-	select {
-	case <-fired:
-		t.Fatal("fired before stdin closed")
-	case <-time.After(50 * time.Millisecond):
-	}
-	w.Close()
-	select {
-	case <-fired:
-	case <-time.After(time.Second):
-		t.Fatal("did not fire after stdin closed")
-	}
+// startCore runs the real run() on a free port in a new data folder.
+func startCore(t *testing.T) (host.Discovery, <-chan error) {
+	t.Helper()
+	return startCoreWith(t, []string{"--data-dir", t.TempDir()})
 }
 
-// startCore runs the real run() in child mode on a free port and returns its port and exit channel.
-func startCore(t *testing.T, stdin io.Reader) (int, <-chan error) {
+// startCoreWith runs the real run() with args, which must hold --data-dir, and returns what core publishes in
+// core.json (polled for up to 5 s) and its exit channel.
+func startCoreWith(t *testing.T, args []string) (host.Discovery, <-chan error) {
 	t.Helper()
-	t.Setenv(tokenEnv, "tok")
-	return startCoreWith(t, []string{"--data-dir", t.TempDir()}, stdin)
-}
-
-// startCoreWith runs the real run() with args and returns the port from its ready line and its exit channel.
-func startCoreWith(t *testing.T, args []string, stdin io.Reader) (int, <-chan error) {
-	t.Helper()
-	pr, pw := io.Pipe()
+	i := slices.Index(args, "--data-dir")
+	if i < 0 || i+1 >= len(args) {
+		t.Fatal("startCoreWith needs --data-dir")
+	}
+	dir := args[i+1]
 	done := make(chan error, 1)
-	go func() { done <- run(args, stdin, pw, io.Discard) }()
-	var ready struct{ Port int }
-	if err := json.NewDecoder(pr).Decode(&ready); err != nil {
+	go func() { done <- run(args, io.Discard, io.Discard) }()
+	d, err := pollDiscovery(dir, done)
+	if err != nil {
 		t.Fatal(err)
 	}
-	go io.Copy(io.Discard, pr)
-	return ready.Port, done
+	return d, done
+}
+
+// waitDiscovery polls dir's core.json for up to 5 s.
+func waitDiscovery(t *testing.T, dir string) host.Discovery {
+	t.Helper()
+	d, err := pollDiscovery(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// pollDiscovery reads dir's core.json until it appears; exited, when given, ends the wait early if core stops first.
+func pollDiscovery(dir string, exited <-chan error) (host.Discovery, error) {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		d, err := host.ReadDiscovery(dir)
+		if err == nil {
+			return d, nil
+		}
+		select {
+		case runErr := <-exited:
+			return d, fmt.Errorf("core exited before writing core.json: %v", runErr)
+		default:
+		}
+		if time.Now().After(deadline) {
+			return d, err
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // request sends one request to core with token and returns the status code.
@@ -123,23 +138,6 @@ func shutdown(t *testing.T, port int, token string) {
 	}
 }
 
-// readDiscovery waits for core.json in dir (run writes it just after the ready line) and fails the test when it does
-// not appear within 3 s.
-func readDiscovery(t *testing.T, dir string) host.Discovery {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		d, err := host.ReadDiscovery(dir)
-		if err == nil {
-			return d
-		}
-		if time.Now().After(deadline) {
-			t.Fatal(err)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
 func assertNoDiscovery(t *testing.T, dir string) {
 	t.Helper()
 	if _, err := host.ReadDiscovery(dir); !errors.Is(err, host.ErrNoDiscovery) {
@@ -150,14 +148,10 @@ func assertNoDiscovery(t *testing.T, dir string) {
 var hexToken = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func TestRunWritesCoreJSONWithItsOwnToken(t *testing.T) {
-	t.Setenv(tokenEnv, "")
 	dir := t.TempDir()
 	llama := t.TempDir()
-	stdinR, stdinW := io.Pipe()
-	defer stdinW.Close()
-	port, done := startCoreWith(t, []string{"--data-dir", dir, "--port", "0", "--llama-dir", llama}, stdinR)
-
-	d := readDiscovery(t, dir)
+	d, done := startCoreWith(t, []string{"--data-dir", dir, "--port", "0", "--llama-dir", llama})
+	port := d.Port
 	exe, err := exePath()
 	if err != nil {
 		t.Fatal(err)
@@ -177,29 +171,13 @@ func TestRunWritesCoreJSONWithItsOwnToken(t *testing.T) {
 	assertNoDiscovery(t, dir)
 }
 
-func TestRunPublishesTheTokenItWasGiven(t *testing.T) {
-	t.Setenv(tokenEnv, "tok")
-	dir := t.TempDir()
-	stdinR, stdinW := io.Pipe()
-	defer stdinW.Close()
-	port, done := startCoreWith(t, []string{"--data-dir", dir}, stdinR)
-
-	if d := readDiscovery(t, dir); d.Token != "tok" {
-		t.Errorf("core.json token is not the one in %s", tokenEnv)
-	}
-	shutdown(t, port, "tok")
-	waitExit(t, done)
-}
-
 func TestRunNeverLogsItsToken(t *testing.T) {
-	t.Setenv(tokenEnv, "")
 	logDir := t.TempDir()
 	t.Setenv(logDirEnv, logDir)
-	dir := t.TempDir()
-	port, done := startCoreWith(t, []string{"--data-dir", dir}, strings.NewReader(""))
+	d, done := startCoreWith(t, []string{"--data-dir", t.TempDir()})
 
-	token := readDiscovery(t, dir).Token
-	shutdown(t, port, token)
+	token := d.Token
+	shutdown(t, d.Port, token)
 	waitExit(t, done)
 	log, err := os.ReadFile(filepath.Join(logDir, "core.log"))
 	if err != nil {
@@ -208,26 +186,6 @@ func TestRunNeverLogsItsToken(t *testing.T) {
 	if bytes.Contains(log, []byte(token)) {
 		t.Fatal("core.log contains the token")
 	}
-}
-
-func TestRunWithoutAGivenTokenIgnoresStdin(t *testing.T) {
-	t.Setenv(tokenEnv, "")
-	dir := t.TempDir()
-	stdinR, stdinW := io.Pipe()
-	port, done := startCoreWith(t, []string{"--data-dir", dir}, stdinR)
-	token := readDiscovery(t, dir).Token
-
-	stdinW.Close()
-	select {
-	case err := <-done:
-		t.Fatalf("core stopped when stdin closed (err %v)", err)
-	case <-time.After(200 * time.Millisecond):
-	}
-	if code := request(t, http.MethodGet, port, "/health", token); code != http.StatusOK {
-		t.Fatalf("health status = %d, want 200", code)
-	}
-	shutdown(t, port, token)
-	waitExit(t, done)
 }
 
 func TestHostArgs(t *testing.T) {
@@ -258,7 +216,7 @@ func TestHostArgs(t *testing.T) {
 
 func TestModeFlagsAreExclusive(t *testing.T) {
 	for _, pair := range [][2]string{{"--detach", "--stop"}, {"--openapi", "--stop"}, {"--openapi", "--detach"}} {
-		err := run([]string{pair[0], pair[1], "--data-dir", t.TempDir()}, strings.NewReader(""), io.Discard, io.Discard)
+		err := run([]string{pair[0], pair[1], "--data-dir", t.TempDir()}, io.Discard, io.Discard)
 		if err == nil || !strings.Contains(err.Error(), pair[0]) || !strings.Contains(err.Error(), pair[1]) {
 			t.Errorf("%s %s: err = %v, want one naming both", pair[0], pair[1], err)
 		}
@@ -267,7 +225,7 @@ func TestModeFlagsAreExclusive(t *testing.T) {
 
 func TestDetachAndStopNeedADataFolder(t *testing.T) {
 	for _, mode := range []string{"--detach", "--stop"} {
-		err := run([]string{mode}, strings.NewReader(""), io.Discard, io.Discard)
+		err := run([]string{mode}, io.Discard, io.Discard)
 		if err == nil || !strings.Contains(err.Error(), "--data-dir") {
 			t.Errorf("%s: err = %v, want one naming --data-dir", mode, err)
 		}
@@ -299,7 +257,7 @@ func writeStopTarget(t *testing.T, port, pid int) string {
 func runStop(t *testing.T, dir string) (string, error) {
 	t.Helper()
 	var stderr bytes.Buffer
-	err := run([]string{"--stop", "--data-dir", dir}, strings.NewReader(""), io.Discard, &stderr)
+	err := run([]string{"--stop", "--data-dir", dir}, io.Discard, &stderr)
 	if strings.Contains(stderr.String(), stopToken) {
 		t.Errorf("stderr contains the token: %q", stderr.String())
 	}
@@ -399,12 +357,10 @@ func waitExit(t *testing.T, done <-chan error) {
 }
 
 func TestRunStopsOnShutdownRequest(t *testing.T) {
-	stdinR, stdinW := io.Pipe() // stays open: only /shutdown may stop us
-	defer stdinW.Close()
-	port, done := startCore(t, stdinR)
+	d, done := startCore(t)
 
-	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/shutdown", port), nil)
-	req.Header.Set("Authorization", "Bearer tok")
+	req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d/shutdown", d.Port), nil)
+	req.Header.Set("Authorization", "Bearer "+d.Token)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -413,14 +369,6 @@ func TestRunStopsOnShutdownRequest(t *testing.T) {
 	if resp.StatusCode != http.StatusAccepted {
 		t.Fatalf("status = %d, want 202", resp.StatusCode)
 	}
-	waitExit(t, done)
-}
-
-func TestRunStopsWhenStdinCloses(t *testing.T) {
-	stdinR, stdinW := io.Pipe()
-	_, done := startCore(t, stdinR)
-
-	stdinW.Close()
 	waitExit(t, done)
 }
 
@@ -476,7 +424,6 @@ func TestServerArgsProjector(t *testing.T) {
 }
 
 func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
-	t.Setenv(tokenEnv, "t")
 	t.Setenv(logDirEnv, t.TempDir())
 	bad := filepath.Join(t.TempDir(), "bad.json")
 	if err := os.WriteFile(bad, []byte(`[{"id":"x"}]`), 0o644); err != nil {
@@ -484,29 +431,46 @@ func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
 	}
 	for _, file := range []string{filepath.Join(t.TempDir(), "missing.json"), bad} {
 		args := []string{"--test-catalog", file, "--data-dir", t.TempDir()}
-		if err := run(args, strings.NewReader(""), io.Discard, io.Discard); err == nil {
+		if err := run(args, io.Discard, io.Discard); err == nil {
 			t.Fatalf("run accepted test catalog %s", file)
 		}
 	}
 }
 
 func TestRunCreatesTheDataFolderAndDatabase(t *testing.T) {
-	t.Setenv(tokenEnv, "tok")
 	dir := filepath.Join(t.TempDir(), "data")
-	stdinR, stdinW := io.Pipe()
-	pr, pw := io.Pipe()
-	done := make(chan error, 1)
-	go func() { done <- run([]string{"--data-dir", dir, "--llama-dir", t.TempDir()}, stdinR, pw, io.Discard) }()
-	if err := json.NewDecoder(pr).Decode(&struct{ Port int }{}); err != nil {
-		t.Fatal(err)
-	}
-	go io.Copy(io.Discard, pr)
+	d, done := startCoreWith(t, []string{"--data-dir", dir, "--llama-dir", t.TempDir()})
 
 	if _, err := os.Stat(filepath.Join(dir, "openvatra.db")); err != nil {
 		t.Fatal("database not created:", err)
 	}
-	stdinW.Close()
+	shutdown(t, d.Port, d.Token)
 	waitExit(t, done)
+}
+
+func TestRunIgnoresTheOldTokenVariable(t *testing.T) {
+	t.Setenv("OPENVATRA_CORE_TOKEN", "tok")
+	d, done := startCore(t)
+
+	if d.Token == "tok" || !hexToken.MatchString(d.Token) {
+		t.Errorf("core.json token = %q, want 64 hex characters of its own", d.Token)
+	}
+	shutdown(t, d.Port, d.Token)
+	waitExit(t, done)
+}
+
+func TestPlainRunWritesNothingToStdout(t *testing.T) {
+	var out bytes.Buffer // read only after run returns, so no lock is needed
+	dir := t.TempDir()
+	done := make(chan error, 1)
+	go func() { done <- run([]string{"--data-dir", dir}, &out, io.Discard) }()
+	d := waitDiscovery(t, dir)
+	shutdown(t, d.Port, d.Token)
+	waitExit(t, done)
+
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want nothing", out.String())
+	}
 }
 
 func modelsEngine(t *testing.T, s sectionWriter) (string, int) {
@@ -678,15 +642,13 @@ func TestTrimSystemEventsRunsAtOnceThenOnSchedule(t *testing.T) {
 var update = flag.Bool("update", false, "rewrite api/openapi.json")
 
 func TestRunRequiresADataFolder(t *testing.T) {
-	t.Setenv(tokenEnv, "tok")
-	err := run(nil, strings.NewReader(""), io.Discard, io.Discard)
+	err := run(nil, io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "--data-dir") {
 		t.Fatalf("err = %v, want one naming --data-dir", err)
 	}
 }
 
 func TestRunExitsWithCode3WhenTheFolderIsLocked(t *testing.T) {
-	t.Setenv(tokenEnv, "tok")
 	dir := t.TempDir()
 	lock, err := host.Lock(dir)
 	if err != nil {
@@ -694,7 +656,7 @@ func TestRunExitsWithCode3WhenTheFolderIsLocked(t *testing.T) {
 	}
 	defer lock.Close()
 
-	err = run([]string{"--data-dir", dir}, strings.NewReader(""), io.Discard, io.Discard)
+	err = run([]string{"--data-dir", dir}, io.Discard, io.Discard)
 	if !errors.Is(err, host.ErrRunning) {
 		t.Fatalf("err = %v, want host.ErrRunning", err)
 	}
@@ -731,9 +693,8 @@ const openapiFile = "api/openapi.json"
 
 func printOpenAPI(t *testing.T, args ...string) []byte {
 	t.Helper()
-	t.Setenv(tokenEnv, "")
 	var buf bytes.Buffer
-	if err := run(append([]string{"--openapi"}, args...), strings.NewReader(""), &buf, io.Discard); err != nil {
+	if err := run(append([]string{"--openapi"}, args...), &buf, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -786,13 +747,13 @@ func TestOpenAPIOutputIsADocument(t *testing.T) {
 func TestOriginFlag(t *testing.T) {
 	for _, bad := range []string{"http://localhost:5173/app", "http://localhost:5173/", "http://localhost:5173?q",
 		"http://localhost:5173#f", "localhost:5173", "null"} {
-		err := run([]string{"--origin", bad}, strings.NewReader(""), io.Discard, io.Discard)
+		err := run([]string{"--origin", bad}, io.Discard, io.Discard)
 		if err == nil || !strings.Contains(err.Error(), "--origin") {
 			t.Fatalf("--origin %s: err = %v, want one naming --origin", bad, err)
 		}
 	}
 	args := []string{"--origin", "http://localhost:5173", "--origin", "http://127.0.0.1:5173", "--openapi"}
-	if err := run(args, strings.NewReader(""), io.Discard, io.Discard); err != nil {
+	if err := run(args, io.Discard, io.Discard); err != nil {
 		t.Fatalf("two valid --origin values: %v", err)
 	}
 }

@@ -17,6 +17,7 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 | OpenCode / OpenClaw    | Code and automation agents (later phases)                                        |
 
 **Status:** early development; the app shell works (see README), Chat, Code and Automations are placeholders.
+Core keeps running when the window closes or the shell restarts; Quit stops it.
 Settings: `%APPDATA%\OpenVatra\settings.json` (validated, typed IPC); log: `%APPDATA%\OpenVatra\logs\main.log`.
 
 ## Stack
@@ -64,7 +65,9 @@ src/renderer/    React UI
   src/core/      generated core client (RTK Query), base query and the event stream
 core/api/        openapi.json, the committed contract of core's HTTP API
 core/            Go module (`core.exe`): listens on 127.0.0.1 only, every request needs a per-run token and a
-                 matching Host header; bundled into the app as an extra resource, built by `npm run build:core`
+                 matching Host header; bundled into the app as an extra resource, built by `npm run build:core`;
+                 started detached by the shell (`core.exe --detach`), found through `data/core.json`;
+                 one core per data folder (`data/core.lock`)
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
                  query by role or label, the way a user finds things — not by class names
 tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one
@@ -88,6 +91,8 @@ vendor/          git submodules (Open WebUI); never edit files here
   Origin header and answers CORS only for the dev server's origin.
 - Never load remote web pages inside the app; open external links in the default browser (http/https only).
 - Services listen on `127.0.0.1` only. `core` also requires its token on every request; never log the token.
+- `data/core.json` holds the shell token and is readable by the current user only (protected DACL); never copy
+  it elsewhere or log its contents.
 - Never commit secrets, tokens, keys, `.env` files or model files.
 
 ## Git workflow

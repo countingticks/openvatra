@@ -18,7 +18,7 @@ import (
 
 // Deps is everything the routes reach.
 type Deps struct {
-	Token    string   // the shell token (OPENVATRA_CORE_TOKEN)
+	Token    string   // the shell token, published in core.json
 	Origins  []string // --origin values; a request with any other Origin is refused
 	Port     int
 	Version  string

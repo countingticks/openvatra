@@ -1,5 +1,5 @@
-// Command core is OpenVatra's local models service. Electron starts it, reads the
-// ready line from stdout and then talks to it over HTTP on 127.0.0.1.
+// Command core is OpenVatra's local models service. Electron starts it detached (--detach), finds it through
+// core.json in the data folder and then talks to it over HTTP on 127.0.0.1.
 package main
 
 import (
@@ -44,9 +44,6 @@ import (
 
 const version = "0.1.0"
 
-// tokenEnv is the environment variable Electron main passes the per-launch token in.
-const tokenEnv = "OPENVATRA_CORE_TOKEN"
-
 // logDirEnv is where Electron main says the logs folder is (core.log goes next to main.log).
 const logDirEnv = "OPENVATRA_LOG_DIR"
 
@@ -58,7 +55,7 @@ const shutdownGrace = 5 * time.Second
 const defaultContext = "16384"
 
 func main() {
-	err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	err := run(os.Args[1:], os.Stdout, os.Stderr)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "core:", err)
 	}
@@ -77,7 +74,7 @@ func exitCode(err error) int {
 	}
 }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+func run(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	// For the end-to-end tests only: main passes it solely when unpackaged with OPENVATRA_E2E=1.
@@ -138,15 +135,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return detachCore(dropFlags(args, []string{"detach"}, nil), *dataDir, stdout, stderr)
 	}
 
-	// Child mode: the app started us and passed the token. Otherwise core makes its own and publishes it in core.json.
-	token := os.Getenv(tokenEnv)
-	childMode := token != ""
-	if !childMode {
-		t, err := newShellToken()
-		if err != nil {
-			return err
-		}
-		token = t
+	// Core makes its own token and publishes it in core.json only.
+	token, err := newShellToken()
+	if err != nil {
+		return err
 	}
 
 	logger, logOut, logCloser, err := logs.Setup(os.Getenv(logDirEnv))
@@ -168,7 +160,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	defer lock.Close()
 
-	// stop is the single "please exit" signal; /shutdown, the parent's exit and stdin's EOF fire it.
+	// stop is the single "please exit" signal; /shutdown and the parent's exit fire it.
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	if *parentPID != 0 {
@@ -182,7 +174,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 
 	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
-	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
+	// Not fatal: graceful shutdown still covers normal exits.
 	if err := process.SetupTreeCleanup(); err != nil {
 		logger.Warn("job object setup failed", "err", err)
 	}
@@ -215,9 +207,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// With port 0 the real port is only known after listening.
 	actualPort := ln.Addr().(*net.TCPAddr).Port
 	logger.Info("listening", "port", actualPort)
-	if err := writeReady(stdout, actualPort, os.Getpid()); err != nil {
-		return err
-	}
 
 	// Fatal when it fails: a core nobody can find would hold the lock for nothing. The token goes in the file only.
 	d := host.Discovery{PID: os.Getpid(), Port: actualPort, Token: token, Version: version, API: api.APILevel,
@@ -236,11 +225,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 	}()
 
-	// Only the app's child core reads stdin: a core started with --detach or from a terminal has stdin on NUL or a
-	// console and must not stop at its EOF.
-	if childMode {
-		go watchStdin(stdin, stop)
-	}
 	if chatStore != nil && chatStore.ReadOnly() == nil {
 		go trimSystemEvents(ctx, chatStore, 24*time.Hour, time.Now, logger)
 	}
@@ -433,15 +417,7 @@ func modelArgs(c config.Resolved, id string) []string {
 	return c.Args(id)
 }
 
-// watchStdin blocks until stdin is closed, then calls onClose. Electron never
-// writes to our stdin; the pipe only closes when it exits or crashes, so EOF
-// means "parent died" and we must not linger as an orphan.
-func watchStdin(stdin io.Reader, onClose func()) {
-	_, _ = io.Copy(io.Discard, stdin)
-	onClose()
-}
-
-// newShellToken makes the shell token of a core that was not given one: 32 random bytes as lowercase hex.
+// newShellToken makes the shell token core publishes in core.json: 32 random bytes as lowercase hex.
 func newShellToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
