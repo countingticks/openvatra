@@ -11,9 +11,8 @@ import {
   type FileLocations
 } from '../shared/ipc'
 import type { LlamaInfo } from '../shared/ipc'
-import type { CoreState, ModelInfo } from '../shared/core'
+import type { CoreState } from '../shared/core'
 import type { Settings } from '../shared/settings'
-import type { ModelsClient } from './core/modelsClient'
 import type { Supervisor } from './core/supervisor'
 import { log } from './logger'
 import { type SettingsService, updateErrorMessage } from './settingsService'
@@ -22,12 +21,9 @@ import { isAppUrl } from './urlPolicy'
 const appFolderSchema = z.enum(appFolders)
 const editCommandSchema = z.enum(editCommands)
 const pickTargetSchema = z.enum(pickTargets)
-// Any file name is a valid id; the length cap only keeps a hostile page from sending megabytes.
-const modelIdSchema = z.string().min(1).max(255)
 
-/** The parts of the supervisor and the models client the UI may use. */
-export type CoreControl = Pick<Supervisor, 'state' | 'restart'> &
-  Pick<ModelsClient, 'list' | 'load' | 'unload' | 'downloads'>
+/** The parts of the supervisor the UI may use. */
+export type CoreControl = Pick<Supervisor, 'state' | 'restart'>
 
 export function registerIpcHandlers(
   settings: SettingsService,
@@ -128,28 +124,6 @@ export function registerIpcHandlers(
       shell.showItemInFolder(logFile)
     }
   })
-
-  ipcMain.handle(ipcChannels.coreGetModels, (event): ModelInfo[] => {
-    assertFromApp(event)
-    return core.list()
-  })
-
-  for (const [channel, action] of [
-    [ipcChannels.coreLoad, 'load'],
-    [ipcChannels.coreUnload, 'unload']
-  ] as const) {
-    ipcMain.handle(channel, async (event, id: unknown): Promise<void> => {
-      assertFromApp(event)
-      const parsed = modelIdSchema.safeParse(id)
-      if (!parsed.success) throw new Error('Invalid model id')
-      try {
-        await core[action](parsed.data)
-      } catch (error) {
-        log.warn(`core: ${action} ${parsed.data} failed`, error)
-        throw error // core's message is short and meant for people ("llama-server.exe not found")
-      }
-    })
-  }
 
   /** Core keeps the paths now; its refusal ("not running", its own sentence) is what the window shows. */
   async function setModelPath(key: 'llamaServerPath' | 'modelsDir', path: string | null): Promise<Settings> {

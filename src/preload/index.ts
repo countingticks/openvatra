@@ -1,6 +1,6 @@
 // Runs in a sandbox before the UI loads. Its only job: hand the UI the API defined in src/shared/ipc.ts.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
-import { isCoreState, isModelList } from '../shared/core'
+import { isCoreState } from '../shared/core'
 import { type Api, ipcChannels } from '../shared/ipc'
 import type { Settings } from '../shared/settings'
 
@@ -69,19 +69,7 @@ const api: Api = {
       }
     },
     restart: () => ipcRenderer.invoke(ipcChannels.coreRestart),
-    openLog: () => ipcRenderer.invoke(ipcChannels.coreOpenLog),
-    models: () => ipcRenderer.invoke(ipcChannels.coreGetModels),
-    onModels: (callback) => {
-      const listener = (_event: IpcRendererEvent, models: unknown): void => {
-        if (isModelList(models)) callback(models)
-      }
-      ipcRenderer.on(ipcChannels.coreModelsChanged, listener)
-      return () => {
-        ipcRenderer.removeListener(ipcChannels.coreModelsChanged, listener)
-      }
-    },
-    load: (id) => ipcRenderer.invoke(ipcChannels.coreLoad, id),
-    unload: (id) => ipcRenderer.invoke(ipcChannels.coreUnload, id)
+    openLog: () => ipcRenderer.invoke(ipcChannels.coreOpenLog)
   })
 }
 

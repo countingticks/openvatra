@@ -140,16 +140,8 @@ interface Options {
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
 
-/** The IPC writes the window no longer makes: a leftover call fails its test. */
-const moved = (): Error => new Error('moved to core')
-
-function fakeCore(
-  start: CoreState,
-  models: ModelInfo[],
-  coreHttp: FakeCoreHttp
-): { api: CoreApi; fake: FakeCore } {
+function fakeCore(start: CoreState, coreHttp: FakeCoreHttp): { api: CoreApi; fake: FakeCore } {
   const listeners = new Set<(state: CoreState) => void>()
-  const modelListeners = new Set<(models: ModelInfo[]) => void>()
   const fake: FakeCore = {
     restart: vi.fn<CoreApi['restart']>().mockResolvedValue(undefined),
     openLog: vi.fn<CoreApi['openLog']>().mockResolvedValue(undefined),
@@ -166,14 +158,7 @@ function fakeCore(
       return () => listeners.delete(callback)
     },
     restart: fake.restart,
-    openLog: fake.openLog,
-    models: vi.fn<CoreApi['models']>().mockResolvedValue(models),
-    onModels: (callback) => {
-      modelListeners.add(callback)
-      return () => modelListeners.delete(callback)
-    },
-    load: vi.fn<CoreApi['load']>().mockRejectedValue(moved()),
-    unload: vi.fn<CoreApi['unload']>().mockRejectedValue(moved())
+    openLog: fake.openLog
   }
   return { api, fake }
 }
@@ -239,7 +224,6 @@ export function renderWithStore(
   })
   const core = fakeCore(
     options.coreState ?? { status: 'ready', port: 53121, version: '0.4.0', connection: exampleConnection },
-    options.models ?? [],
     coreHttp
   )
   const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {

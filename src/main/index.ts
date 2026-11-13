@@ -9,7 +9,6 @@ import { bundledLlamaDir, cudaStatus, llamaManifestPath, readBundledTag, readPin
 import { createConfigClient } from './core/configClient'
 import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
 import { createModelSettings } from './core/modelSettings'
-import { createModelsClient } from './core/modelsClient'
 import { createSupervisor, type Supervisor } from './core/supervisor'
 import { registerIpcHandlers } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -143,17 +142,6 @@ function start(): void {
     settings.onChange((value) => sendToWindow(ipcChannels.settingsChanged, value))
     const manifest = llamaManifestPath(app.isPackaged, process.resourcesPath, app.getAppPath())
     const pinnedTag = (): Promise<string | null> => readPinnedTag(manifest)
-    const models = createModelsClient({
-      request,
-      onModels: (list) => sendToWindow(ipcChannels.coreModelsChanged, list),
-      onDownloads: () => undefined,
-      onConfig: modelSettings.noteChanged,
-      onReset: () =>
-        void modelSettings
-          .refresh()
-          .catch((error) => log.warn('Could not read the model settings from core', error)),
-      log
-    })
     /** On every ready: a v6 user's values go to core once, then main reads what core has. */
     async function syncModelSettings(): Promise<void> {
       const legacy = store.get().legacyModels
@@ -175,15 +163,8 @@ function start(): void {
       exePath: coreExePath(),
       extraArgs: coreExtraArgs(),
       logsDir: logsFolder(),
-      onState: (state) => {
-        // The list only means something while core is up; a new one arrives once it is ready again.
-        if (state.status !== 'ready') models.stop()
-        sendToWindow(ipcChannels.coreStateChanged, state)
-      },
-      onReady: () => {
-        models.start()
-        void syncModelSettings()
-      },
+      onState: (state) => sendToWindow(ipcChannels.coreStateChanged, state),
+      onReady: () => void syncModelSettings(),
       log
     })
     // Before the window, so the UI's first request always finds a handler.
@@ -197,11 +178,7 @@ function start(): void {
       }),
       {
         state: core.state,
-        restart: core.restart,
-        list: models.list,
-        load: models.load,
-        unload: models.unload,
-        downloads: models.downloads
+        restart: core.restart
       }
     )
 

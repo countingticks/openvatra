@@ -126,7 +126,7 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     app: ['quit'],
     appFrozen: true,
     // Added in T37: watch the models service, restart it, open its log. Never its token.
-    core: ['getState', 'load', 'models', 'onModels', 'onState', 'openLog', 'restart', 'unload'],
+    core: ['getState', 'onState', 'openLog', 'restart'],
     coreFrozen: true
   })
 })
