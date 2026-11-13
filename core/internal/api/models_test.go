@@ -34,6 +34,34 @@ func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 	}
 }
 
+func TestListModelsStatesAndKindsAreDocumentedEnumValues(t *testing.T) {
+	rt := &stubRouter{snapshot: []router.ModelState{
+		{ID: "a", State: router.StateLoading},
+		{ID: "b", State: router.StateReady},
+		{ID: "c", State: router.StateError, Error: "exited"},
+	}}
+	list := func() ([]models.Model, error) {
+		return []models.Model{
+			{ID: "a", Kind: models.KindChat},
+			{ID: "b", Kind: models.KindEmbedding},
+			{ID: "c", Kind: models.KindChat},
+			{ID: "d", Kind: models.KindUnreadable, Error: "not a GGUF file"},
+		}, nil
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
+	req.Host = "127.0.0.1:53121"
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	// checked fails the test on a state or kind outside the document's enum.
+	testHandler(t, Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
+	for _, want := range []string{`"state":"loading"`, `"state":"ready"`, `"state":"error"`, `"state":"stopped"`,
+		`"kind":"chat"`, `"kind":"embedding"`, `"kind":"unreadable"`} {
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+			t.Fatalf("status = %d, body = %s; want %s", rec.Code, rec.Body.String(), want)
+		}
+	}
+}
+
 func TestStateRouteIsGone(t *testing.T) {
 	if rec := callModels(t, &stubRouter{}, http.MethodGet, "/api/state"); rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)

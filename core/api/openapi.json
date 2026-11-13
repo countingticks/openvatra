@@ -159,6 +159,14 @@
             "type": "integer"
           },
           "state": {
+            "enum": [
+              "queued",
+              "downloading",
+              "verifying",
+              "paused",
+              "error",
+              "done"
+            ],
             "type": "string"
           },
           "total": {
@@ -329,6 +337,11 @@
             "type": "array"
           },
           "fit": {
+            "enum": [
+              "fits",
+              "slower",
+              "tooBig"
+            ],
             "type": "string"
           },
           "id": {
@@ -439,6 +452,11 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "chat",
+              "embedding",
+              "unreadable"
+            ],
             "type": "string"
           },
           "projector": {
@@ -448,6 +466,12 @@
             "type": "integer"
           },
           "state": {
+            "enum": [
+              "stopped",
+              "loading",
+              "ready",
+              "error"
+            ],
             "type": "string"
           }
         },

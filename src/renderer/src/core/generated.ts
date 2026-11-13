@@ -216,7 +216,7 @@ export type Item = {
   baseUrl?: string
   diskShortBytes: number
   files: File[]
-  fit: string
+  fit: 'fits' | 'slower' | 'tooBig'
   id: string
   installed: boolean
   licence: string
@@ -301,7 +301,7 @@ export type DownloadItem = {
   error?: string
   id: string
   speed: number
-  state: string
+  state: 'queued' | 'downloading' | 'verifying' | 'paused' | 'error' | 'done'
   total: number
 }
 export type DownloadsBody = {
@@ -336,10 +336,10 @@ export type Model = {
   busy: boolean
   error?: string
   id: string
-  kind: string
+  kind: 'chat' | 'embedding' | 'unreadable'
   projector?: string
   sizeBytes: number
-  state: string
+  state: 'stopped' | 'loading' | 'ready' | 'error'
 }
 export type StateBody = {
   models: Model[]
