@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
@@ -69,7 +71,7 @@ func startCore(t *testing.T, stdin io.Reader) (int, <-chan error) {
 	t.Setenv(tokenEnv, "tok")
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
-	go func() { done <- run(nil, stdin, pw) }()
+	go func() { done <- run([]string{"--data-dir", t.TempDir()}, stdin, pw, io.Discard) }()
 	var ready struct{ Port int }
 	if err := json.NewDecoder(pr).Decode(&ready); err != nil {
 		t.Fatal(err)
@@ -175,7 +177,8 @@ func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, file := range []string{filepath.Join(t.TempDir(), "missing.json"), bad} {
-		if err := run([]string{"--test-catalog", file}, strings.NewReader(""), io.Discard); err == nil {
+		args := []string{"--test-catalog", file, "--data-dir", t.TempDir()}
+		if err := run(args, strings.NewReader(""), io.Discard, io.Discard); err == nil {
 			t.Fatalf("run accepted test catalog %s", file)
 		}
 	}
@@ -187,7 +190,7 @@ func TestRunCreatesTheDataFolderAndDatabase(t *testing.T) {
 	stdinR, stdinW := io.Pipe()
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
-	go func() { done <- run([]string{"--data-dir", dir, "--llama-dir", t.TempDir()}, stdinR, pw) }()
+	go func() { done <- run([]string{"--data-dir", dir, "--llama-dir", t.TempDir()}, stdinR, pw, io.Discard) }()
 	if err := json.NewDecoder(pr).Decode(&struct{ Port int }{}); err != nil {
 		t.Fatal(err)
 	}
@@ -368,13 +371,63 @@ func TestTrimSystemEventsRunsAtOnceThenOnSchedule(t *testing.T) {
 
 var update = flag.Bool("update", false, "rewrite api/openapi.json")
 
+func TestRunRequiresADataFolder(t *testing.T) {
+	t.Setenv(tokenEnv, "tok")
+	err := run(nil, strings.NewReader(""), io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "--data-dir") {
+		t.Fatalf("err = %v, want one naming --data-dir", err)
+	}
+}
+
+func TestRunExitsWithCode3WhenTheFolderIsLocked(t *testing.T) {
+	t.Setenv(tokenEnv, "tok")
+	dir := t.TempDir()
+	lock, err := host.Lock(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+
+	err = run([]string{"--data-dir", dir}, strings.NewReader(""), io.Discard, io.Discard)
+	if !errors.Is(err, host.ErrRunning) {
+		t.Fatalf("err = %v, want host.ErrRunning", err)
+	}
+	if code := exitCode(err); code != 3 {
+		t.Fatalf("exit code = %d, want 3", code)
+	}
+	for _, name := range []string{"core.json", "openvatra.db"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("%s exists after a refused start (stat error: %v)", name, err)
+		}
+	}
+}
+
+func TestExitCode(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"nil", nil, 0},
+		{"running, wrapped", fmt.Errorf("start: %w", host.ErrRunning), 3},
+		{"other", errors.New("x"), 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := exitCode(c.err); got != c.want {
+				t.Fatalf("exitCode = %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
 const openapiFile = "api/openapi.json"
 
 func printOpenAPI(t *testing.T, args ...string) []byte {
 	t.Helper()
 	t.Setenv(tokenEnv, "")
 	var buf bytes.Buffer
-	if err := run(append([]string{"--openapi"}, args...), strings.NewReader(""), &buf); err != nil {
+	if err := run(append([]string{"--openapi"}, args...), strings.NewReader(""), &buf, io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	return buf.Bytes()
@@ -427,13 +480,13 @@ func TestOpenAPIOutputIsADocument(t *testing.T) {
 func TestOriginFlag(t *testing.T) {
 	for _, bad := range []string{"http://localhost:5173/app", "http://localhost:5173/", "http://localhost:5173?q",
 		"http://localhost:5173#f", "localhost:5173", "null"} {
-		err := run([]string{"--origin", bad}, strings.NewReader(""), io.Discard)
+		err := run([]string{"--origin", bad}, strings.NewReader(""), io.Discard, io.Discard)
 		if err == nil || !strings.Contains(err.Error(), "--origin") {
 			t.Fatalf("--origin %s: err = %v, want one naming --origin", bad, err)
 		}
 	}
 	args := []string{"--origin", "http://localhost:5173", "--origin", "http://127.0.0.1:5173", "--openapi"}
-	if err := run(args, strings.NewReader(""), io.Discard); err != nil {
+	if err := run(args, strings.NewReader(""), io.Discard, io.Discard); err != nil {
 		t.Fatalf("two valid --origin values: %v", err)
 	}
 }

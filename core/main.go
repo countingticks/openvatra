@@ -25,6 +25,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/feed"
+	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -52,13 +53,26 @@ const shutdownGrace = 5 * time.Second
 const defaultContext = "16384"
 
 func main() {
-	if err := run(os.Args[1:], os.Stdin, os.Stdout); err != nil {
+	err := run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "core:", err)
-		os.Exit(1)
+	}
+	os.Exit(exitCode(err))
+}
+
+// exitCode maps run's result to the process exit code: 0 clean, 3 another core holds the folder, 1 anything else.
+func exitCode(err error) int {
+	switch {
+	case err == nil:
+		return 0
+	case errors.Is(err, host.ErrRunning):
+		return host.ExitRunning
+	default:
+		return 1
 	}
 }
 
-func run(args []string, stdin io.Reader, stdout io.Writer) error {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("core", flag.ContinueOnError)
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	// For the end-to-end tests only: main passes it solely when unpackaged with OPENVATRA_E2E=1.
@@ -92,6 +106,9 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		_, err := stdout.Write(api.Document(api.Deps{Version: version, Config: cfg}))
 		return err
 	}
+	if *dataDir == "" {
+		return errors.New("--data-dir is required")
+	}
 
 	// Fail closed: without a token every request would have to be refused anyway.
 	token := os.Getenv(tokenEnv)
@@ -107,6 +124,17 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	logger.Info("core starting", "version", version)
 	defer logger.Info("core stopped")
 
+	// Before the database and the port: two cores must never share openvatra.db. Closed last, after everything else.
+	lock, err := host.Lock(*dataDir)
+	if errors.Is(err, host.ErrLocked) {
+		logger.Warn("another core is running on this data folder")
+		return host.ErrRunning
+	}
+	if err != nil {
+		return fmt.Errorf("lock data folder: %w", err)
+	}
+	defer lock.Close()
+
 	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
 	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
 	if err := process.SetupTreeCleanup(); err != nil {
@@ -119,18 +147,16 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	var chatStore *store.Store
 	var cfgDB config.DB // an untyped nil without a database, never a nil *store.Store inside the interface
 	eventLog := event.MemoryLog(bus)
-	if *dataDir != "" {
-		if db, err := store.Open(*dataDir, bus); err != nil {
-			logger.Error("open chat database", "err", err)
-		} else {
-			defer db.Close()
-			chatStore, cfgDB, eventLog = db, db, db.Log()
-			if err := db.RenameErr(); err != nil {
-				logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
-			}
-			if ro := db.ReadOnly(); ro != nil {
-				logger.Warn("chat database is read-only", "err", ro)
-			}
+	if db, err := store.Open(*dataDir, bus); err != nil {
+		logger.Error("open chat database", "err", err)
+	} else {
+		defer db.Close()
+		chatStore, cfgDB, eventLog = db, db, db.Log()
+		if err := db.RenameErr(); err != nil {
+			logger.Warn("could not rename chats.db to openvatra.db; using the old name this run", "err", err)
+		}
+		if ro := db.ReadOnly(); ro != nil {
+			logger.Warn("chat database is read-only", "err", ro)
 		}
 	}
 
