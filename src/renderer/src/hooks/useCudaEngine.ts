@@ -1,7 +1,6 @@
 import { useGetEnginesQuery, type EnginesBody } from '@renderer/core/generated'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { useSetup } from '@renderer/hooks/useSetup'
-import { useAppSelector } from '@renderer/store/hooks'
-import { selectSettings } from '@renderer/store/settingsSlice'
 import type { DownloadItem } from '../../../shared/setup'
 
 export interface CudaEngine {
@@ -20,7 +19,7 @@ export interface CudaEngine {
  */
 export function useCudaEngine(): CudaEngine {
   const { hardware, downloads } = useSetup()
-  const { engine, llamaServerPath } = useAppSelector(selectSettings).models
+  const { engine, llamaServerPath } = useModelSettings().value
   // The card is optional; without an answer it just stays hidden.
   const status = useGetEnginesQuery().data?.cuda ?? 'none'
 

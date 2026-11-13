@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
+import { defaultCoreModels } from '@renderer/core/modelSettings'
 import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { ModelInfo } from '../../src/shared/core'
@@ -173,6 +174,32 @@ describe('model button', () => {
     fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
 
     expect(await within(popover).findByRole('alert')).toHaveTextContent('out of memory')
+  })
+
+  it('switches to the standard engine from a model that failed on the faster one', async () => {
+    const { coreHttp } = renderWithStore(
+      <App />,
+      {},
+      {
+        coreState: ready,
+        engines: { cuda: 'ready' },
+        modelSettings: { engine: 'cuda' },
+        models: [{ ...qwen, state: 'error', error: 'The model did not start.' }]
+      }
+    )
+    const popover = await openPopover()
+
+    fireEvent.click(await within(popover).findByRole('button', { name: 'Use the standard engine' }))
+
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        {
+          method: 'PUT',
+          path: '/api/config/models',
+          body: { rev: 1, value: { ...defaultCoreModels, engine: 'bundled' } }
+        }
+      ])
+    )
   })
 
   it('explains an empty list, and lists nothing while core is not ready', async () => {

@@ -7,6 +7,7 @@ import {
   useStartDownloadMutation
 } from '@renderer/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
+import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { failureReason } from '@renderer/lib/modelText'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
@@ -23,6 +24,7 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
   const dismissed = useAppSelector(selectSettings).models.cudaOfferDismissed
   const dispatch = useAppDispatch()
   const [problem, setProblem] = useState<string>()
+  const { update } = useModelSettings()
   const [startDownload] = useStartDownloadMutation()
   const [cancelDownload] = useCancelDownloadMutation()
   const [resumeDownload] = useResumeDownloadMutation()
@@ -33,7 +35,8 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
   if (card && (dismissed || status === 'ready') && !item) return null
 
   const use = (engine: 'bundled' | 'cuda'): void => {
-    dispatch(settingsChanged({ models: { engine } }))
+    setProblem(undefined)
+    update({ engine }).catch((error: Error) => setProblem(error.message))
   }
   const download = (): void => {
     setProblem(undefined)

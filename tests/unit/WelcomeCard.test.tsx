@@ -142,18 +142,23 @@ describe('welcome card', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('no space')
   })
 
+  it("shows core's models folder", async () => {
+    renderWithStore(
+      <App />,
+      {},
+      { coreState: ready, setup: { catalog }, modelSettings: { modelsDir: 'D:\\AI' } }
+    )
+
+    expect(await screen.findByText(/saved in D:\\AI\./)).toBeInTheDocument()
+  })
+
   it('changes the folder through the system dialog', async () => {
-    const { pick, store } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
+    const { pick } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
     expect(await screen.findByText(/OpenVatra\\Models folder/)).toBeInTheDocument()
-    pick.mockResolvedValue({
-      ...store.getState().settings,
-      models: { ...store.getState().settings.models, modelsDir: 'D:\\AI' }
-    })
 
     fireEvent.click(screen.getByRole('button', { name: 'Change…' }))
 
-    await waitFor(() => expect(screen.getByText(/saved in D:\\AI\./)).toBeInTheDocument())
-    expect(pick).toHaveBeenCalledWith('modelsDir')
+    await waitFor(() => expect(pick).toHaveBeenCalledWith('modelsDir'))
   })
 
   it('is not shown once there is a chat model, or while the service is starting', async () => {

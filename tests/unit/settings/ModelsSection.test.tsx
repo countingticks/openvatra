@@ -2,10 +2,12 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { coreApi } from '@renderer/core/coreApi'
+import type { Models } from '@renderer/core/generated'
+import { defaultCoreModels } from '@renderer/core/modelSettings'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState, ModelInfo } from '../../../src/shared/core'
-import { defaultSettings, type ModelsSettings, type Settings } from '../../../src/shared/settings'
-import { coreWrites } from '../fakeCoreHttp'
+import { defaultSettings, type ModelsSettings } from '../../../src/shared/settings'
+import { coreWrites, type FakeCoreHttp } from '../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
@@ -32,16 +34,45 @@ const nomic: ModelInfo = {
 
 type Rendered = ReturnType<typeof renderWithStore>
 
-/** Renders the app with Settings open on Models. */
+/** The value each PUT of the models section carried, in order. */
+const putValues = (http: FakeCoreHttp): Models[] =>
+  coreWrites(http)
+    .filter((write) => write.method === 'PUT' && write.path === '/api/config/models')
+    .map((write) => (write.body as { value: Models }).value)
+
+/** Plays core's config.changed for the models section at this rev. */
+const configChanged = (http: FakeCoreHttp, rev: number): void =>
+  act(() => {
+    http.push({
+      data: {
+        seq: rev,
+        time: 1,
+        stream: 'system',
+        type: 'config.changed',
+        v: 1,
+        data: { section: 'models', rev }
+      }
+    })
+  })
+
+/**
+ * Renders the app with Settings open on Models. The window's preferences go to the saved settings, the rest is
+ * core's models section.
+ */
 async function openModels(
   models: Partial<ModelsSettings> = chosen,
   options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
 ): Promise<Rendered & { section: HTMLElement }> {
   // Most tests are about the advanced view, so it is on unless a test says otherwise.
+  const {
+    showAdvanced = true,
+    cudaOfferDismissed = defaultSettings.models.cudaOfferDismissed,
+    ...core
+  } = models
   const rendered = renderWithStore(
     <App />,
-    { models: { ...defaultSettings.models, showAdvanced: true, ...models } },
-    options
+    { models: { ...defaultSettings.models, showAdvanced, cudaOfferDismissed } },
+    { modelSettings: core, ...options }
   )
   act(() => {
     rendered.store.dispatch(settingsOpened('models'))
@@ -55,14 +86,17 @@ async function openModels(
 
 describe('Settings → Models', () => {
   describe('paths', () => {
-    it('shows both paths, or the default folder when none is chosen', async () => {
-      await openModels(
-        { llamaServerPath: 'C:\\llama\\llama-server.exe' },
-        { coreState: { status: 'starting' } }
-      )
+    it("shows both of core's paths, or the default folder when none is chosen", async () => {
+      await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' }, { coreState: ready })
 
-      expect(screen.getByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
-      expect(screen.getByText(/OpenVatra.Models folder/)).toBeInTheDocument()
+      expect(await screen.findByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
+      expect(screen.getByText('The OpenVatra\\Models folder in your user folder')).toBeInTheDocument()
+    })
+
+    it("shows core's models folder", async () => {
+      await openModels({ modelsDir: 'D:\\models' }, { coreState: ready })
+
+      expect(await screen.findByText('D:\\models')).toBeInTheDocument()
     })
 
     it('shows the bundled build when no llama-server is chosen, with no "Use bundled" button', async () => {
@@ -88,36 +122,46 @@ describe('Settings → Models', () => {
       expect(screen.getByText('Bundled (Vulkan)')).toBeInTheDocument()
     })
 
-    it('"Use bundled" asks main to forget the custom path, and shows the bundled build again', async () => {
-      const { useBundledLlama } = await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' })
+    it('"Use bundled" asks core to forget the custom path, and shows the bundled build again', async () => {
+      const { coreHttp, useBundledLlama } = await openModels(
+        { llamaServerPath: 'C:\\llama\\llama-server.exe' },
+        { coreState: ready }
+      )
 
-      fireEvent.click(screen.getByRole('button', { name: 'Use bundled' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Use bundled' }))
 
       expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
-      expect(useBundledLlama).toHaveBeenCalledOnce()
+      expect(putValues(coreHttp)).toEqual([{ ...defaultCoreModels, llamaServerPath: null }])
+      expect(useBundledLlama).not.toHaveBeenCalled()
       expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
     })
 
-    it('says so when "Use bundled" can’t be saved', async () => {
-      const { useBundledLlama } = await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' })
-      useBundledLlama.mockRejectedValueOnce(new Error('disk full'))
+    it("shows core's message when it refuses a change", async () => {
+      const { coreHttp } = await openModels(
+        { llamaServerPath: 'C:\\llama\\llama-server.exe' },
+        { coreState: ready }
+      )
+      coreHttp.respond('PUT', '/api/config/models', () => ({
+        status: 400,
+        body: { error: 'invalid_config', message: 'llamaServerPath must be absolute' }
+      }))
 
-      fireEvent.click(screen.getByRole('button', { name: 'Use bundled' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Use bundled' }))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('That setting could not be saved.')
+      expect(await screen.findByRole('alert')).toHaveTextContent('llamaServerPath must be absolute')
+      expect(screen.getByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
     })
 
-    it('Browse… asks main to pick, and shows what main saved', async () => {
-      const { pick } = await openModels({})
-      const saved: Settings = {
-        ...defaultSettings,
-        models: { ...defaultSettings.models, modelsDir: 'E:\\gguf' }
-      }
-      pick.mockResolvedValueOnce(saved)
+    it('Browse… asks main to pick, and shows the folder core then reports', async () => {
+      const { coreHttp, pick } = await openModels({}, { coreState: ready })
+      await waitFor(() => expect(coreHttp.openStreams()).toBe(1))
+      pick.mockResolvedValueOnce(null)
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for Models folder' }))
-
       expect(pick).toHaveBeenCalledWith('modelsDir')
+      coreHttp.setConfigModels({ rev: 2, value: { ...defaultCoreModels, modelsDir: 'E:\\gguf' } })
+      configChanged(coreHttp, 2)
+
       expect(await screen.findByText('E:\\gguf')).toBeInTheDocument()
     })
 
@@ -229,15 +273,17 @@ describe('Settings → Models', () => {
     })
   })
 
-  it('saves "Unload models after", with Never as null', async () => {
-    const { saveSettings } = await openModels()
+  it('saves "Unload models after" in core, with Never as null', async () => {
+    const { coreHttp } = await openModels(chosen, { coreState: ready })
     const group = screen.getByRole('radiogroup', { name: 'Unload models after' })
     expect(within(group).getByRole('radio', { name: '15 min' })).toBeChecked()
 
+    fireEvent.click(within(group).getByRole('radio', { name: '1 hour' }))
+    await waitFor(() => expect(within(group).getByRole('radio', { name: '1 hour' })).toBeChecked())
     fireEvent.click(within(group).getByRole('radio', { name: 'Never' }))
 
-    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ models: { idleUnloadMinutes: null } }))
-    expect(within(group).getByRole('radio', { name: 'Never' })).toBeChecked()
+    await waitFor(() => expect(within(group).getByRole('radio', { name: 'Never' })).toBeChecked())
+    expect(putValues(coreHttp).map((value) => value.idleUnloadMinutes)).toEqual([60, null])
   })
 
   describe('empty and problem states', () => {
@@ -307,7 +353,7 @@ describe('Settings → Models', () => {
 
     it('offers only embedding models, Automatic first, and saves the choice', async () => {
       const second: ModelInfo = { ...nomic, id: 'qwen3-embedding' }
-      const { saveSettings } = await openModels(chosen, { coreState: ready, models: [qwen, nomic, second] })
+      const { coreHttp } = await openModels(chosen, { coreState: ready, models: [qwen, nomic, second] })
       const select = await screen.findByRole('combobox', { name: 'Embedding model' })
       expect(select).toHaveValue('')
       expect(
@@ -318,13 +364,11 @@ describe('Settings → Models', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 
       fireEvent.change(select, { target: { value: 'qwen3-embedding' } })
-      await waitFor(() =>
-        expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: 'qwen3-embedding' } })
-      )
-      expect(select).toHaveValue('qwen3-embedding')
+      await waitFor(() => expect(select).toHaveValue('qwen3-embedding'))
 
       fireEvent.change(select, { target: { value: '' } })
-      await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: null } }))
+      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(2))
+      expect(putValues(coreHttp).map((value) => value.embeddingModel)).toEqual(['qwen3-embedding', null])
     })
 
     it('is disabled with a hint when there is no embedding model', async () => {
@@ -336,19 +380,20 @@ describe('Settings → Models', () => {
     })
 
     it('warns about a chat model chosen for embeddings and resets it', async () => {
-      const { saveSettings } = await openModels(
+      const { coreHttp } = await openModels(
         { ...chosen, embeddingModel: qwen.id },
         { coreState: ready, models: [qwen, nomic] }
       )
       const select = await screen.findByRole('combobox', { name: 'Embedding model' })
-      const alert = screen.getByRole('alert')
+      const alert = await screen.findByRole('alert')
 
       expect(alert).toHaveTextContent(`${qwen.id} is a chat model, so Automatic is used`)
       expect(select).toHaveValue('')
 
       fireEvent.click(within(alert).getByRole('button', { name: 'Reset' }))
 
-      await waitFor(() => expect(saveSettings).toHaveBeenLastCalledWith({ models: { embeddingModel: null } }))
+      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+      expect(putValues(coreHttp)[0]?.embeddingModel).toBeNull()
     })
 
     it('also warns when the chosen model is gone', async () => {
@@ -363,6 +408,8 @@ describe('Settings → Models', () => {
       options: ModelsSettings['options'] = {}
     ): Promise<Rendered & { group: HTMLElement }> {
       const rendered = await openModels({ ...chosen, options }, { coreState: ready, models: [qwen, nomic] })
+      // The arguments box starts from what core has, so wait for core's answer (its folder shows) first.
+      await screen.findByText('D:\\models')
       const toggle = await screen.findByRole('button', { name: `Options for ${qwen.id}` })
       expect(toggle).toHaveAttribute('aria-expanded', 'false')
       fireEvent.click(toggle)
@@ -384,24 +431,22 @@ describe('Settings → Models', () => {
     })
 
     it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
-      const { saveSettings, group } = await openOptions({ 'nomic-embed': { args: '-ngl 0' } })
+      const { coreHttp, group } = await openOptions({ 'nomic-embed': { args: '-ngl 0' } })
       const args = within(group).getByLabelText('Arguments')
 
       fireEvent.change(args, { target: { value: '  -c 131072 --alias "my qwen"\n' } })
-      expect(saveSettings).not.toHaveBeenCalled()
+      expect(putValues(coreHttp)).toEqual([])
       fireEvent.blur(args)
 
-      await waitFor(() =>
-        expect(saveSettings).toHaveBeenCalledWith({
-          models: {
-            options: { 'nomic-embed': { args: '-ngl 0' }, [qwen.id]: { args: '-c 131072 --alias "my qwen"' } }
-          }
-        })
-      )
+      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+      expect(putValues(coreHttp)[0]?.options).toEqual({
+        'nomic-embed': { args: '-ngl 0' },
+        [qwen.id]: { args: '-c 131072 --alias "my qwen"' }
+      })
     })
 
     it('refuses a flag OpenVatra sets itself, and saves nothing', async () => {
-      const { saveSettings, group } = await openOptions()
+      const { coreHttp, group } = await openOptions()
       const args = within(group).getByLabelText('Arguments')
 
       fireEvent.change(args, { target: { value: '-c 4096 --port 9000' } })
@@ -409,18 +454,19 @@ describe('Settings → Models', () => {
 
       expect(args).toHaveAttribute('aria-invalid', 'true')
       expect(args).toHaveAccessibleDescription("--port is set by OpenVatra and can't be changed.")
-      expect(saveSettings).not.toHaveBeenCalled()
+      expect(putValues(coreHttp)).toEqual([])
     })
 
     it('drops the model’s entry when the box is emptied', async () => {
-      const { saveSettings, group } = await openOptions({ [qwen.id]: { args: '-c 8192' } })
+      const { coreHttp, group } = await openOptions({ [qwen.id]: { args: '-c 8192' } })
       const args = within(group).getByLabelText('Arguments')
       expect(args).toHaveValue('-c 8192')
 
       fireEvent.change(args, { target: { value: ' ' } })
       fireEvent.blur(args)
 
-      await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ models: { options: {} } }))
+      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+      expect(putValues(coreHttp)[0]?.options).toEqual({})
     })
   })
 })
