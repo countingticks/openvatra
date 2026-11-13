@@ -4,6 +4,7 @@ export const addTagTypes = [
   'chats',
   'config',
   'downloads',
+  'engines',
   'events',
   'hardware',
   'models',
@@ -19,6 +20,10 @@ const injectedRtkApi = api
       getCatalog: build.query<GetCatalogApiResponse, GetCatalogApiArg>({
         query: () => ({ url: `/api/catalog` }),
         providesTags: ['catalog']
+      }),
+      removeCatalogEntry: build.mutation<RemoveCatalogEntryApiResponse, RemoveCatalogEntryApiArg>({
+        query: (queryArg) => ({ url: `/api/catalog/${queryArg.id}/remove`, method: 'POST' }),
+        invalidatesTags: ['catalog']
       }),
       listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
         query: () => ({ url: `/api/chats` }),
@@ -72,6 +77,10 @@ const injectedRtkApi = api
         query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}/resume`, method: 'POST' }),
         invalidatesTags: ['downloads']
       }),
+      getEngines: build.query<GetEnginesApiResponse, GetEnginesApiArg>({
+        query: () => ({ url: `/api/engines` }),
+        providesTags: ['engines']
+      }),
       streamEvents: build.query<StreamEventsApiResponse, StreamEventsApiArg>({
         query: (queryArg) => ({
           url: `/api/events`,
@@ -121,6 +130,10 @@ const injectedRtkApi = api
 export { injectedRtkApi as generatedApi }
 export type GetCatalogApiResponse = /** status 200 OK */ View
 export type GetCatalogApiArg = void
+export type RemoveCatalogEntryApiResponse = unknown
+export type RemoveCatalogEntryApiArg = {
+  id: string
+}
 export type ListChatsApiResponse = /** status 200 OK */ Chat[]
 export type ListChatsApiArg = void
 export type CreateChatApiResponse = /** status 201 Created */ Chat
@@ -181,6 +194,8 @@ export type ResumeDownloadApiResponse = /** status 202 Accepted */ StatusBody
 export type ResumeDownloadApiArg = {
   id: string
 }
+export type GetEnginesApiResponse = /** status 200 OK */ EnginesBody
+export type GetEnginesApiArg = void
 export type StreamEventsApiResponse = /** status 200 OK */ Hello | Event
 export type StreamEventsApiArg = {
   after?: number | null
@@ -284,11 +299,11 @@ export type ModelsEffective = {
   modelsDir: string
 }
 export type ModelOptions = {
-  args: string
+  args?: string
 }
 export type Models = {
   embeddingModel: string | null
-  engine: string
+  engine: 'bundled' | 'cuda'
   idleUnloadMinutes: number | null
   llamaServerPath: string | null
   modelsDir: string | null
@@ -313,6 +328,15 @@ export type StatusBody = {
 export type StartDownload = {
   catalogId?: string
   engine?: 'cuda'
+}
+export type BundledEngine = {
+  /** release tag of the llama.cpp build shipped with the app; null when unreadable */
+  tag: string | null
+}
+export type EnginesBody = {
+  bundled: BundledEngine
+  /** ready: installed for the pinned tag; stale: only an older one */
+  cuda: 'none' | 'ready' | 'stale'
 }
 export type Hello = {
   head: number
@@ -380,6 +404,7 @@ export type VersionBody = {
 }
 export const {
   useGetCatalogQuery,
+  useRemoveCatalogEntryMutation,
   useListChatsQuery,
   useCreateChatMutation,
   useDeleteChatMutation,
@@ -393,6 +418,7 @@ export const {
   useStartDownloadMutation,
   useCancelDownloadMutation,
   useResumeDownloadMutation,
+  useGetEnginesQuery,
   useStreamEventsQuery,
   useGetHardwareQuery,
   useRefreshHardwareMutation,

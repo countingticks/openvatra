@@ -130,7 +130,8 @@ func TestConfigPutRejectsBadBodies(t *testing.T) {
 		{"idle minutes 0", "/api/config/models", `{"rev":0,"value":{"idleUnloadMinutes":0,"options":{},"engine":"bundled"}}`, 400, "invalid_config", "idleUnloadMinutes"},
 		{"not JSON", "/api/config/models", `nope`, 400, "invalid_request", "not valid JSON"},
 		{"no rev", "/api/config/models", `{"value":{}}`, 400, "invalid_request", `"rev" is required`},
-		{"negative rev", "/api/config/models", `{"rev":-1,"value":{}}`, 400, "invalid_config", "the body must be"},
+		// A whole value: the shape check already refuses the empty engine an empty value would leave.
+		{"negative rev", "/api/config/models", `{"rev":-1,"value":` + modelsValue + `}`, 400, "invalid_config", "the body must be"},
 		{"no value", "/api/config/models", `{"rev":0}`, 400, "invalid_request", `"value" is required`},
 		{"unknown top-level field", "/api/config/models", `{"rev":0,"value":{},"x":1}`, 400, "invalid_request", `"x"`},
 	}

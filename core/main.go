@@ -30,8 +30,10 @@ import (
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/process"
 	"github.com/countingticks/openvatra/core/internal/prompt"
+	"github.com/countingticks/openvatra/core/internal/removal"
 	"github.com/countingticks/openvatra/core/internal/router"
 	"github.com/countingticks/openvatra/core/internal/store"
+	"github.com/countingticks/openvatra/core/internal/trash"
 )
 
 const version = "0.1.0"
@@ -224,6 +226,12 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		Engine:        engine,
 	})
 	defer dl.Close()
+	remover := removal.New(removal.Config{
+		Router: rt, Catalog: cat, Downloads: dl, ModelsDir: func() string { return resolve().ModelsDir },
+		Trash: trash.Move, Logger: logger,
+	})
+	pinned := downloads.PinnedTag(*llamaManifest)
+	engines := func() downloads.EnginesBody { return downloads.Engines(*llamaDir, *enginesDir, pinned) }
 	feed.Start(ctx, eventLog, rt, listModels, dl)
 	defer rt.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
@@ -231,7 +239,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
 			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: rt,
-			Config: cfg, Hardware: hardware, Catalog: cat, Downloads: dl, Chats: chats, Log: eventLog, Logger: logger,
+			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
+			Chats: chats, Log: eventLog, Logger: logger,
 		}),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}

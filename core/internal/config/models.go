@@ -22,7 +22,7 @@ type Models struct {
 	EmbeddingModel    *string                 `json:"embeddingModel"`
 	IdleUnloadMinutes *int                    `json:"idleUnloadMinutes"` // nil = never
 	Options           map[string]ModelOptions `json:"options"`
-	Engine            string                  `json:"engine"` // "bundled" | "cuda"
+	Engine            string                  `json:"engine" enum:"bundled,cuda"`
 }
 
 // ModelsEffective is the models section's read-only view: the paths core really uses when none is chosen.
@@ -36,7 +36,8 @@ type ModelOptions struct {
 	// Args is the argument text as the user typed it. Core splits it into a list (SplitArgs) and hands that straight
 	// to the process, never to a shell. "--no-mmproj" in it stops core from adding the detected projector. Flags core
 	// decides itself (ReservedFlags) are refused, so the user can't override them through arguments.
-	Args string `json:"args"`
+	// An option with no arguments is written as {}, which is what the UI sends.
+	Args string `json:"args,omitempty"`
 }
 
 // ShellOnly lists the paths: a program path the page could set would be a program core starts, so only main sets

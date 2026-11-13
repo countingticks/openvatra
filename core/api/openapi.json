@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "BundledEngine": {
+        "properties": {
+          "tag": {
+            "description": "release tag of the llama.cpp build shipped with the app; null when unreadable",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "tag"
+        ],
+        "type": "object"
+      },
       "CatalogFolder": {
         "properties": {
           "folder": {
@@ -227,6 +242,27 @@
         },
         "required": [
           "items"
+        ],
+        "type": "object"
+      },
+      "EnginesBody": {
+        "properties": {
+          "bundled": {
+            "$ref": "#/components/schemas/BundledEngine"
+          },
+          "cuda": {
+            "description": "ready: installed for the pinned tag; stale: only an older one",
+            "enum": [
+              "none",
+              "ready",
+              "stale"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "bundled",
+          "cuda"
         ],
         "type": "object"
       },
@@ -490,9 +526,6 @@
             "type": "string"
           }
         },
-        "required": [
-          "args"
-        ],
         "type": "object"
       },
       "ModelStateEvent": {
@@ -538,6 +571,10 @@
             ]
           },
           "engine": {
+            "enum": [
+              "bundled",
+              "cuda"
+            ],
             "type": "string"
           },
           "idleUnloadMinutes": {
@@ -816,6 +853,41 @@
           "catalog"
         ],
         "x-scope": "shell"
+      }
+    },
+    "/api/catalog/{id}/remove": {
+      "post": {
+        "operationId": "removeCatalogEntry",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_catalog_entry, no_models_folder, outside_models_folder, not_installed, unload_timeout, trash_failed, internal."
+          }
+        },
+        "summary": "Move a downloaded model to the Recycle Bin",
+        "tags": [
+          "catalog"
+        ],
+        "x-scope": "ui"
       }
     },
     "/api/chats": {
@@ -1450,6 +1522,38 @@
         "summary": "Resume a paused or failed download",
         "tags": [
           "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/engines": {
+      "get": {
+        "operationId": "getEngines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnginesBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error."
+          }
+        },
+        "summary": "The llama.cpp builds on this PC",
+        "tags": [
+          "engines"
         ],
         "x-scope": "ui"
       }

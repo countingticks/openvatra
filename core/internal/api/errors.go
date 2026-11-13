@@ -11,6 +11,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/removal"
 	"github.com/countingticks/openvatra/core/internal/router"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
@@ -47,6 +48,12 @@ var errorTable = []mapped{
 	{config.ErrUnavailable, http.StatusServiceUnavailable, "config_unavailable", "config storage is not available"},
 	{catalog.ErrUnknown, http.StatusNotFound, "unknown_model", "not a catalog model"},
 	{downloads.ErrUnknown, http.StatusNotFound, "unknown_model", "not a catalog model"},
+	{removal.ErrUnknownEntry, http.StatusNotFound, "unknown_catalog_entry", ""},
+	{removal.ErrOutside, http.StatusConflict, "outside_models_folder", ""},
+	{removal.ErrNotInstalled, http.StatusConflict, "not_installed", ""},
+	{removal.ErrUnloadTimeout, http.StatusConflict, "unload_timeout", ""},
+	// The fixed sentence, not the shell's error it wraps.
+	{removal.ErrTrashFailed, http.StatusInternalServerError, "trash_failed", removal.ErrTrashFailed.Error()},
 	{catalog.ErrNoFolder, http.StatusConflict, "no_models_folder", "no models folder is set"},
 	{downloads.ErrNoFolder, http.StatusConflict, "no_models_folder", "no models folder is set"},
 	{downloads.ErrNoDownload, http.StatusNotFound, "no_download", "there is no such download"},
