@@ -54,7 +54,10 @@ async function openModels(
 describe('Settings → Models', () => {
   describe('paths', () => {
     it('shows both paths, or the default folder when none is chosen', async () => {
-      await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' })
+      await openModels(
+        { llamaServerPath: 'C:\\llama\\llama-server.exe' },
+        { coreState: { status: 'starting' } }
+      )
 
       expect(screen.getByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
       expect(screen.getByText(/OpenVatra.Models folder/)).toBeInTheDocument()
@@ -104,7 +107,7 @@ describe('Settings → Models', () => {
     })
 
     it('changes nothing when the dialog is cancelled, and says so when saving fails', async () => {
-      const { pick } = await openModels({})
+      const { pick } = await openModels({}, { coreState: { status: 'starting' } })
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for llama-server.exe' }))
       await waitFor(() => expect(pick).toHaveBeenCalledWith('llamaServer'))

@@ -73,7 +73,9 @@ describe('welcome card', () => {
       {},
       { coreState: ready, setup: { catalog, downloads: [item({ state: 'paused' })] } }
     )
-    fireEvent.click(await screen.findByRole('button', { name: 'Resume' }))
+    // Paused at start, so the resume offer opens once the catalog is in; its button is the one to press.
+    await screen.findByRole('dialog')
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
     expect(setup.resume).toHaveBeenCalledWith('qwen3-8b')
 
     setup.emitDownloads([item({ state: 'error', error: 'the connection dropped' })])
