@@ -29,7 +29,11 @@ if (!root) throw new Error('Root element #root not found')
 
 // Read settings before the first render, so the window opens on the saved tab and sidebar state instead of
 // flashing the defaults first.
-const store = createAppStore({ settings: window.api.settings, initialSettings: await loadSettings() })
+const store = createAppStore({
+  settings: window.api.settings,
+  initialSettings: await loadSettings(),
+  core: window.api.core
+})
 
 createRoot(root).render(
   <StrictMode>
