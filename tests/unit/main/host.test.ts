@@ -431,3 +431,60 @@ describe('core host: connect', () => {
       expect(lines.some((line) => line.includes(token))).toBe(false)
   })
 })
+
+describe('core host: health watch', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  /** Attached to the file's core; /health answers what `health` says for each check in turn, then 200. */
+  async function attachedWith(health: Answer[]): Promise<SetUp> {
+    const queue = [...health]
+    const set = setUp({
+      file: discovery(),
+      answer: (url) => (url.endsWith('/health') ? queue.shift() : undefined)
+    })
+    await settle()
+    expect(set.states.at(-1)?.status).toBe('ready')
+    return set
+  }
+
+  it('stays ready after one failed /health followed by a 200', async () => {
+    const { states, fetch } = await attachedWith([{ status: 500 }])
+    await vi.advanceTimersByTimeAsync(10_000)
+    await settle()
+    expect(requests(fetch, '/health')).toHaveLength(2)
+    expect(states.map((state) => state.status)).not.toContain('problem')
+  })
+
+  it('counts two failed /health in a row as a crash, then reconnects to the running core after 1 s', async () => {
+    const { states, fetch, spawn } = await attachedWith(['refuse', { status: 500 }])
+    await vi.advanceTimersByTimeAsync(10_000)
+    await settle()
+    const [url, init] = requests(fetch, '/health')[0]
+    expect(url).toBe('http://127.0.0.1:53121/health')
+    expect(bearer(init)).toBe(`Bearer ${fileToken}`)
+    expect(states.at(-1)).toEqual({ status: 'problem', reason: 'core stopped answering' })
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    await settle()
+    expect(spawn).not.toHaveBeenCalled()
+    expect(states.at(-1)).toMatchObject({ status: 'ready', port: 53121 })
+  })
+
+  it('counts a /health silent past 2 s as a miss', async () => {
+    const { states } = await attachedWith(['silent', 'silent'])
+    await vi.advanceTimersByTimeAsync(5_000 + 2_000 + 5_000 + 1_999)
+    expect(states.at(-1)?.status).toBe('ready')
+    await vi.advanceTimersByTimeAsync(1)
+    await settle()
+    expect(states.at(-1)).toEqual({ status: 'problem', reason: 'core stopped answering' })
+  })
+
+  it('sends no /health after stop()', async () => {
+    const { world, host, fetch } = await attachedWith([])
+    world.alive.delete(4242)
+    await host.stop()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(requests(fetch, '/health')).toHaveLength(0)
+  })
+})

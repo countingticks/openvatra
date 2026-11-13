@@ -104,6 +104,7 @@ export function createHost(options: HostOptions): Host {
   const readyTimeoutMs = options.readyTimeoutMs ?? 20_000
   const stopTimeoutMs = options.stopTimeoutMs ?? 8_000
   const requestTimeoutMs = options.requestTimeoutMs ?? 2_000
+  const healthIntervalMs = options.healthIntervalMs ?? 5_000
 
   let current: CoreState = { status: 'starting' }
   // Each connect is one attempt; async steps of an older attempt must never change the state of a newer one.
@@ -113,6 +114,7 @@ export function createHost(options: HostOptions): Host {
   let attached: Core | null = null
   let restartTimer: ReturnType<typeof setTimeout> | undefined
   let crashTimes: number[] = []
+  let watchTimer: ReturnType<typeof setTimeout> | undefined
 
   function set(next: CoreState): void {
     current = next
@@ -130,6 +132,7 @@ export function createHost(options: HostOptions): Host {
     if (!live(gen)) return
     generation++
     attached = null
+    clearTimeout(watchTimer)
 
     const now = Date.now()
     crashTimes = [...crashTimes.filter((time) => now - time < crashWindowMs), now]
@@ -209,6 +212,26 @@ export function createHost(options: HostOptions): Host {
       connection: { baseUrl: `http://127.0.0.1:${core.port}`, token: uiToken }
     })
     options.onReady?.()
+    watch(gen, core)
+  }
+
+  // Core runs on its own, so nothing tells main when it dies or hangs: ask it. One miss can be a busy moment;
+  // two in a row count as a crash, and the reconnect finds a core that came back or launches a new one.
+  function watch(gen: number, core: Core): void {
+    let misses = 0
+    const check = async (): Promise<void> => {
+      let ok = false
+      try {
+        ok = (await timedFetch(core, '/health')).status === 200
+      } catch {
+        // a miss
+      }
+      if (!live(gen)) return
+      misses = ok ? 0 : misses + 1
+      if (misses >= 2) return fail(gen, 'core stopped answering')
+      watchTimer = setTimeout(() => void check(), healthIntervalMs)
+    }
+    watchTimer = setTimeout(() => void check(), healthIntervalMs)
   }
 
   function launch(): Promise<LaunchResult> {
@@ -361,6 +384,7 @@ export function createHost(options: HostOptions): Host {
   async function stop(): Promise<void> {
     stopping = true
     clearTimeout(restartTimer)
+    clearTimeout(watchTimer)
     const core = attached
     attached = null
     if (core) await shutDown(core)
@@ -372,6 +396,7 @@ export function createHost(options: HostOptions): Host {
     restarting = true
     try {
       clearTimeout(restartTimer)
+      clearTimeout(watchTimer)
       generation++ // ends the current attempt without counting a crash
       // Said before the old core goes: requests must be refused instead of reaching a core that is exiting.
       set({ status: 'starting' })
