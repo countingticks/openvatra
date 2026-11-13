@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
+import { coreApi } from '@renderer/core/coreApi'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState, ModelInfo } from '../../../src/shared/core'
 import { defaultSettings, type ModelsSettings, type Settings } from '../../../src/shared/settings'
@@ -72,6 +73,19 @@ describe('Settings → Models', () => {
         'Use my own…'
       )
       expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
+    })
+
+    it('leaves the tag out of the bundled label when core has none', async () => {
+      const { store } = await openModels(
+        { llamaServerPath: null },
+        { coreState: ready, engines: { tag: null } }
+      )
+
+      // "Bundled (Vulkan)" is also what shows before core answers, so wait for the answer first.
+      await waitFor(() =>
+        expect(coreApi.endpoints.getEngines.select()(store.getState()).data?.bundled.tag).toBeNull()
+      )
+      expect(screen.getByText('Bundled (Vulkan)')).toBeInTheDocument()
     })
 
     it('"Use bundled" asks main to forget the custom path, and shows the bundled build again', async () => {

@@ -1,7 +1,7 @@
 // Maps core's events onto the RTK Query cache: retained values replace cached answers, config changes refetch.
 import type { AppDispatch, RootState } from '../store/store'
 import { allTags, coreApi } from './coreApi'
-import type { Event } from './generated'
+import type { DownloadsBody, Event } from './generated'
 
 type CachedSelect = (arg: undefined) => (state: RootState) => { data?: unknown }
 
@@ -17,14 +17,22 @@ function cachedRev(section: string, state: RootState): number | null {
   return typeof rev === 'number' ? rev : null
 }
 
+const cudaDone = (body: DownloadsBody | undefined): boolean =>
+  body?.items.some((item) => item.id === 'engine-cuda' && item.state === 'done') ?? false
+
 export function applyEvent(event: Event, dispatch: AppDispatch, getState: () => RootState): void {
   switch (event.type) {
     case 'model.state':
       dispatch(coreApi.util.upsertQueryData('listModels', undefined, event.data))
       return
-    case 'download.progress':
+    case 'download.progress': {
+      // A CUDA build that just finished changes what /api/engines reports; ask once, on the change.
+      const before = coreApi.endpoints.listDownloads.select()(getState()).data
+      const finished = cudaDone(event.data) && !cudaDone(before)
       dispatch(coreApi.util.upsertQueryData('listDownloads', undefined, event.data))
+      if (finished) dispatch(coreApi.util.invalidateTags(['engines']))
       return
+    }
     case 'config.changed': {
       // The window's own write already brought this rev (or a newer one) back; refetching would gain nothing.
       const rev = cachedRev(event.data.section, getState())

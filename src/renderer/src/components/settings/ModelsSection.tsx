@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
 import { CudaEngineOffer } from '@renderer/components/CudaEngineOffer'
 import { InstalledModels } from '@renderer/components/settings/InstalledModels'
@@ -7,6 +7,7 @@ import { PathRow } from '@renderer/components/settings/PathRow'
 import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
+import { useGetEnginesQuery } from '@renderer/core/generated'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged, settingsReplaced } from '@renderer/store/settingsSlice'
@@ -20,15 +21,8 @@ export function ModelsSection(): React.JSX.Element {
   const idleId = useId()
   const advancedId = useId()
   const [problem, setProblem] = useState<string>()
-  const [bundledTag, setBundledTag] = useState<string | null>(null)
-
-  useEffect(() => {
-    // Only for the label; if main can't answer, "Bundled (Vulkan)" is still true.
-    window.api.files.bundledLlama().then(
-      ({ tag }) => setBundledTag(tag),
-      () => undefined
-    )
-  }, [])
+  // Only for the label; without core's answer, "Bundled (Vulkan)" is still true.
+  const bundledTag = useGetEnginesQuery().data?.bundled.tag ?? null
   const bundledText = `Bundled (${bundledTag ? `${bundledTag}, ` : ''}Vulkan)`
 
   // Main shows the dialog and saves the choice, then hands back the saved settings.

@@ -59,6 +59,32 @@ describe('faster engine for NVIDIA', () => {
     expect(await within(card).findByRole('alert')).toHaveTextContent('Not enough free space for the engine.')
   })
 
+  it('offers "Use the faster engine" when core reports it installed', async () => {
+    const { store } = renderWithStore(
+      <App />,
+      { models: { ...defaultSettings.models, cudaOfferDismissed: true } },
+      { coreState: ready, engines: { cuda: 'ready' }, models: [stopped] }
+    )
+    act(() => {
+      store.dispatch(settingsOpened('models'))
+    })
+    expect(await screen.findByRole('button', { name: 'Use the faster engine' })).toBeInTheDocument()
+  })
+
+  it('asks core about the engines again when the CUDA download finishes', async () => {
+    const { coreHttp, setup } = show('none', {}, [stopped])
+    const engineReads = (): number =>
+      coreHttp.requests.filter((request) => request.url.endsWith('/api/engines')).length
+    await openPopover()
+    await screen.findByRole('region', { name: 'Faster engine for your NVIDIA card' })
+    const before = engineReads()
+
+    setup.emitDownloads([{ id: 'engine-cuda', state: 'downloading', bytes: 1, total: 2, speed: 1 }])
+    setup.emitDownloads([{ id: 'engine-cuda', state: 'done', bytes: 2, total: 2, speed: 0 }])
+
+    await waitFor(() => expect(engineReads()).toBe(before + 1))
+  })
+
   it('offers the update when only an older build is installed', async () => {
     show('stale')
     await openPopover()
