@@ -89,6 +89,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	// Without it core knows no default engine and runs no model until a path is chosen.
 	llamaDir := fs.String("llama-dir", "", "folder holding the bundled llama-server.exe")
 	openapi := fs.Bool("openapi", false, "print the OpenAPI document to stdout and exit")
+	// So a killed e2e test leaves no orphan core behind.
+	parentPID := fs.Int("parent-pid", 0, "pid whose exit stops core (e2e tests)")
 	// Pages from these origins may call core (with a token); main passes the dev server's in development only.
 	var origins []string
 	fs.Func("origin", "an origin (scheme://host[:port]) whose pages may call core; repeatable", func(v string) error {
@@ -145,6 +147,19 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	}
 	defer lock.Close()
 
+	// stop is the single "please exit" signal; /shutdown, the parent's exit and stdin's EOF fire it.
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	if *parentPID != 0 {
+		err := host.WatchParent(*parentPID, stop)
+		if errors.Is(err, host.ErrNoProcess) {
+			return fmt.Errorf("parent process %d is not running", *parentPID)
+		}
+		if err != nil {
+			return fmt.Errorf("watch parent process %d: %w", *parentPID, err)
+		}
+	}
+
 	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
 	// Not fatal: the stdin watcher and graceful shutdown still cover normal exits.
 	if err := process.SetupTreeCleanup(); err != nil {
@@ -200,9 +215,6 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 	}()
 
-	// stop is the single "please exit" signal; both triggers below fire it.
-	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
 	// Only the app's child core reads stdin: a core started with --detach or from a terminal has stdin on NUL or a
 	// console and must not stop at its EOF.
 	if childMode {
