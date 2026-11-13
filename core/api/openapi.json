@@ -668,6 +668,30 @@
         ],
         "type": "object"
       },
+      "TokenBody": {
+        "properties": {
+          "token": {
+            "description": "a ui-scoped token for this core run; send it as Authorization: Bearer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "type": "object"
+      },
+      "TokenRequest": {
+        "properties": {
+          "scope": {
+            "description": "only \"ui\" can be issued",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope"
+        ],
+        "type": "object"
+      },
       "VersionBody": {
         "properties": {
           "api": {
@@ -1736,6 +1760,48 @@
           "openapi"
         ],
         "x-scope": "ui"
+      }
+    },
+    "/api/tokens": {
+      "post": {
+        "operationId": "issueToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenBody"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, invalid_scope."
+          }
+        },
+        "summary": "Issue a token for the app's window",
+        "tags": [
+          "tokens"
+        ],
+        "x-scope": "shell"
       }
     },
     "/api/version": {

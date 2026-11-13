@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,7 +30,7 @@ func newGate(t *testing.T) *gateFixture {
 		Shutdown:   func() { f.shutdowns++ },
 	})
 	f.tokens = newTokens(d.Token)
-	f.h = gate(f.tokens, d.Port, d.Origins, newMux(Routes(d), nil))
+	f.h = gate(f.tokens, d.Port, d.Origins, newMux(routes(d, f.tokens), nil))
 	return f
 }
 
@@ -206,5 +207,41 @@ func TestNinthUITokenDropsTheOldest(t *testing.T) {
 func TestIssuingAShellTokenFails(t *testing.T) {
 	if tok, err := newTokens(testToken).issue(Shell); err == nil || tok != "" {
 		t.Fatalf("issue(Shell) = %q, %v; want an error", tok, err)
+	}
+}
+
+func TestShellTokenIssuesAUITokenThatWorksAtOnce(t *testing.T) {
+	f := newGate(t)
+	rec := f.send(gateReq{method: http.MethodPost, path: "/api/tokens", body: `{"scope":"ui"}`})
+	var got TokenBody
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); rec.Code != http.StatusCreated || err != nil {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+	if len(got.Token) != 64 || strings.Trim(got.Token, "0123456789abcdef") != "" {
+		t.Fatalf("token %q is not 64 lowercase hex", got.Token)
+	}
+	if rec := f.send(gateReq{path: "/api/models", auth: "Bearer " + got.Token}); rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/models with the new token: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUITokenCannotIssueATokenButShellCanOnlyIssueUI(t *testing.T) {
+	f := newGate(t)
+	ui, err := f.tokens.issue(UI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantCode(t, f.send(gateReq{method: http.MethodPost, path: "/api/tokens", auth: "Bearer " + ui, body: `{"scope":"ui"}`}),
+		http.StatusForbidden, "forbidden_scope")
+	for body, code := range map[string]string{
+		`{"scope":"shell"}`:           "invalid_scope",
+		`{"scope":""}`:                "invalid_scope",
+		`{"scope":"admin"}`:           "invalid_scope",
+		`{}`:                          "invalid_request",
+		`{"scope":"ui","extra":true}`: "invalid_request",
+	} {
+		t.Run(body, func(t *testing.T) {
+			wantCode(t, f.send(gateReq{method: http.MethodPost, path: "/api/tokens", body: body}), http.StatusBadRequest, code)
+		})
 	}
 }

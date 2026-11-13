@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -67,8 +68,19 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// Without it core knows no default engine and runs no model until a path is chosen.
 	llamaDir := fs.String("llama-dir", "", "folder holding the bundled llama-server.exe")
 	openapi := fs.Bool("openapi", false, "print the OpenAPI document to stdout and exit")
+	// Pages from these origins may call core (with a token); main passes the dev server's in development only.
+	var origins []string
+	fs.Func("origin", "an origin (scheme://host[:port]) whose pages may call core; repeatable", func(v string) error {
+		origins = append(origins, v)
+		return nil
+	})
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	for _, o := range origins {
+		if !isOrigin(o) {
+			return fmt.Errorf("--origin %q is not scheme://host[:port]", o)
+		}
 	}
 
 	// Nothing is opened or read: the document comes from the route table alone, so it needs no token.
@@ -218,7 +230,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
-			Token: token, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: rt,
+			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: rt,
 			Config: cfg, Hardware: hardware, Catalog: cat, Downloads: dl, Chats: chats, Log: eventLog, Logger: logger,
 		}),
 		BaseContext: func(net.Listener) context.Context { return ctx },
@@ -242,6 +254,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+// isOrigin reports whether v is an origin as a browser sends it: a scheme and a host, an optional port, nothing else.
+func isOrigin(v string) bool {
+	u, err := url.Parse(v)
+	return err == nil && u.Scheme != "" && u.Host != "" && u.Opaque == "" && u.User == nil && u.Path == "" &&
+		u.RawQuery == "" && !u.ForceQuery && u.Fragment == ""
 }
 
 // registerSections registers every config section on cfg; run and --openapi share it.

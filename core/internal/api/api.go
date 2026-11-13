@@ -46,8 +46,21 @@ type VersionBody struct {
 	API     int    `json:"api"`
 }
 
+type TokenRequest struct {
+	Scope string `json:"scope" doc:"only \"ui\" can be issued"`
+}
+
+type TokenBody struct {
+	Token string `json:"token" doc:"a ui-scoped token for this core run; send it as Authorization: Bearer"`
+}
+
 // Routes builds the table. Dependencies are captured, never called here, so nil ones are fine for the document.
 func Routes(d Deps) []Route {
+	return routes(d, newTokens(d.Token))
+}
+
+// routes is Routes with the token store the gate checks against, so a token issued here works at once.
+func routes(d Deps, t *tokens) []Route {
 	routes := []Route{
 		JSON(http.MethodGet, "/health", None, "health", "Report that core is up",
 			func(context.Context, struct{}) (StatusBody, error) { return StatusBody{"ok"}, nil }),
@@ -78,6 +91,16 @@ func Routes(d Deps) []Route {
 		Raw(http.MethodPost, "/v1/embeddings", UI, "openaiEmbeddings", "Embed text with the embedding model, OpenAI style",
 			proxy(d.Router, router.Embedding)).
 			WithErrors("body_unreadable", "no_embedding_model", "model_load_failed", "bad_backend", "backend_failed"),
+		JSON(http.MethodPost, "/api/tokens", Shell, "issueToken", "Issue a token for the app's window",
+			func(_ context.Context, in TokenRequest) (TokenBody, error) {
+				if in.Scope != "ui" {
+					return TokenBody{}, &Error{Status: http.StatusBadRequest, Code: "invalid_scope",
+						Message: `only a "ui" token can be issued`}
+				}
+				tok, err := t.issue(UI)
+				return TokenBody{tok}, err
+			}).
+			WithStatus(http.StatusCreated).WithErrors("invalid_request", "invalid_scope"),
 		Raw(http.MethodPost, "/shutdown", Shell, "shutdown", "Stop core", shutdownHandler(d.Shutdown)).
 			WithStatus(http.StatusAccepted),
 	)
@@ -85,7 +108,8 @@ func Routes(d Deps) []Route {
 
 // NewHandler serves every route behind the gate.
 func NewHandler(d Deps) http.Handler {
-	return gate(newTokens(d.Token), d.Port, d.Origins, newMux(Routes(d), d.Logger))
+	t := newTokens(d.Token)
+	return gate(t, d.Port, d.Origins, newMux(routes(d, t), d.Logger))
 }
 
 // openapiHandler serves Document(d), built on the first request.
