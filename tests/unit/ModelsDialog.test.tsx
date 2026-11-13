@@ -1,6 +1,7 @@
-import { fireEvent, screen, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
+import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { CatalogEntry, CatalogView, DownloadItem } from '../../src/shared/setup'
 
@@ -50,7 +51,7 @@ async function openDialog(
 
 describe('Models dialog', () => {
   it('lists each model with tags, size, fit and the Recommended mark, and downloads one', async () => {
-    const { setup, dialog } = await openDialog(catalog(qwen, huge, full, have))
+    const { coreHttp, dialog } = await openDialog(catalog(qwen, huge, full, have))
 
     await within(dialog).findByText('Qwen3 8B')
     expect(within(dialog).getByText('Recommended')).toBeInTheDocument()
@@ -59,18 +60,38 @@ describe('Models dialog', () => {
     expect(within(dialog).getByText('2.0 GB · Will run, but slowly')).toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Download Qwen3 8B' }))
-    expect(setup.download).toHaveBeenCalledWith('qwen3-8b')
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads', body: { catalogId: 'qwen3-8b' } }
+      ])
+    )
+  })
+
+  it("shows core's reason when it refuses a download", async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.respond('POST', '/api/downloads', () => ({
+      status: 409,
+      body: { error: 'not_enough_space', message: 'Not enough free space for Qwen3 8B.' }
+    }))
+
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Download Qwen3 8B' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Not enough free space for Qwen3 8B.')
   })
 
   it('asks before downloading a model that is too big for the PC', async () => {
-    const { setup, dialog } = await openDialog(catalog(qwen, huge))
+    const { coreHttp, dialog } = await openDialog(catalog(qwen, huge))
 
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Download Big 70B' }))
-    expect(setup.download).not.toHaveBeenCalled()
+    expect(coreWrites(coreHttp)).toEqual([])
     expect(within(dialog).getByText(/too big for your PC/)).toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Download anyway' }))
-    expect(setup.download).toHaveBeenCalledWith('big-70b')
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads', body: { catalogId: 'big-70b' } }
+      ])
+    )
   })
 
   it("can't download a model the disk has no room for", async () => {
@@ -81,33 +102,62 @@ describe('Models dialog', () => {
   })
 
   it('shows progress and Cancel for a model being downloaded', async () => {
-    const { setup, dialog } = await openDialog(catalog(qwen), [
+    const { coreHttp, dialog } = await openDialog(catalog(qwen), [
       { id: qwen.id, state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
 
     expect(await within(dialog).findByText('1.0 of 5.0 GB')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    expect(setup.cancel).toHaveBeenCalledWith('qwen3-8b')
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'DELETE', path: '/api/downloads/qwen3-8b', body: undefined }
+      ])
+    )
+  })
+
+  it('resumes a download that paused in this run', async () => {
+    const { coreHttp, setup, dialog } = await openDialog(catalog(qwen), [
+      { id: qwen.id, state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
+    ])
+    await within(dialog).findByText('1.0 of 5.0 GB')
+
+    setup.emitDownloads([{ id: qwen.id, state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }])
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Resume' }))
+
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads/qwen3-8b/resume', body: undefined }
+      ])
+    )
   })
 
   it('removes an installed model only after confirming, saying what it frees', async () => {
-    const { setup, dialog } = await openDialog(catalog(qwen, have))
+    const { coreHttp, dialog } = await openDialog(catalog(qwen, have))
+    const catalogReads = (): number =>
+      coreHttp.requests.filter((request) => request.method === 'GET' && request.url.endsWith('/api/catalog'))
+        .length
 
     expect(await within(dialog).findByText('Installed')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Small 3B' }))
-    expect(setup.remove).not.toHaveBeenCalled()
+    expect(coreWrites(coreHttp)).toEqual([])
     expect(within(dialog).getByText(/frees about 2\.0 GB/)).toBeInTheDocument()
+    const readsBefore = catalogReads()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove it' }))
-    expect(setup.remove).toHaveBeenCalledWith('small-3b')
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/catalog/small-3b/remove', body: undefined }
+      ])
+    )
+    await waitFor(() => expect(catalogReads()).toBe(readsBefore + 1))
   })
 
   it('keeps the model when the confirmation is declined', async () => {
-    const { setup, dialog } = await openDialog(catalog(qwen, have))
+    const { coreHttp, dialog } = await openDialog(catalog(qwen, have))
 
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Remove Small 3B' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
-    expect(setup.remove).not.toHaveBeenCalled()
+    expect(coreWrites(coreHttp)).toEqual([])
     expect(within(dialog).queryByText(/frees about/)).not.toBeInTheDocument()
   })
 

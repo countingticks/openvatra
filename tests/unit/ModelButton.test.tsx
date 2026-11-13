@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
+import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { ModelInfo } from '../../src/shared/core'
 
@@ -75,13 +76,17 @@ describe('model button', () => {
     )
   })
 
-  it('lists the models and loads one', async () => {
-    const { core } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
+  it('lists the models and loads one through core', async () => {
+    const { coreHttp } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
 
-    expect(core.load).toHaveBeenCalledWith('Qwen3-8B')
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/models/Qwen3-8B/load', body: undefined }
+      ])
+    )
   })
 
   it('lists chat models only: embedding models and unreadable files load on demand or not at all', async () => {
@@ -98,7 +103,7 @@ describe('model button', () => {
   })
 
   it('names the loaded model on the button, highlights its row and unloads it on click', async () => {
-    const { core } = renderWithStore(
+    const { coreHttp } = renderWithStore(
       <App />,
       {},
       {
@@ -121,7 +126,11 @@ describe('model button', () => {
     expect(within(popover).getByRole('button', { name: 'Load Gemma' })).not.toHaveAttribute('aria-current')
 
     fireEvent.click(loaded)
-    expect(core.unload).toHaveBeenCalledWith('Qwen3-8B')
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/models/Qwen3-8B/unload', body: undefined }
+      ])
+    )
   })
 
   it('shows a disabled spinner row while a model loads, and no state words', async () => {
@@ -154,9 +163,12 @@ describe('model button', () => {
     expect(within(popover).getByRole('button', { name: 'Load Qwen3-8B' })).toBeEnabled()
   })
 
-  it('says Loading while a model loads, and shows a failed request', async () => {
-    const { core } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
-    core.load.mockRejectedValueOnce(new Error("Error invoking remote method 'x': Error: out of memory"))
+  it("says Loading while a model loads, and shows core's reason when the request fails", async () => {
+    const { coreHttp } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
+    coreHttp.respond('POST', '/api/models/Qwen3-8B/load', () => ({
+      status: 503,
+      body: { error: 'model_load_failed', message: 'out of memory' }
+    }))
     const popover = await openPopover()
     fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
 

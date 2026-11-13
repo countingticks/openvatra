@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Check, LoaderCircle } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
+import { useLoadModelMutation, useUnloadModelMutation } from '@renderer/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
 import { failureReason } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
@@ -21,13 +22,14 @@ function PickerRow({
   const [failure, setFailure] = useState<string>()
   const loaded = model.state === 'ready'
   const loading = model.state === 'loading' || pending
-  const action = loaded ? 'unload' : 'load'
+  const [load] = useLoadModelMutation()
+  const [unload] = useUnloadModelMutation()
 
   async function act(): Promise<void> {
     setPending(true)
     setFailure(undefined)
     try {
-      await window.api.core[action](model.id)
+      await (loaded ? unload : load)({ id: model.id }).unwrap()
     } catch (error) {
       setFailure(failureReason(error))
     } finally {

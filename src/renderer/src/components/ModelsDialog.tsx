@@ -8,7 +8,7 @@ import { modelsDialogClosed, selectModelsDialogOpen } from '@renderer/store/uiSl
 
 /** The models we offer. Its own component so the catalog is read when the dialog opens, not while it is shut. */
 function CatalogList(): React.JSX.Element {
-  const { catalog, downloads, refreshCatalog } = useSetup()
+  const { catalog, downloads } = useSetup()
   if (!catalog) return <p role="status">Loading the list…</p>
   return (
     <>
@@ -24,7 +24,6 @@ function CatalogList(): React.JSX.Element {
             entry={entry}
             recommended={entry.id === catalog.recommended}
             item={downloads.find((download) => download.id === entry.id)}
-            onRemoved={refreshCatalog}
           />
         ))}
       </ul>

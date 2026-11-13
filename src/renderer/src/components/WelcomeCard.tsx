@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { Ember } from '@renderer/components/Ember'
 import { DownloadControls } from '@renderer/components/DownloadControls'
 import { Button } from '@renderer/components/ui/button'
+import {
+  useCancelDownloadMutation,
+  useResumeDownloadMutation,
+  useStartDownloadMutation
+} from '@renderer/core/generated'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText, hardwareLine } from '@renderer/lib/setupText'
@@ -19,6 +24,9 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
   const modelsDir = useAppSelector(selectSettings).models.modelsDir
   const dispatch = useAppDispatch()
   const [problem, setProblem] = useState<string | null>(null)
+  const [startDownload] = useStartDownloadMutation()
+  const [cancelDownload] = useCancelDownloadMutation()
+  const [resumeDownload] = useResumeDownloadMutation()
 
   if (!hardware || !catalog) return null
   const entry = catalog.entries.find((candidate) => candidate.id === catalog.recommended)
@@ -58,9 +66,9 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
           <DownloadControls
             item={item}
             disabled={entry.diskShortBytes > 0}
-            onDownload={() => act(() => window.api.setup.download(entry.id))}
-            onCancel={() => act(() => window.api.setup.cancel(entry.id))}
-            onResume={() => act(() => window.api.setup.resume(entry.id))}
+            onDownload={() => act(() => startDownload({ startDownload: { catalogId: entry.id } }).unwrap())}
+            onCancel={() => act(() => cancelDownload({ id: entry.id }).unwrap())}
+            onResume={() => act(() => resumeDownload({ id: entry.id }).unwrap())}
           />
           {entry.diskShortBytes > 0 && (
             <p role="alert" className="text-sm text-destructive">

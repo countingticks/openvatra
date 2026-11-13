@@ -4,6 +4,7 @@ import { App } from '@renderer/App'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState, ModelInfo } from '../../../src/shared/core'
 import { defaultSettings, type ModelsSettings, type Settings } from '../../../src/shared/settings'
+import { coreWrites } from '../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
@@ -180,13 +181,32 @@ describe('Settings → Models', () => {
     })
 
     it('removes a downloaded model only after confirming', async () => {
-      const { setup } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
+      const { coreHttp } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
 
       fireEvent.click(await screen.findByRole('button', { name: 'Remove Small 3B' }))
-      expect(setup.remove).not.toHaveBeenCalled()
+      expect(coreWrites(coreHttp)).toEqual([])
       fireEvent.click(screen.getByRole('button', { name: 'Remove it' }))
 
-      await waitFor(() => expect(setup.remove).toHaveBeenCalledWith('small-3b'))
+      await waitFor(() =>
+        expect(coreWrites(coreHttp)).toEqual([
+          { method: 'POST', path: '/api/catalog/small-3b/remove', body: undefined }
+        ])
+      )
+    })
+
+    it("shows core's reason when the model can't be removed", async () => {
+      const { coreHttp } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
+      coreHttp.respond('POST', '/api/catalog/small-3b/remove', () => ({
+        status: 500,
+        body: { error: 'trash_failed', message: 'Windows could not move the model to the Recycle Bin.' }
+      }))
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Remove Small 3B' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Remove it' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Windows could not move the model to the Recycle Bin.'
+      )
     })
 
     it('says so when nothing is installed', async () => {

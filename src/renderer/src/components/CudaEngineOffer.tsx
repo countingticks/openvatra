@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { DownloadControls } from '@renderer/components/DownloadControls'
 import { Button } from '@renderer/components/ui/button'
+import {
+  useCancelDownloadMutation,
+  useResumeDownloadMutation,
+  useStartDownloadMutation
+} from '@renderer/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
 import { failureReason } from '@renderer/lib/modelText'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
@@ -18,6 +23,9 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
   const dismissed = useAppSelector(selectSettings).models.cudaOfferDismissed
   const dispatch = useAppDispatch()
   const [problem, setProblem] = useState<string>()
+  const [startDownload] = useStartDownloadMutation()
+  const [cancelDownload] = useCancelDownloadMutation()
+  const [resumeDownload] = useResumeDownloadMutation()
 
   if (!offered) return null
   const card = variant === 'card'
@@ -29,7 +37,9 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
   }
   const download = (): void => {
     setProblem(undefined)
-    window.api.setup.downloadEngine().catch((error) => setProblem(failureReason(error)))
+    startDownload({ startDownload: { engine: 'cuda' } })
+      .unwrap()
+      .catch((error: unknown) => setProblem(failureReason(error)))
   }
 
   const stale = status === 'stale'
@@ -41,8 +51,8 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
         item={item}
         disabled={false}
         onDownload={download}
-        onCancel={() => void window.api.setup.cancel(item.id)}
-        onResume={() => void window.api.setup.resume(item.id)}
+        onCancel={() => void cancelDownload({ id: item.id })}
+        onResume={() => void resumeDownload({ id: item.id })}
       />
     )
   } else if (inUse) {

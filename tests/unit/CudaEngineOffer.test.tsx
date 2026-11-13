@@ -1,9 +1,10 @@
-import { act, fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import { defaultSettings, type ModelsSettings } from '../../src/shared/settings'
 import type { ModelInfo } from '../../src/shared/core'
+import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
@@ -28,16 +29,34 @@ const openPopover = async (): Promise<void> => {
 
 describe('faster engine for NVIDIA', () => {
   it('offers the download, and "Not now" hides the card for good', async () => {
-    const { setup, store } = show('none')
+    const { coreHttp, store } = show('none')
     await openPopover()
 
     await screen.findByRole('region', { name: 'Faster engine for your NVIDIA card' })
     fireEvent.click(screen.getByRole('button', { name: 'Download' }))
-    expect(setup.downloadEngine).toHaveBeenCalled()
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads', body: { engine: 'cuda' } }
+      ])
+    )
 
     fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
     expect(store.getState().settings.models.cudaOfferDismissed).toBe(true)
     expect(screen.queryByRole('region', { name: 'Faster engine for your NVIDIA card' })).toBeNull()
+  })
+
+  it("shows core's reason when the engine download fails", async () => {
+    const { coreHttp } = show('none')
+    coreHttp.respond('POST', '/api/downloads', () => ({
+      status: 409,
+      body: { error: 'not_enough_space', message: 'Not enough free space for the engine.' }
+    }))
+    await openPopover()
+
+    const card = await screen.findByRole('region', { name: 'Faster engine for your NVIDIA card' })
+    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
+
+    expect(await within(card).findByRole('alert')).toHaveTextContent('Not enough free space for the engine.')
   })
 
   it('offers the update when only an older build is installed', async () => {

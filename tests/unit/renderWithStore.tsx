@@ -71,21 +71,14 @@ function toCoreCatalog(catalog: CatalogView | CoreCatalogView): CoreCatalogView 
 export interface FakeCore {
   restart: Mock<CoreApi['restart']>
   openLog: Mock<CoreApi['openLog']>
-  load: Mock<CoreApi['load']>
-  unload: Mock<CoreApi['unload']>
   /** Report a new state, as main does on every change. */
   emitState(state: CoreState): void
   /** Report a new model list, as main does on every change. */
   emitModels(models: ModelInfo[]): void
 }
 
-/** The fake first-run setup API, plus a way to play main's part. */
+/** A way to play main's part for the first-run setup; its actions now go to core (coreHttp). */
 export interface FakeSetup {
-  download: Mock<SetupApi['download']>
-  downloadEngine: Mock<SetupApi['downloadEngine']>
-  cancel: Mock<SetupApi['cancel']>
-  resume: Mock<SetupApi['resume']>
-  remove: Mock<SetupApi['remove']>
   /** Report a new download queue, as main does on every change. */
   emitDownloads(items: DownloadItem[]): void
 }
@@ -147,17 +140,15 @@ interface Options {
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
 
+/** The IPC writes the window no longer makes: a leftover call fails its test. */
+const moved = (): Error => new Error('moved to core')
+
 function fakeSetup(
   options: Options['setup'] = {},
   coreHttp: FakeCoreHttp
 ): { api: SetupApi; fake: FakeSetup } {
   const listeners = new Set<(items: DownloadItem[]) => void>()
   const fake: FakeSetup = {
-    download: vi.fn<SetupApi['download']>().mockResolvedValue(undefined),
-    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockResolvedValue(undefined),
-    cancel: vi.fn<SetupApi['cancel']>().mockResolvedValue(undefined),
-    resume: vi.fn<SetupApi['resume']>().mockResolvedValue(undefined),
-    remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
     emitDownloads: (items) =>
       act(() => {
         coreHttp.setDownloads(items)
@@ -172,11 +163,11 @@ function fakeSetup(
           ? (options.catalog as CatalogView)
           : { entries: [], diskFreeBytes: null, recommended: null }
       ),
-    download: fake.download,
-    downloadEngine: fake.downloadEngine,
-    cancel: fake.cancel,
-    resume: fake.resume,
-    remove: fake.remove,
+    download: vi.fn<SetupApi['download']>().mockRejectedValue(moved()),
+    downloadEngine: vi.fn<SetupApi['downloadEngine']>().mockRejectedValue(moved()),
+    cancel: vi.fn<SetupApi['cancel']>().mockRejectedValue(moved()),
+    resume: vi.fn<SetupApi['resume']>().mockRejectedValue(moved()),
+    remove: vi.fn<SetupApi['remove']>().mockRejectedValue(moved()),
     downloads: vi.fn<SetupApi['downloads']>().mockResolvedValue(options.downloads ?? []),
     onDownloads: (callback) => {
       listeners.add(callback)
@@ -196,8 +187,6 @@ function fakeCore(
   const fake: FakeCore = {
     restart: vi.fn<CoreApi['restart']>().mockResolvedValue(undefined),
     openLog: vi.fn<CoreApi['openLog']>().mockResolvedValue(undefined),
-    load: vi.fn<CoreApi['load']>().mockResolvedValue(undefined),
-    unload: vi.fn<CoreApi['unload']>().mockResolvedValue(undefined),
     emitState: (state) => act(() => listeners.forEach((listener) => listener(state))),
     emitModels: (list) =>
       act(() => {
@@ -217,8 +206,8 @@ function fakeCore(
       modelListeners.add(callback)
       return () => modelListeners.delete(callback)
     },
-    load: fake.load,
-    unload: fake.unload
+    load: vi.fn<CoreApi['load']>().mockRejectedValue(moved()),
+    unload: vi.fn<CoreApi['unload']>().mockRejectedValue(moved())
   }
   return { api, fake }
 }

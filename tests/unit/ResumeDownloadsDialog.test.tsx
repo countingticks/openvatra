@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
+import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { CatalogEntry, DownloadItem } from '../../src/shared/setup'
 
@@ -39,31 +40,40 @@ function start(downloads: DownloadItem[]): ReturnType<typeof renderWithStore> {
 
 describe('offer to resume unfinished downloads', () => {
   it('asks once about a single paused download, and resumes it', async () => {
-    const { setup } = start([paused('qwen3-8b')])
+    const { coreHttp } = start([paused('qwen3-8b')])
 
     expect(await screen.findByText(/Qwen3 8B didn't finish downloading \(2\.1 of 5\.0 GB\)/)).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
 
-    await waitFor(() => expect(setup.resume).toHaveBeenCalledWith('qwen3-8b'))
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads/qwen3-8b/resume', body: undefined }
+      ])
+    )
     expect(screen.queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument()
   })
 
   it('lists several in one dialog, with Resume all', async () => {
-    const { setup } = start([paused('qwen3-8b'), paused('small-3b')])
+    const { coreHttp } = start([paused('qwen3-8b'), paused('small-3b')])
 
     expect(await screen.findByText(/Small 3B \(2\.1 of 5\.0 GB\)/)).toBeVisible()
     fireEvent.click(screen.getByRole('button', { name: 'Resume all' }))
 
-    await waitFor(() => expect(setup.resume).toHaveBeenCalledTimes(2))
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads/qwen3-8b/resume', body: undefined },
+        { method: 'POST', path: '/api/downloads/small-3b/resume', body: undefined }
+      ])
+    )
   })
 
   it('"Not now" leaves them paused', async () => {
-    const { setup } = start([paused('qwen3-8b')])
+    const { coreHttp } = start([paused('qwen3-8b')])
 
     fireEvent.click(await screen.findByRole('button', { name: 'Not now' }))
 
     expect(screen.queryByRole('button', { name: 'Resume' })).not.toBeInTheDocument()
-    expect(setup.resume).not.toHaveBeenCalled()
+    expect(coreWrites(coreHttp)).toEqual([])
   })
 
   it('stays quiet when nothing is paused', async () => {

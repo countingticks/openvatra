@@ -45,6 +45,12 @@ export interface FakeCoreHttp {
   hello: { log: string; head: number; reset: boolean }
 }
 
+/** The requests that change something (not GET), as method, path and body: what tests assert the window sent. */
+export const coreWrites = (fake: FakeCoreHttp): { method: string; path: string; body: unknown }[] =>
+  fake.requests
+    .filter((request) => request.method !== 'GET')
+    .map((request) => ({ method: request.method, path: new URL(request.url).pathname, body: request.body }))
+
 /** core's defaults for the models section (config.DefaultModels). */
 export const defaultCoreModels: Readonly<Models> = {
   embeddingModel: null,

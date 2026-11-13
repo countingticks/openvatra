@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { Button } from '@renderer/components/ui/button'
+import { useRemoveCatalogEntryMutation } from '@renderer/core/generated'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
@@ -7,18 +8,21 @@ import type { CatalogEntry } from '../../../../shared/setup'
 
 interface InstalledRowProps {
   entry: CatalogEntry
-  onRemoved: () => void
 }
 
 /** One downloaded model. Removing asks first, and the question says what it frees and that it can be undone. */
-function InstalledRow({ entry, onRemoved }: InstalledRowProps): React.JSX.Element {
+function InstalledRow({ entry }: InstalledRowProps): React.JSX.Element {
   const [asking, setAsking] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  // Removing reads the catalog again through the mutation's tag.
+  const [removeEntry] = useRemoveCatalogEntryMutation()
 
   function remove(): void {
     setAsking(false)
     setProblem(null)
-    window.api.setup.remove(entry.id).then(onRemoved, (error) => setProblem(failureReason(error)))
+    removeEntry({ id: entry.id })
+      .unwrap()
+      .catch((error: unknown) => setProblem(failureReason(error)))
   }
 
   return (
@@ -65,7 +69,7 @@ function InstalledRow({ entry, onRemoved }: InstalledRowProps): React.JSX.Elemen
  * folder themselves are not here; they appear under "Show advanced".
  */
 export function InstalledModels(): React.JSX.Element {
-  const { catalog, refreshCatalog } = useSetup()
+  const { catalog } = useSetup()
   const core = useCoreState()
   const headingId = useId()
   const installed = catalog?.entries.filter((entry) => entry.installed) ?? []
@@ -90,7 +94,7 @@ export function InstalledModels(): React.JSX.Element {
       ) : (
         <ul className="flex flex-col rounded-lg border border-border">
           {installed.map((entry) => (
-            <InstalledRow key={entry.id} entry={entry} onRemoved={refreshCatalog} />
+            <InstalledRow key={entry.id} entry={entry} />
           ))}
         </ul>
       )}
