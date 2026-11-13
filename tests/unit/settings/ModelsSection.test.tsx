@@ -205,7 +205,7 @@ describe('Settings → Models', () => {
 
   describe('empty and problem states', () => {
     it('says the service is starting', async () => {
-      const { section } = await openModels()
+      const { section } = await openModels(chosen, { coreState: { status: 'starting' } })
       expect(within(section).getByRole('status')).toHaveTextContent('Starting the models service…')
     })
 

@@ -19,6 +19,7 @@ import type {
   SetupApi
 } from '../../src/shared/ipc'
 import type { CatalogView, DownloadItem, HardwareReport } from '../../src/shared/setup'
+import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
 import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
@@ -31,6 +32,39 @@ export const exampleConnection: CoreConnection = {
 export const exampleLocations: FileLocations = {
   settingsFile: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\settings.json',
   logsFolder: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\logs'
+}
+
+/** A catalog entry as core sends it: its files, no total size. */
+export function exampleCatalogEntry(overrides: Partial<CoreCatalogItem> = {}): CoreCatalogItem {
+  return {
+    id: 'qwen3-4b',
+    name: 'Qwen3 4B',
+    summary: 'A small, quick chat model.',
+    tags: ['chat'],
+    licence: 'Apache-2.0',
+    repo: 'example/qwen3-4b-GGUF',
+    revision: 'main',
+    files: [{ name: 'qwen3-4b-q4.gguf', sha256: 'f'.repeat(64), sizeBytes: 1024 }],
+    needsGB: 4,
+    rank: 1,
+    fit: 'fits',
+    installed: false,
+    diskShortBytes: 0,
+    ...overrides
+  }
+}
+
+/** What GET /api/catalog answers: a UI-shaped view is turned into core's shape (its size becomes one file). */
+function toCoreCatalog(catalog: CatalogView | CoreCatalogView): CoreCatalogView {
+  const entries = catalog.entries.map((entry) => {
+    if ('files' in entry) return entry
+    const { sizeBytes, ...rest } = entry
+    return exampleCatalogEntry({
+      ...rest,
+      files: [{ name: `${entry.id}.gguf`, sha256: 'f'.repeat(64), sizeBytes }]
+    })
+  })
+  return { entries, diskFreeBytes: catalog.diskFreeBytes, recommended: catalog.recommended }
 }
 
 /** The fake models-service API, plus a way to play main's part. */
@@ -99,17 +133,20 @@ interface Rendered extends RenderResult {
 interface Options {
   /** The window starts maximized. */
   maximized?: boolean
-  /** What core's state is when the UI first asks; default: starting. */
+  /** What core's state is when the UI first asks; default: ready, with exampleConnection. */
   coreState?: CoreState
   /** The model list when the UI first asks; default: none. */
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
-  setup?: { hardware?: HardwareReport; catalog?: CatalogView; downloads?: DownloadItem[] }
+  setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
   /** The CUDA build's state main reports; default: not installed. */
   cuda?: 'none' | 'ready' | 'stale'
 }
 
-function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeSetup } {
+function fakeSetup(
+  options: Options['setup'] = {},
+  coreHttp: FakeCoreHttp
+): { api: SetupApi; fake: FakeSetup } {
   const listeners = new Set<(items: DownloadItem[]) => void>()
   const fake: FakeSetup = {
     download: vi.fn<SetupApi['download']>().mockResolvedValue(undefined),
@@ -117,13 +154,21 @@ function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeS
     cancel: vi.fn<SetupApi['cancel']>().mockResolvedValue(undefined),
     resume: vi.fn<SetupApi['resume']>().mockResolvedValue(undefined),
     remove: vi.fn<SetupApi['remove']>().mockResolvedValue(undefined),
-    emitDownloads: (items) => act(() => listeners.forEach((listener) => listener(items)))
+    emitDownloads: (items) =>
+      act(() => {
+        coreHttp.setDownloads(items)
+        listeners.forEach((listener) => listener(items))
+      })
   }
   const api: SetupApi = {
     hardware: vi.fn<SetupApi['hardware']>().mockResolvedValue(options.hardware ?? exampleHardware),
     catalog: vi
       .fn<SetupApi['catalog']>()
-      .mockResolvedValue(options.catalog ?? { entries: [], diskFreeBytes: null, recommended: null }),
+      .mockResolvedValue(
+        options.catalog && !options.catalog.entries.some((entry) => 'files' in entry)
+          ? (options.catalog as CatalogView)
+          : { entries: [], diskFreeBytes: null, recommended: null }
+      ),
     download: fake.download,
     downloadEngine: fake.downloadEngine,
     cancel: fake.cancel,
@@ -138,7 +183,11 @@ function fakeSetup(options: Options['setup'] = {}): { api: SetupApi; fake: FakeS
   return { api, fake }
 }
 
-function fakeCore(start: CoreState, models: ModelInfo[]): { api: CoreApi; fake: FakeCore } {
+function fakeCore(
+  start: CoreState,
+  models: ModelInfo[],
+  coreHttp: FakeCoreHttp
+): { api: CoreApi; fake: FakeCore } {
   const listeners = new Set<(state: CoreState) => void>()
   const modelListeners = new Set<(models: ModelInfo[]) => void>()
   const fake: FakeCore = {
@@ -147,7 +196,11 @@ function fakeCore(start: CoreState, models: ModelInfo[]): { api: CoreApi; fake: 
     load: vi.fn<CoreApi['load']>().mockResolvedValue(undefined),
     unload: vi.fn<CoreApi['unload']>().mockResolvedValue(undefined),
     emitState: (state) => act(() => listeners.forEach((listener) => listener(state))),
-    emitModels: (list) => act(() => modelListeners.forEach((listener) => listener(list)))
+    emitModels: (list) =>
+      act(() => {
+        coreHttp.setModels(list)
+        modelListeners.forEach((listener) => listener(list))
+      })
   }
   const api: CoreApi = {
     getState: vi.fn<CoreApi['getState']>().mockResolvedValue(start),
@@ -206,8 +259,21 @@ export function renderWithStore(
   const useBundledLlama = vi
     .fn<FilesApi['useBundledLlama']>()
     .mockImplementation(async () => ({ ...current, models: { ...current.models, llamaServerPath: null } }))
-  const core = fakeCore(options.coreState ?? { status: 'starting' }, options.models ?? [])
-  const setup = fakeSetup(options.setup)
+  const coreHttp = createFakeCoreHttp()
+  vi.stubGlobal('fetch', coreHttp.fetch)
+  coreHttp.setModels(options.models ?? [])
+  coreHttp.setDownloads(options.setup?.downloads ?? [])
+  coreHttp.answer('/api/hardware', options.setup?.hardware ?? exampleHardware)
+  coreHttp.answer(
+    '/api/catalog',
+    toCoreCatalog(options.setup?.catalog ?? { entries: [], diskFreeBytes: null, recommended: null })
+  )
+  const core = fakeCore(
+    options.coreState ?? { status: 'ready', port: 53121, version: '0.4.0', connection: exampleConnection },
+    options.models ?? [],
+    coreHttp
+  )
+  const setup = fakeSetup(options.setup, coreHttp)
   const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core' | 'setup'> = {
     setup: setup.api,
     app: { quit },
@@ -224,8 +290,6 @@ export function renderWithStore(
     appWindow: appWindow.api
   }
   vi.stubGlobal('api', api)
-  const coreHttp = createFakeCoreHttp()
-  vi.stubGlobal('fetch', coreHttp.fetch)
 
   const settingsListeners = new Set<(settings: Settings) => void>()
   const onChange: SettingsApi['onChange'] = (callback) => {

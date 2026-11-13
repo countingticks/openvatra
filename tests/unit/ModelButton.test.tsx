@@ -134,7 +134,7 @@ describe('model button', () => {
   })
 
   it('says what is happening when there is no list: starting, or a problem', async () => {
-    const { core } = renderWithStore(<App />)
+    const { core } = renderWithStore(<App />, {}, { coreState: { status: 'starting' } })
     const popover = await openPopover()
     expect(popover).toHaveTextContent('Starting the models service…')
 

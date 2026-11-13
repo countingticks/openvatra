@@ -1,12 +1,19 @@
 // Plays core's HTTP side for the window's data layer: JSON answers per path, and /api/events streams the test
 // pushes frames into. Stubbed in as fetch, so the real base query and event stream run against it.
 
+import type { ModelInfo } from '../../src/shared/core'
+import type { DownloadItem } from '../../src/shared/setup'
+
 export interface FakeCoreHttp {
   fetch: typeof fetch
   /** JSON answer for a method and path (default method GET, status 200); unknown paths answer 404 not_found. */
   answer(path: string, body: unknown, options?: { method?: string; status?: number }): void
   /** Sends one frame to every open /api/events stream. */
   push(frame: { event?: 'hello'; data: unknown }): void
+  /** Sets GET /api/models and sends model.state (retained, no seq) to open streams; new streams get it after hello. */
+  setModels(models: ModelInfo[]): void
+  /** Same for GET /api/downloads and download.progress. */
+  setDownloads(items: DownloadItem[]): void
   /** Ends every open stream, as a core that went away. */
   endStreams(): void
   /** Every request seen: url, method, Authorization header. */
@@ -16,9 +23,11 @@ export interface FakeCoreHttp {
   hello: { log: string; head: number; reset: boolean }
 }
 
+type Frame = { event?: 'hello'; data: unknown }
+
 const encoder = new TextEncoder()
 
-const encodeFrame = (frame: { event?: 'hello'; data: unknown }): Uint8Array =>
+const encodeFrame = (frame: Frame): Uint8Array =>
   encoder.encode(`${frame.event ? `event: ${frame.event}\n` : ''}data: ${JSON.stringify(frame.data)}\n\n`)
 
 const json = (body: unknown, status: number): Response =>
@@ -39,7 +48,13 @@ function describeCall(
   }
 }
 
+const retainedEvent = (type: string, data: unknown): Frame => ({
+  data: { type, v: 1, stream: 'system', time: 0, data }
+})
+
 export function createFakeCoreHttp(): FakeCoreHttp {
+  let models: ModelInfo[] = []
+  let downloads: DownloadItem[] = []
   const answers = new Map<string, { body: unknown; status: number }>()
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>()
 
@@ -50,6 +65,8 @@ export function createFakeCoreHttp(): FakeCoreHttp {
         controller = c
         streams.add(c)
         c.enqueue(encodeFrame({ event: 'hello', data: fake.hello }))
+        c.enqueue(encodeFrame(retainedEvent('model.state', { models })))
+        c.enqueue(encodeFrame(retainedEvent('download.progress', { items: downloads })))
       },
       cancel() {
         if (controller) streams.delete(controller)
@@ -80,6 +97,16 @@ export function createFakeCoreHttp(): FakeCoreHttp {
         body,
         status: options.status ?? 200
       })
+    },
+    setModels: (list) => {
+      models = list
+      fake.answer('/api/models', { models })
+      fake.push(retainedEvent('model.state', { models }))
+    },
+    setDownloads: (items) => {
+      downloads = items
+      fake.answer('/api/downloads', { items })
+      fake.push(retainedEvent('download.progress', { items }))
     },
     push: (frame) => {
       const bytes = encodeFrame(frame)
