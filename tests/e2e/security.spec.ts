@@ -115,7 +115,7 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     // Added in 024 (core-config): main pushes saved settings.
     settings: ['get', 'onChange', 'update'],
     settingsFrozen: true,
-    // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders. T56 (2026-11-03): the bundled llama.cpp's tag, and going back to it.
+    // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders. (T56's bundledLlama/useBundledLlama went in 040: core answers them.)
     files: ['locations', 'openFolder', 'pick'],
     filesFrozen: true,
     // Added in T27 (approved 2026-11-02): the window buttons, acting only on the sender's own window.
