@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -14,7 +16,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/api"
@@ -110,10 +115,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return errors.New("--data-dir is required")
 	}
 
-	// Fail closed: without a token every request would have to be refused anyway.
+	// Child mode: the app started us and passed the token. Otherwise core makes its own and publishes it in core.json.
 	token := os.Getenv(tokenEnv)
-	if token == "" {
-		return fmt.Errorf("%s is not set", tokenEnv)
+	childMode := token != ""
+	if !childMode {
+		t, err := newShellToken()
+		if err != nil {
+			return err
+		}
+		token = t
 	}
 
 	logger, logOut, logCloser, err := logs.Setup(os.Getenv(logDirEnv))
@@ -173,10 +183,31 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	// Fatal when it fails: a core nobody can find would hold the lock for nothing. The token goes in the file only.
+	d := host.Discovery{PID: os.Getpid(), Port: actualPort, Token: token, Version: version, API: api.APILevel,
+		Args: hostArgs(args), StartedAt: time.Now().UTC()}
+	if d.Exe, err = exePath(); err == nil {
+		err = host.WriteDiscovery(*dataDir, d)
+	}
+	if err != nil {
+		ln.Close()
+		return fmt.Errorf("write core.json: %w", err)
+	}
+	logger.Info("wrote core.json", "port", actualPort, "pid", d.PID)
+	defer func() {
+		if err := host.RemoveDiscovery(*dataDir, d.PID); err != nil {
+			logger.Warn("could not remove core.json", "err", err)
+		}
+	}()
+
 	// stop is the single "please exit" signal; both triggers below fire it.
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	go watchStdin(stdin, stop)
+	// Only the app's child core reads stdin: a core started with --detach or from a terminal has stdin on NUL or a
+	// console and must not stop at its EOF.
+	if childMode {
+		go watchStdin(stdin, stop)
+	}
 	if chatStore != nil && chatStore.ReadOnly() == nil {
 		go trimSystemEvents(ctx, chatStore, 24*time.Hour, time.Now, logger)
 	}
@@ -375,6 +406,57 @@ func modelArgs(c config.Resolved, id string) []string {
 func watchStdin(stdin io.Reader, onClose func()) {
 	_, _ = io.Copy(io.Discard, stdin)
 	onClose()
+}
+
+// newShellToken makes the shell token of a core that was not given one: 32 random bytes as lowercase hex.
+func newShellToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("make token: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// dropFlags removes the named bool flags and the named flags that take a value, order kept.
+func dropFlags(args []string, bools, valued []string) []string {
+	out := []string{}
+	for i := 0; i < len(args); i++ {
+		name, hasValue, ok := flagName(args[i])
+		switch {
+		case ok && slices.Contains(bools, name):
+		case ok && slices.Contains(valued, name):
+			if !hasValue {
+				i++ // the value is the next argument
+			}
+		default:
+			out = append(out, args[i])
+		}
+	}
+	return out
+}
+
+// flagName splits "-name", "--name" or either with "=value" into the name and whether the value is attached.
+func flagName(arg string) (name string, hasValue, ok bool) {
+	if !strings.HasPrefix(arg, "-") || arg == "-" || arg == "--" {
+		return "", false, false
+	}
+	name = strings.TrimPrefix(strings.TrimPrefix(arg, "-"), "-")
+	name, _, hasValue = strings.Cut(name, "=")
+	return name, hasValue, true
+}
+
+// hostArgs is the fingerprint part of our arguments: everything but the flags that only say how this run started.
+func hostArgs(args []string) []string {
+	return dropFlags(args, []string{"detach"}, []string{"port", "parent-pid"})
+}
+
+// exePath is this executable's real path, symlinks resolved, so two starts of the same build compare equal.
+func exePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
 }
 
 // writeReady prints the one JSON line main waits for.

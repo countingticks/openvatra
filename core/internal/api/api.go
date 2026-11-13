@@ -37,8 +37,8 @@ type Deps struct {
 	Logger     *slog.Logger // nil = discard
 }
 
-// apiVersion is the contract's major version; it changes only when a change breaks existing clients.
-const apiVersion = 1
+// APILevel is the contract's major version; it changes only when a change breaks existing clients.
+const APILevel = 1
 
 type StatusBody struct {
 	Status string `json:"status"`
@@ -68,7 +68,7 @@ func routes(d Deps, t *tokens) []Route {
 		JSON(http.MethodGet, "/health", None, "health", "Report that core is up",
 			func(context.Context, struct{}) (StatusBody, error) { return StatusBody{"ok"}, nil }),
 		JSON(http.MethodGet, "/api/version", UI, "getVersion", "Core's version and the contract's version",
-			func(context.Context, struct{}) (VersionBody, error) { return VersionBody{d.Version, apiVersion}, nil }),
+			func(context.Context, struct{}) (VersionBody, error) { return VersionBody{d.Version, APILevel}, nil }),
 		Raw(http.MethodGet, "/api/events", UI, "streamEvents", "Stream the event log as Server-Sent Events",
 			eventsHandler(d.Log, keepaliveInterval)).
 			WithDoc(reflect.TypeFor[EventsQuery](), nil, "").

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -65,19 +66,188 @@ func TestWatchStdinFiresWhenPipeCloses(t *testing.T) {
 	}
 }
 
-// startCore runs the real run() on a free port and returns its port and exit channel.
+// startCore runs the real run() in child mode on a free port and returns its port and exit channel.
 func startCore(t *testing.T, stdin io.Reader) (int, <-chan error) {
 	t.Helper()
 	t.Setenv(tokenEnv, "tok")
+	return startCoreWith(t, []string{"--data-dir", t.TempDir()}, stdin)
+}
+
+// startCoreWith runs the real run() with args and returns the port from its ready line and its exit channel.
+func startCoreWith(t *testing.T, args []string, stdin io.Reader) (int, <-chan error) {
+	t.Helper()
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
-	go func() { done <- run([]string{"--data-dir", t.TempDir()}, stdin, pw, io.Discard) }()
+	go func() { done <- run(args, stdin, pw, io.Discard) }()
 	var ready struct{ Port int }
 	if err := json.NewDecoder(pr).Decode(&ready); err != nil {
 		t.Fatal(err)
 	}
 	go io.Copy(io.Discard, pr)
 	return ready.Port, done
+}
+
+// request sends one request to core with token and returns the status code.
+func request(t *testing.T, method string, port int, path, token string) int {
+	t.Helper()
+	req, _ := http.NewRequest(method, fmt.Sprintf("http://127.0.0.1:%d%s", port, path), nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+// shutdown sends POST /shutdown with token and fails the test unless core accepts it.
+func shutdown(t *testing.T, port int, token string) {
+	t.Helper()
+	if code := request(t, http.MethodPost, port, "/shutdown", token); code != http.StatusAccepted {
+		t.Fatalf("shutdown status = %d, want 202", code)
+	}
+}
+
+// readDiscovery waits for core.json in dir (run writes it just after the ready line) and fails the test when it does
+// not appear within 3 s.
+func readDiscovery(t *testing.T, dir string) host.Discovery {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		d, err := host.ReadDiscovery(dir)
+		if err == nil {
+			return d
+		}
+		if time.Now().After(deadline) {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func assertNoDiscovery(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := host.ReadDiscovery(dir); !errors.Is(err, host.ErrNoDiscovery) {
+		t.Fatalf("core.json is still there (read error: %v)", err)
+	}
+}
+
+var hexToken = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func TestRunWritesCoreJSONWithItsOwnToken(t *testing.T) {
+	t.Setenv(tokenEnv, "")
+	dir := t.TempDir()
+	llama := t.TempDir()
+	stdinR, stdinW := io.Pipe()
+	defer stdinW.Close()
+	port, done := startCoreWith(t, []string{"--data-dir", dir, "--port", "0", "--llama-dir", llama}, stdinR)
+
+	d := readDiscovery(t, dir)
+	exe, err := exePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.PID != os.Getpid() || d.Port != port || d.API != 1 || d.Version != version || d.Exe != exe {
+		t.Errorf("core.json = pid %d port %d api %d version %q exe %q; want pid %d port %d api 1 version %q exe %q",
+			d.PID, d.Port, d.API, d.Version, d.Exe, os.Getpid(), port, version, exe)
+	}
+	if !hexToken.MatchString(d.Token) {
+		t.Errorf("token is not 64 lowercase hex characters (length %d)", len(d.Token))
+	}
+	if want := []string{"--data-dir", dir, "--llama-dir", llama}; !reflect.DeepEqual(d.Args, want) {
+		t.Errorf("args = %v, want %v", d.Args, want)
+	}
+	shutdown(t, port, d.Token)
+	waitExit(t, done)
+	assertNoDiscovery(t, dir)
+}
+
+func TestRunPublishesTheTokenItWasGiven(t *testing.T) {
+	t.Setenv(tokenEnv, "tok")
+	dir := t.TempDir()
+	stdinR, stdinW := io.Pipe()
+	defer stdinW.Close()
+	port, done := startCoreWith(t, []string{"--data-dir", dir}, stdinR)
+
+	if d := readDiscovery(t, dir); d.Token != "tok" {
+		t.Errorf("core.json token is not the one in %s", tokenEnv)
+	}
+	shutdown(t, port, "tok")
+	waitExit(t, done)
+}
+
+func TestRunNeverLogsItsToken(t *testing.T) {
+	t.Setenv(tokenEnv, "")
+	logDir := t.TempDir()
+	t.Setenv(logDirEnv, logDir)
+	dir := t.TempDir()
+	port, done := startCoreWith(t, []string{"--data-dir", dir}, strings.NewReader(""))
+
+	token := readDiscovery(t, dir).Token
+	shutdown(t, port, token)
+	waitExit(t, done)
+	log, err := os.ReadFile(filepath.Join(logDir, "core.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(log, []byte(token)) {
+		t.Fatal("core.log contains the token")
+	}
+}
+
+func TestRunWithoutAGivenTokenIgnoresStdin(t *testing.T) {
+	t.Setenv(tokenEnv, "")
+	dir := t.TempDir()
+	stdinR, stdinW := io.Pipe()
+	port, done := startCoreWith(t, []string{"--data-dir", dir}, stdinR)
+	token := readDiscovery(t, dir).Token
+
+	stdinW.Close()
+	select {
+	case err := <-done:
+		t.Fatalf("core stopped when stdin closed (err %v)", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	if code := request(t, http.MethodGet, port, "/health", token); code != http.StatusOK {
+		t.Fatalf("health status = %d, want 200", code)
+	}
+	shutdown(t, port, token)
+	waitExit(t, done)
+}
+
+func TestHostArgs(t *testing.T) {
+	want := []string{"--data-dir", "d", "--origin", "o"}
+	cases := map[string]struct {
+		args []string
+		want []string
+	}{
+		"separate values": {
+			[]string{"--data-dir", "d", "--port", "0", "--detach", "--parent-pid", "12", "--origin", "o"}, want},
+		"= forms": {
+			[]string{"--data-dir", "d", "--port=0", "--detach=true", "--parent-pid=12", "--origin", "o"}, want},
+		"single dash": {
+			[]string{"--data-dir", "d", "-port", "0", "-detach", "-parent-pid", "12", "--origin", "o"}, want},
+		"single dash, = forms": {
+			[]string{"--data-dir", "d", "-port=0", "-detach=false", "-parent-pid=12", "--origin", "o"}, want},
+		"nil": {nil, []string{}},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			got := hostArgs(c.args)
+			if got == nil || !reflect.DeepEqual(got, c.want) {
+				t.Fatalf("hostArgs = %#v, want %#v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestDropFlagsKeepsFlagsItIsNotGiven(t *testing.T) {
+	args := []string{"--data-dir", "d", "--port", "0", "--detach", "--parent-pid", "12", "--origin", "o"}
+	got := dropFlags(args, []string{"detach"}, nil)
+	want := []string{"--data-dir", "d", "--port", "0", "--parent-pid", "12", "--origin", "o"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("dropFlags = %v, want %v", got, want)
+	}
 }
 
 func waitExit(t *testing.T, done <-chan error) {
