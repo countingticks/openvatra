@@ -22,14 +22,21 @@ type tester interface {
 }
 
 // checked returns NewHandler(d) wrapped so every JSON response is validated against Document(d); a mismatch is a
-// t.Errorf naming the operationId, the status and the JSON path of the first difference.
+// t.Errorf naming the operationId, the status and the JSON path of the first difference. A request from httptest's
+// default remote address (192.0.2.1:1234) is sent as 127.0.0.1:1234, so it passes the gate's loopback check.
 func checked(t *testing.T, d Deps) http.Handler {
 	t.Helper()
 	var doc map[string]any
 	if err := json.Unmarshal(Document(d), &doc); err != nil {
 		t.Fatal(err)
 	}
-	return checkRoutes(t, Routes(d), doc, NewHandler(d))
+	h := checkRoutes(t, Routes(d), doc, NewHandler(d))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.RemoteAddr == "192.0.2.1:1234" {
+			r.RemoteAddr = "127.0.0.1:1234"
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 func checkRoutes(t tester, routes []Route, doc map[string]any, next http.Handler) http.Handler {
@@ -85,7 +92,8 @@ func checkResponse(doc map[string]any, rt Route, rec *httptest.ResponseRecorder)
 		Error string `json:"error"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
-	if !slices.Contains(append([]string{"internal", "unauthorized", "forbidden_host"}, rt.Errors...), body.Error) {
+	if !slices.Contains(append([]string{"internal", "unauthorized", "forbidden_remote", "forbidden_host", "forbidden_origin",
+		"forbidden_scope"}, rt.Errors...), body.Error) {
 		return fmt.Errorf("error code %q is not in the route's Errors %v", body.Error, rt.Errors)
 	}
 	return nil
@@ -302,7 +310,7 @@ func TestCheckedRejectsAnUndeclaredErrorCode(t *testing.T) {
 	}
 	rec := &recordingT{}
 	w := httptest.NewRecorder()
-	checkRoutes(rec, routes, doc, newMux(routes, nil)).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/x", nil))
+	checkRoutes(rec, routes, doc, newMux(routes, nil)).ServeHTTP(w, asShell(httptest.NewRequest(http.MethodGet, "/api/x", nil)))
 	if len(rec.errs) != 1 || !strings.Contains(rec.errs[0], "teapot") || !strings.Contains(rec.errs[0], "getX") {
 		t.Errorf("errors = %q, want one naming getX and teapot", rec.errs)
 	}

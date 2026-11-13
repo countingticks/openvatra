@@ -100,10 +100,15 @@ func callRouteCtx(t *testing.T, ctx context.Context, fail error, method, target,
 	t.Helper()
 	var logBuf bytes.Buffer
 	mux := newMux(testRoutes(fail), slog.New(slog.NewTextHandler(&logBuf, nil)))
-	req := httptest.NewRequestWithContext(ctx, method, target, strings.NewReader(body))
+	req := httptest.NewRequestWithContext(withScope(ctx, Shell), method, target, strings.NewReader(body))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	return routeResult{rec.Code, rec.Body.String(), logBuf.String()}
+}
+
+// asShell marks r as the gate would for the shell token, for tests that call newMux without the gate.
+func asShell(r *http.Request) *http.Request {
+	return r.WithContext(withScope(r.Context(), Shell))
 }
 
 func errorOf(t *testing.T, body string) map[string]any {
@@ -224,7 +229,7 @@ func TestSuccessStatuses(t *testing.T) {
 	}
 	var logBuf bytes.Buffer
 	rec := httptest.NewRecorder()
-	newMux(testRoutes(nil), slog.New(slog.NewTextHandler(&logBuf, nil))).ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/gone", nil))
+	newMux(testRoutes(nil), slog.New(slog.NewTextHandler(&logBuf, nil))).ServeHTTP(rec, asShell(httptest.NewRequest(http.MethodDelete, "/gone", nil)))
 	if rec.Code != 204 || rec.Body.Len() != 0 || rec.Header().Get("Content-Type") != "" {
 		t.Fatalf("NoContent: got %d %q, content type %q", rec.Code, rec.Body.String(), rec.Header().Get("Content-Type"))
 	}

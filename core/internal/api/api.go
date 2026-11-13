@@ -17,7 +17,8 @@ import (
 
 // Deps is everything the routes reach.
 type Deps struct {
-	Token    string
+	Token    string   // the shell token (OPENVATRA_CORE_TOKEN)
+	Origins  []string // --origin values; a request with any other Origin is refused
 	Port     int
 	Version  string
 	Shutdown func() // called once the reply is sent, when a client asks core to stop
@@ -82,9 +83,9 @@ func Routes(d Deps) []Route {
 	)
 }
 
-// NewHandler serves every route behind the token and Host checks.
+// NewHandler serves every route behind the gate.
 func NewHandler(d Deps) http.Handler {
-	return guard(d.Token, d.Port, newMux(Routes(d), d.Logger))
+	return gate(newTokens(d.Token), d.Port, d.Origins, newMux(Routes(d), d.Logger))
 }
 
 // openapiHandler serves Document(d), built on the first request.

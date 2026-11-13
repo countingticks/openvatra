@@ -16,9 +16,15 @@ const (
 	testPort  = 53121
 )
 
-// testHandler is NewHandler with the test token and port, and stubs for what d leaves out.
+// testHandler is NewHandler with the test token and port, and stubs for what d leaves out, checked against the
+// document.
 func testHandler(t *testing.T, d Deps) http.Handler {
 	t.Helper()
+	return checked(t, testDeps(d))
+}
+
+// testDeps fills in the test token and port, and stubs for what d leaves out.
+func testDeps(d Deps) Deps {
 	d.Token = testToken
 	if d.Port == 0 {
 		d.Port = testPort
@@ -35,7 +41,7 @@ func testHandler(t *testing.T, d Deps) http.Handler {
 	if d.Log == nil {
 		d.Log = event.MemoryLog(event.NewBus(16))
 	}
-	return checked(t, d)
+	return d
 }
 
 // do sends a request through the full handler; host and auth override the defaults when non-empty.
@@ -119,44 +125,6 @@ func TestUnknownRouteIs404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
-	}
-}
-
-func TestRejectsMissingOrWrongToken(t *testing.T) {
-	for name, auth := range map[string]string{
-		"missing":      "",
-		"wrong":        "Bearer nope",
-		"wrong scheme": "Basic " + testToken,
-		"bare token":   testToken,
-	} {
-		t.Run(name, func(t *testing.T) {
-			rec := do(t, "/health", "", auth)
-
-			if rec.Code != http.StatusUnauthorized {
-				t.Fatalf("status = %d, want 401", rec.Code)
-			}
-			if got := rec.Header().Get("Content-Type"); got != "application/json" {
-				t.Fatalf("content-type = %q", got)
-			}
-			if !strings.Contains(rec.Body.String(), `"error":"unauthorized"`) {
-				t.Fatalf("body = %s", rec.Body.String())
-			}
-		})
-	}
-}
-
-func TestRejectsWrongHost(t *testing.T) {
-	for _, host := range []string{"evil.example.com", "localhost:53121", "127.0.0.1:1", "127.0.0.1"} {
-		t.Run(host, func(t *testing.T) {
-			rec := do(t, "/health", host, "Bearer "+testToken)
-
-			if rec.Code != http.StatusForbidden {
-				t.Fatalf("status = %d, want 403", rec.Code)
-			}
-			if !strings.Contains(rec.Body.String(), `"error":"forbidden_host"`) {
-				t.Fatalf("body = %s", rec.Body.String())
-			}
-		})
 	}
 }
 
