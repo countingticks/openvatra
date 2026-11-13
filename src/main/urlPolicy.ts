@@ -18,6 +18,12 @@ export function isAppUrl(url: string, appUrl: string): boolean {
   return target.origin === app.origin
 }
 
+/** The origin core must accept for the window, or null when the page is a file (production sends no Origin). */
+export function devServerOrigin(appUrl: string): string | null {
+  const parsed = parse(appUrl)
+  return parsed?.protocol === 'http:' || parsed?.protocol === 'https:' ? parsed.origin : null
+}
+
 function parse(url: string): URL | null {
   try {
     return new URL(url)

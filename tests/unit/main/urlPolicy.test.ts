@@ -1,6 +1,18 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { isAppUrl, isExternalWebUrl } from '../../../src/main/urlPolicy'
+import { devServerOrigin, isAppUrl, isExternalWebUrl } from '../../../src/main/urlPolicy'
+
+describe('devServerOrigin', () => {
+  it('gives the dev server URL its origin without the path', () => {
+    expect(devServerOrigin('http://localhost:5173/')).toBe('http://localhost:5173')
+  })
+
+  it('gives null for the bundled index.html', () => {
+    expect(
+      devServerOrigin('file:///C:/Program%20Files/OpenVatra/resources/app.asar/out/renderer/index.html')
+    ).toBe(null)
+  })
+})
 
 describe('isExternalWebUrl', () => {
   it.each(['https://github.com/countingticks/openvatra', 'http://example.com/page?q=1'])(
