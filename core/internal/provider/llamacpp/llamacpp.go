@@ -9,6 +9,7 @@ import (
 	"context"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/engine"
@@ -54,6 +55,9 @@ type loaded struct {
 	ready chan struct{}   // closed when loading has finished, either way
 	err   error           // set before ready is closed
 	users sync.WaitGroup
+	// nCtx is the context size read from the ready server, 0 until read. Not under the slot mutex: reading it is an
+	// HTTP call.
+	nCtx atomic.Int64
 
 	// Guarded by the slot's mutex.
 	active    int         // requests currently holding this model
@@ -74,7 +78,8 @@ var (
 	_ provider.Upstream = (*Provider)(nil)
 )
 
-// Provider owns the two slots; it is a provider.Provider, a provider.Resident and a provider.Upstream.
+// Provider owns the two slots; it fills every provider capability: Provider, Chat, Embedder, Counter, Resident and
+// Upstream.
 type Provider struct {
 	cfg   Config
 	slots [2]slot // indexed by provider.Kind
@@ -102,21 +107,83 @@ func (r *Provider) Describe() seam.Descriptor {
 	return seam.Descriptor{ID: "provider.llamacpp", Title: "llama.cpp", Description: "Runs GGUF models on this PC with llama-server."}
 }
 
-// Models lists what Plan can start, as List reports it. Context is 0: it is only known after loading.
-func (r *Provider) Models(context.Context) ([]provider.Model, error) {
+// Models lists what Plan can start, as List reports it. Context is set for a model that is ready in a slot; the
+// others are 0, since llama.cpp only knows the size after loading.
+func (r *Provider) Models(ctx context.Context) ([]provider.Model, error) {
 	if r.cfg.List == nil {
 		return []provider.Model{}, nil
 	}
-	return r.cfg.List()
+	models, err := r.cfg.List()
+	if err != nil {
+		return nil, err
+	}
+	ready := map[string]*loaded{}
+	for i := range r.slots {
+		s := &r.slots[i]
+		s.mu.Lock()
+		if l := s.cur; l != nil && isReady(l) {
+			ready[l.id] = l
+		}
+		s.mu.Unlock()
+	}
+	for i := range models {
+		if l, ok := ready[models[i].ID]; ok {
+			models[i].Context = r.contextSize(ctx, l)
+		}
+	}
+	return models, nil
+}
+
+// Prepare makes model id ready for Complete: it loads it in the chat slot if needed, reads its context size and
+// releases it. chat.Service gets it as its Model func.
+func (r *Provider) Prepare(ctx context.Context, id string) (provider.Model, error) {
+	l, release, err := r.acquire(ctx, provider.KindChat, id)
+	if err != nil {
+		return provider.Model{}, err
+	}
+	n := r.contextSize(ctx, l)
+	release()
+	var models []provider.Model
+	if r.cfg.List != nil {
+		if models, err = r.cfg.List(); err != nil {
+			return provider.Model{}, err
+		}
+	}
+	for _, m := range models {
+		if m.ID == id {
+			m.Context = n
+			return m, nil
+		}
+	}
+	return provider.Model{}, provider.ErrUnknownModel
+}
+
+// isReady reports whether l finished loading and has a server.
+func isReady(l *loaded) bool {
+	select {
+	case <-l.ready:
+		return l.err == nil
+	default:
+		return false
+	}
 }
 
 // Acquire returns the base URL of a ready server for the request and a release
 // function the caller must call when the response is fully sent. For provider.KindEmbedding
 // the model argument is ignored: the chosen embedding model always serves.
 func (r *Provider) Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error) {
+	l, release, err := r.acquire(ctx, kind, model)
+	if err != nil {
+		return "", nil, err
+	}
+	return l.inst.BaseURL(), release, nil
+}
+
+// acquire is Acquire returning the loaded model itself.
+func (r *Provider) acquire(ctx context.Context, kind provider.Kind, model string) (*loaded, func(), error) {
 	if kind == provider.KindEmbedding {
 		if model = r.cfg.EmbeddingModel(); model == "" {
-			return "", nil, provider.ErrNoEmbeddingModel
+			return nil, nil, provider.ErrNoEmbeddingModel
 		}
 	}
 	s := &r.slots[kind]
@@ -128,7 +195,7 @@ func (r *Provider) Acquire(ctx context.Context, kind provider.Kind, model string
 		spec, err := r.cfg.Plan(model, kind == provider.KindEmbedding)
 		if err != nil {
 			s.mu.Unlock()
-			return "", nil, err
+			return nil, nil, err
 		}
 		next := &loaded{id: model, spec: spec, ready: make(chan struct{})}
 		old := s.cur
@@ -151,14 +218,14 @@ func (r *Provider) Acquire(ctx context.Context, kind provider.Kind, model string
 	case <-l.ready:
 	case <-ctx.Done():
 		r.finish(s, l)
-		return "", nil, ctx.Err()
+		return nil, nil, ctx.Err()
 	}
 	if l.err != nil {
 		r.finish(s, l)
-		return "", nil, l.err
+		return nil, nil, l.err
 	}
 	var once sync.Once
-	return l.inst.BaseURL(), func() { once.Do(func() { r.finish(s, l) }) }, nil
+	return l, func() { once.Do(func() { r.finish(s, l) }) }, nil
 }
 
 // finish ends one request's hold on l; when it was the last, the idle clock starts.
