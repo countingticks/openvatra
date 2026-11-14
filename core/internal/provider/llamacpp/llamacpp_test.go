@@ -16,11 +16,17 @@ import (
 // fakeInstance records what the router does to a started server.
 type fakeInstance struct {
 	id     string
+	url    string // "" = http://<id>, a server nobody answers on
 	events *eventLog
 }
 
-func (f *fakeInstance) Stop(time.Duration)    { f.events.add("stop " + f.id) }
-func (f *fakeInstance) BaseURL() string       { return "http://" + f.id }
+func (f *fakeInstance) Stop(time.Duration) { f.events.add("stop " + f.id) }
+func (f *fakeInstance) BaseURL() string {
+	if f.url != "" {
+		return f.url
+	}
+	return "http://" + f.id
+}
 func (f *fakeInstance) State() engine.State   { return engine.StateReady }
 func (f *fakeInstance) Wait() <-chan struct{} { return nil }
 
@@ -67,6 +73,19 @@ func newTestProvider(events *eventLog, startFn func(id string) func() error) *Pr
 	return New(Config{
 		Plan:           testPlan,
 		Start:          testStart(events, startFn),
+		EmbeddingModel: func() string { return "embed" },
+		LoadTimeout:    time.Second,
+	})
+}
+
+// newServerProvider is a provider whose started instances answer on urlFor(id), a test HTTP server.
+func newServerProvider(events *eventLog, urlFor func(id string) string) *Provider {
+	return New(Config{
+		Plan: testPlan,
+		Start: func(_ context.Context, spec engine.Spec) (engine.Instance, error) {
+			events.add("start " + spec.Model)
+			return &fakeInstance{id: spec.Model, url: urlFor(spec.Model), events: events}, nil
+		},
 		EmbeddingModel: func() string { return "embed" },
 		LoadTimeout:    time.Second,
 	})

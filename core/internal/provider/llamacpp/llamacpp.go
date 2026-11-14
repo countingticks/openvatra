@@ -42,7 +42,7 @@ type Config struct {
 	AfterFunc func(d time.Duration, f func()) (stop func() bool)
 	// List is what Plan can start (the models folder), for Models. nil = no models.
 	List func() ([]provider.Model, error)
-	// Client talks to llama-server; nil = a client with no overall timeout. Unused until 048.
+	// Client talks to llama-server; nil = a client with no overall timeout (an answer can take minutes).
 	Client *http.Client
 }
 
