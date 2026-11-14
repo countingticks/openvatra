@@ -140,7 +140,7 @@ func newFixture(t *testing.T) *fixture {
 		log:     &bytes.Buffer{},
 	}
 	f.cfg = Config{
-		Router:     f.router,
+		Resident:   f.router,
 		Catalog:    f.catalog,
 		Downloads:  f.dl,
 		ModelsDir:  func() string { return f.models },
@@ -376,3 +376,7 @@ func TestRemoveRunsOneAtATime(t *testing.T) {
 		}
 	})
 }
+
+// The rest of provider.Resident: a removal never calls it.
+func (f *fakeRouter) Load(context.Context, string) error   { return nil }
+func (f *fakeRouter) Subscribe() (<-chan struct{}, func()) { return nil, func() {} }

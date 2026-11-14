@@ -317,7 +317,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	})
 	defer dl.Close()
 	remover := removal.New(removal.Config{
-		Router: lc, Catalog: cat, Downloads: dl, ModelsDir: func() string { return resolve().ModelsDir },
+		Resident: lc, Catalog: cat, Downloads: dl, ModelsDir: func() string { return resolve().ModelsDir },
 		Trash: trash.Move, Logger: logger,
 	})
 	pinned := downloads.PinnedTag(*llamaManifest)
@@ -328,7 +328,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
-			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: lc,
+			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Resident: lc, Upstream: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
 			Chats: chats, Log: eventLog, Logger: logger,
 		}),

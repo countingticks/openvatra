@@ -11,7 +11,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
-func callModels(t *testing.T, rt Router, method, path string) *httptest.ResponseRecorder {
+func callModels(t *testing.T, rt provider.Resident, method, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -19,7 +19,7 @@ func callModels(t *testing.T, rt Router, method, path string) *httptest.Response
 	list := func() ([]models.Model, error) {
 		return []models.Model{{ID: "qwen", SizeBytes: 5, Kind: models.KindChat}, {ID: "gemma", SizeBytes: 7, Kind: models.KindChat}}, nil
 	}
-	testHandler(t, Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Resident: rt, ListModels: list}).ServeHTTP(rec, req)
 	return rec
 }
 
@@ -53,7 +53,7 @@ func TestListModelsStatesAndKindsAreDocumentedEnumValues(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
 	// checked fails the test on a state or kind outside the document's enum.
-	testHandler(t, Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Resident: rt, ListModels: list}).ServeHTTP(rec, req)
 	for _, want := range []string{`"state":"loading"`, `"state":"ready"`, `"state":"error"`, `"state":"stopped"`,
 		`"kind":"chat"`, `"kind":"embedding"`, `"kind":"unreadable"`} {
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {

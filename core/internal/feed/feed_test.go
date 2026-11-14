@@ -284,3 +284,8 @@ func TestNoDownloadsSourcePublishesNoProgress(t *testing.T) {
 		}
 	}
 }
+
+// The rest of provider.Resident: feed never calls it.
+func (s *stubRouter) Load(context.Context, string) error { return nil }
+func (s *stubRouter) Unload(string) bool                 { return false }
+func (s *stubRouter) Notify()                            {}

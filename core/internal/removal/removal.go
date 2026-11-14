@@ -20,13 +20,6 @@ import (
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
-// Router is the part of the router a removal stops models with.
-type Router interface {
-	States() []provider.ModelState
-	Unload(id string) bool
-	Notify()
-}
-
 // Catalog names an entry's folder and files.
 type Catalog interface {
 	Folder(id string) (string, error) // catalog.ErrUnknown, catalog.ErrNoFolder
@@ -41,7 +34,7 @@ type Downloads interface {
 
 // Config is what a Remover works with.
 type Config struct {
-	Router     Router
+	Resident   provider.Resident
 	Catalog    Catalog
 	Downloads  Downloads
 	ModelsDir  func() string           // read on every call
@@ -122,8 +115,8 @@ func (r *Remover) Remove(ctx context.Context, id string) error {
 		return err
 	}
 
-	// The router reads the folder only when something it knows about changes; a move to the Recycle Bin isn't one.
-	r.cfg.Router.Notify()
+	// The provider reads the folder only when something it knows about changes; a move to the Recycle Bin isn't one.
+	r.cfg.Resident.Notify()
 	// Left in the queue, a finished download would read "Almost ready" for a model that is gone. Dismissing it is
 	// tidying up, so a failure is only logged: the removal itself worked.
 	if slices.ContainsFunc(r.cfg.Downloads.Items(), func(it downloads.DownloadItem) bool {
@@ -149,7 +142,7 @@ func inside(parent, child string) bool {
 	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// modelIDs are the ids the entry's files appear as in the router: the file names without .gguf.
+// modelIDs are the ids the entry's files appear as in the provider: the file names without .gguf.
 func (r *Remover) modelIDs(id string) []string {
 	var ids []string
 	for _, it := range r.cfg.Catalog.View().Entries {
@@ -170,7 +163,7 @@ func (r *Remover) modelIDs(id string) []string {
 // running lists the models of ids that have a server process. A model in error has none and never turns stopped.
 func (r *Remover) running(ids []string) []string {
 	var out []string
-	for _, m := range r.cfg.Router.States() {
+	for _, m := range r.cfg.Resident.States() {
 		if slices.Contains(ids, m.ID) && (m.State == provider.StateLoading || m.State == provider.StateReady) {
 			out = append(out, m.ID)
 		}
@@ -184,7 +177,7 @@ func (r *Remover) stop(ctx context.Context, ids []string) error {
 		return nil
 	}
 	for _, m := range active {
-		r.cfg.Router.Unload(m)
+		r.cfg.Resident.Unload(m)
 	}
 	deadline := time.Now().Add(r.cfg.UnloadWait)
 	for len(r.running(ids)) > 0 {

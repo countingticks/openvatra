@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -16,20 +15,10 @@ import (
 // inline images are large, but not this large.
 const maxRequestBody = 64 << 20
 
-// Router hands out ready llama-servers and reports on them. *router.Router satisfies it.
-type Router interface {
-	Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error)
-	States() []provider.ModelState
-	Subscribe() (<-chan struct{}, func())
-	Load(ctx context.Context, id string) error
-	Unload(id string) bool
-	Notify()
-}
-
-// proxy forwards a request to the llama-server the router picks. Chat requests
+// proxy forwards a request to the upstream server the provider picks. Chat requests
 // choose the model by the "model" field of the JSON body; embeddings always go to
 // the chosen embedding model, so their body is passed through unread.
-func proxy(rt Router, kind provider.Kind) http.HandlerFunc {
+func proxy(up provider.Upstream, kind provider.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 		if err != nil {
@@ -49,7 +38,7 @@ func proxy(rt Router, kind provider.Kind) http.HandlerFunc {
 			model = req.Model
 		}
 
-		base, release, err := rt.Acquire(r.Context(), kind, model)
+		base, release, err := up.Acquire(r.Context(), kind, model)
 		if err != nil {
 			writeError(w, r, acquireError(err))
 			return
