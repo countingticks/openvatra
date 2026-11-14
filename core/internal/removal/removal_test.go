@@ -20,7 +20,7 @@ import (
 
 const entryID = "qwen"
 
-// fakeRouter reports states, and once a model was unloaded reports it stopped after stopAfter more Snapshot calls
+// fakeRouter reports states, and once a model was unloaded reports it stopped after stopAfter more States calls
 // (never, when stopAfter is negative).
 type fakeRouter struct {
 	mu        sync.Mutex
@@ -31,7 +31,7 @@ type fakeRouter struct {
 	notified  int
 }
 
-func (f *fakeRouter) Snapshot() []provider.ModelState {
+func (f *fakeRouter) States() []provider.ModelState {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.unloaded) > 0 {

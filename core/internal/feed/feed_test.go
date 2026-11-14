@@ -30,7 +30,7 @@ type stubRouter struct {
 	changes  chan struct{}
 }
 
-func (s *stubRouter) Snapshot() []provider.ModelState {
+func (s *stubRouter) States() []provider.ModelState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snapshot

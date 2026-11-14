@@ -1,8 +1,9 @@
-package router
+package llamacpp
 
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -62,7 +63,7 @@ func (e *eventLog) get() []string {
 	return append([]string(nil), e.l...)
 }
 
-func newTestRouter(events *eventLog, startFn func(id string) func() error) *Router {
+func newTestProvider(events *eventLog, startFn func(id string) func() error) *Provider {
 	return New(Config{
 		Plan:           testPlan,
 		Start:          testStart(events, startFn),
@@ -85,7 +86,7 @@ func equal(a, b []string) bool {
 
 func TestSameModelLoadsOnce(t *testing.T) {
 	ev := &eventLog{}
-	r := newTestRouter(ev, nil)
+	r := newTestProvider(ev, nil)
 
 	for range 3 {
 		url, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
@@ -101,7 +102,7 @@ func TestSameModelLoadsOnce(t *testing.T) {
 
 func TestSwapStopsOldAfterItsRequestsFinish(t *testing.T) {
 	ev := &eventLog{}
-	r := newTestRouter(ev, nil)
+	r := newTestProvider(ev, nil)
 
 	_, releaseA, err := r.Acquire(context.Background(), provider.KindChat, "a")
 	if err != nil {
@@ -139,7 +140,7 @@ func TestSwapStopsOldAfterItsRequestsFinish(t *testing.T) {
 func TestRequestsWaitWhileLoading(t *testing.T) {
 	ev := &eventLog{}
 	gate := make(chan struct{})
-	r := newTestRouter(ev, func(string) func() error {
+	r := newTestProvider(ev, func(string) func() error {
 		return func() error { <-gate; return nil }
 	})
 
@@ -178,7 +179,7 @@ func TestRequestsWaitWhileLoading(t *testing.T) {
 func TestCancelledWaiterDoesNotAbortTheLoad(t *testing.T) {
 	ev := &eventLog{}
 	gate := make(chan struct{})
-	r := newTestRouter(ev, func(string) func() error {
+	r := newTestProvider(ev, func(string) func() error {
 		return func() error { <-gate; return nil }
 	})
 
@@ -205,7 +206,7 @@ func TestCancelledWaiterDoesNotAbortTheLoad(t *testing.T) {
 func TestFailedLoadIsRetried(t *testing.T) {
 	ev := &eventLog{}
 	calls := 0
-	r := newTestRouter(ev, func(string) func() error {
+	r := newTestProvider(ev, func(string) func() error {
 		return func() error {
 			calls++
 			if calls == 1 {
@@ -229,7 +230,7 @@ func TestFailedLoadIsRetried(t *testing.T) {
 
 func TestUnknownModelKeepsCurrentRunning(t *testing.T) {
 	ev := &eventLog{}
-	r := newTestRouter(ev, nil)
+	r := newTestProvider(ev, nil)
 
 	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
@@ -254,14 +255,14 @@ func TestStartThatOutlastsLoadTimeoutFailsTheLoad(t *testing.T) {
 	if _, _, err := r.Acquire(context.Background(), provider.KindChat, "a"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want one wrapping context.DeadlineExceeded", err)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != provider.StateError {
+	if snap := r.States(); len(snap) != 1 || snap[0].State != provider.StateError {
 		t.Fatalf("snapshot = %v, want the model in error", snap)
 	}
 }
 
 func TestEmbeddingUsesItsOwnSlotAndIgnoresBodyModel(t *testing.T) {
 	ev := &eventLog{}
-	r := newTestRouter(ev, nil)
+	r := newTestProvider(ev, nil)
 
 	_, rc, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	defer rc()
@@ -284,7 +285,7 @@ func TestNoEmbeddingModelChosen(t *testing.T) {
 
 func TestCloseStopsEverything(t *testing.T) {
 	ev := &eventLog{}
-	r := newTestRouter(ev, nil)
+	r := newTestProvider(ev, nil)
 	_, ra, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	ra()
 	_, re, _ := r.Acquire(context.Background(), provider.KindEmbedding, "")
@@ -294,5 +295,29 @@ func TestCloseStopsEverything(t *testing.T) {
 	got := ev.get()
 	if len(got) != 4 || got[2] == got[3] {
 		t.Fatalf("events = %v, want both servers stopped", got)
+	}
+}
+
+func TestDescribe(t *testing.T) {
+	if id := New(Config{}).Describe().ID; id != "provider.llamacpp" {
+		t.Fatalf("ID = %q", id)
+	}
+}
+
+func TestModels(t *testing.T) {
+	want := []provider.Model{{ID: "qwen", Kind: provider.ModelChat, Vision: true}, {ID: "embed", Kind: provider.ModelEmbedding}}
+	got, err := New(Config{List: func() ([]provider.Model, error) { return want, nil }}).Models(context.Background())
+	if err != nil || !slices.Equal(got, want) {
+		t.Fatalf("Models = %v, %v; want %v", got, err, want)
+	}
+
+	boom := errors.New("no folder")
+	if _, err := New(Config{List: func() ([]provider.Model, error) { return nil, boom }}).Models(context.Background()); err != boom {
+		t.Fatalf("err = %v, want the List error", err)
+	}
+
+	got, err = New(Config{}).Models(context.Background())
+	if err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("nil List: Models = %#v, %v; want an empty list", got, err)
 	}
 }

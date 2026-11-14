@@ -37,8 +37,8 @@ import (
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/provider/llamacpp"
 	"github.com/countingticks/openvatra/core/internal/removal"
-	"github.com/countingticks/openvatra/core/internal/router"
 	"github.com/countingticks/openvatra/core/internal/seam"
 	"github.com/countingticks/openvatra/core/internal/store"
 	"github.com/countingticks/openvatra/core/internal/trash"
@@ -255,7 +255,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	engineSeam := seam.NewRegistry[engine.Engine]()
 	llama := llamaserver.New(func() string { return resolve().LlamaServerPath }, logOut)
 	engineSeam.Register(llama)
-	rt := router.New(router.Config{
+	providerSeam := seam.NewRegistry[provider.Provider]()
+	lc := llamacpp.New(llamacpp.Config{
 		Plan:           planFunc(resolve, logger),
 		Start:          startFunc(llama, logger),
 		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
@@ -266,15 +267,24 @@ func run(args []string, stdout, stderr io.Writer) error {
 			}
 			return r.IdleTimeout()
 		},
+		List: func() ([]provider.Model, error) {
+			c := resolve() // one snapshot, so a config change mid-call can't mix old and new values
+			found, err := models.Discover(c.ModelsDir)
+			if err != nil {
+				return nil, err
+			}
+			return toProviderModels(c, found), nil
+		},
 	})
+	providerSeam.Register(lc)
 	cfg.Subscribe(func(section string, _ int) {
 		if section == config.ModelsSection {
-			rt.Notify() // a new models folder changes the list although no model changed state
+			lc.Notify() // a new models folder changes the list although no model changed state
 		}
 	})
 	var chats *chat.Service
 	if chatStore != nil {
-		chats = &chat.Service{Store: chatStore, Router: rt, Sizes: &prompt.ContextSizes{}, Logger: logger}
+		chats = &chat.Service{Store: chatStore, Router: lc, Sizes: &prompt.ContextSizes{}, Logger: logger}
 	}
 	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
 	hardware := hw.NewChecker(func() string { return resolve().LlamaServerPath }, logger)
@@ -301,24 +311,24 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Downloader:    dler,
 		Entries:       entries,
 		ModelsDir:     func() string { return resolve().ModelsDir },
-		OnFinish:      rt.Notify,
+		OnFinish:      lc.Notify,
 		OnEngineReady: func() { switchToCUDA(cfg, logger) },
 		Engine:        cuda,
 	})
 	defer dl.Close()
 	remover := removal.New(removal.Config{
-		Router: rt, Catalog: cat, Downloads: dl, ModelsDir: func() string { return resolve().ModelsDir },
+		Router: lc, Catalog: cat, Downloads: dl, ModelsDir: func() string { return resolve().ModelsDir },
 		Trash: trash.Move, Logger: logger,
 	})
 	pinned := downloads.PinnedTag(*llamaManifest)
 	engines := func() downloads.EnginesBody { return downloads.Engines(*llamaDir, *enginesDir, pinned) }
-	feed.Start(ctx, eventLog, rt, listModels, dl)
-	defer rt.Close() // after the server is down, so no request is mid-stream
+	feed.Start(ctx, eventLog, lc, listModels, dl)
+	defer lc.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
-			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: rt,
+			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Router: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
 			Chats: chats, Log: eventLog, Logger: logger,
 		}),
@@ -375,7 +385,21 @@ func resolveEmbedding(c config.Resolved) string {
 	return models.ResolveEmbedding(found, c.EmbeddingModel)
 }
 
-// planFunc builds the router's planner: look the model up on disk and say what to start for it.
+// toProviderModels is the models folder as the provider seam shows it: readable chat and embedding models, in order.
+func toProviderModels(c config.Resolved, found []models.Model) []provider.Model {
+	out := make([]provider.Model, 0, len(found))
+	for _, m := range found {
+		switch m.Kind {
+		case models.KindChat:
+			out = append(out, provider.Model{ID: m.ID, Kind: provider.ModelChat, Vision: m.MMProj != "" && c.UseMMProj(m.ID)})
+		case models.KindEmbedding:
+			out = append(out, provider.Model{ID: m.ID, Kind: provider.ModelEmbedding})
+		}
+	}
+	return out
+}
+
+// planFunc builds the provider's planner: look the model up on disk and say what to start for it.
 func planFunc(resolve func() config.Resolved, logger *slog.Logger) func(id string, embedding bool) (engine.Spec, error) {
 	return func(id string, embedding bool) (engine.Spec, error) {
 		c := resolve() // one snapshot, so a config change mid-call can't mix old and new values

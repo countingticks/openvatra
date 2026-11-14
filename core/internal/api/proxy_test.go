@@ -30,7 +30,7 @@ type stubRouter struct {
 	notified int
 }
 
-func (s *stubRouter) Snapshot() []provider.ModelState { return s.snapshot }
+func (s *stubRouter) States() []provider.ModelState { return s.snapshot }
 func (s *stubRouter) Subscribe() (<-chan struct{}, func()) {
 	return s.changes, func() {}
 }

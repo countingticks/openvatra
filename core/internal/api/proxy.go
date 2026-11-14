@@ -19,7 +19,7 @@ const maxRequestBody = 64 << 20
 // Router hands out ready llama-servers and reports on them. *router.Router satisfies it.
 type Router interface {
 	Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error)
-	Snapshot() []provider.ModelState
+	States() []provider.ModelState
 	Subscribe() (<-chan struct{}, func())
 	Load(ctx context.Context, id string) error
 	Unload(id string) bool

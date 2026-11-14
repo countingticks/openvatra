@@ -27,6 +27,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/models"
+	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -758,4 +759,32 @@ func TestOriginFlag(t *testing.T) {
 	if err := run(args, io.Discard, io.Discard); err != nil {
 		t.Fatalf("two valid --origin values: %v", err)
 	}
+}
+
+func TestToProviderModels(t *testing.T) {
+	found := []models.Model{
+		{ID: "qwen", Kind: models.KindChat, MMProj: "mmproj.gguf"},
+		{ID: "broken", Kind: models.KindUnreadable},
+		{ID: "embed", Kind: models.KindEmbedding, MMProj: "mmproj.gguf"},
+	}
+	resolve := func(m config.Models) config.Resolved { return m.Resolve(config.Env{}) }
+
+	t.Run("a chat model with a projector has Vision", func(t *testing.T) {
+		got := toProviderModels(resolve(config.Models{}), found)
+		if len(got) != 2 || got[0] != (provider.Model{ID: "qwen", Kind: provider.ModelChat, Vision: true}) {
+			t.Fatalf("models = %+v", got)
+		}
+	})
+	t.Run("--no-mmproj takes Vision away", func(t *testing.T) {
+		got := toProviderModels(resolve(config.Models{Options: map[string]config.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found)
+		if got[0].Vision {
+			t.Fatalf("models = %+v", got)
+		}
+	})
+	t.Run("unreadable models are left out and embedding models have no Vision", func(t *testing.T) {
+		got := toProviderModels(resolve(config.Models{}), found)
+		if len(got) != 2 || got[1] != (provider.Model{ID: "embed", Kind: provider.ModelEmbedding}) {
+			t.Fatalf("models = %+v", got)
+		}
+	})
 }

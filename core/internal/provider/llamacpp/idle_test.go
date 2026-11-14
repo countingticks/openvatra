@@ -1,4 +1,4 @@
-package router
+package llamacpp
 
 import (
 	"context"
@@ -54,7 +54,7 @@ func (c *fakeClock) Advance(d time.Duration) {
 	}
 }
 
-func newIdleRouter(ev *eventLog, clock *fakeClock) *Router {
+func newIdleProvider(ev *eventLog, clock *fakeClock) *Provider {
 	return New(Config{
 		Plan:           testPlan,
 		Start:          testStart(ev, nil),
@@ -79,7 +79,7 @@ func waitFor(t *testing.T, ev *eventLog, want ...string) {
 
 func TestIdleModelIsUnloadedAfterTimeout(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 
 	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
@@ -90,14 +90,14 @@ func TestIdleModelIsUnloadedAfterTimeout(t *testing.T) {
 	}
 	clock.Advance(time.Minute)
 	waitFor(t, ev, "start a", "stop a")
-	if snap := r.Snapshot(); len(snap) != 0 {
+	if snap := r.States(); len(snap) != 0 {
 		t.Fatalf("snapshot = %v, want empty", snap)
 	}
 }
 
 func TestTimerRestartsFromTheLastFinishedRequest(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 
 	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
@@ -115,14 +115,14 @@ func TestTimerRestartsFromTheLastFinishedRequest(t *testing.T) {
 
 func TestBusyModelIsNeverUnloaded(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 
 	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	clock.Advance(time.Hour) // a long stream: no timer may run while it is open
 	if got := ev.get(); !equal(got, []string{"start a"}) {
 		t.Fatalf("events = %v", got)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || !snap[0].Busy {
+	if snap := r.States(); len(snap) != 1 || !snap[0].Busy {
 		t.Fatalf("snapshot = %v, want one busy model", snap)
 	}
 	release()
@@ -132,7 +132,7 @@ func TestBusyModelIsNeverUnloaded(t *testing.T) {
 
 func TestIdleTimeoutZeroMeansNever(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 	r.cfg.IdleTimeout = func(string) time.Duration { return 0 }
 
 	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
@@ -145,7 +145,7 @@ func TestIdleTimeoutZeroMeansNever(t *testing.T) {
 
 func TestIdleTimeoutIsPerModel(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 	r.cfg.IdleTimeout = func(id string) time.Duration {
 		if id == "embed" {
 			return time.Hour
@@ -165,7 +165,7 @@ func TestIdleTimeoutIsPerModel(t *testing.T) {
 
 func TestReloadAfterIdleUnload(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 
 	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
@@ -182,12 +182,12 @@ func TestReloadAfterIdleUnload(t *testing.T) {
 
 func TestManualLoadAndUnload(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 
 	if err := r.Load(context.Background(), "a"); err != nil {
 		t.Fatal(err)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != provider.StateReady || snap[0].Busy {
+	if snap := r.States(); len(snap) != 1 || snap[0].State != provider.StateReady || snap[0].Busy {
 		t.Fatalf("snapshot = %v", snap)
 	}
 	if !r.Unload("a") {
@@ -199,7 +199,7 @@ func TestManualLoadAndUnload(t *testing.T) {
 	}
 }
 
-func TestSnapshotReportsLoadingAndFailure(t *testing.T) {
+func TestStatesReportLoadingAndFailure(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	gate := make(chan struct{})
 	r := New(Config{
@@ -216,16 +216,16 @@ func TestSnapshotReportsLoadingAndFailure(t *testing.T) {
 
 	go func() { _, _, _ = r.Acquire(context.Background(), provider.KindChat, "a") }()
 	deadline := time.Now().Add(2 * time.Second)
-	for len(r.Snapshot()) == 0 && time.Now().Before(deadline) {
+	for len(r.States()) == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != provider.StateLoading {
+	if snap := r.States(); len(snap) != 1 || snap[0].State != provider.StateLoading {
 		t.Fatalf("snapshot = %v, want loading", snap)
 	}
 	close(gate)
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if snap := r.Snapshot(); len(snap) == 1 && snap[0].State == provider.StateError {
+		if snap := r.States(); len(snap) == 1 && snap[0].State == provider.StateError {
 			if snap[0].Error == "" {
 				t.Fatal("error state without a message")
 			}
@@ -233,12 +233,12 @@ func TestSnapshotReportsLoadingAndFailure(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("snapshot = %v, want error", r.Snapshot())
+	t.Fatalf("snapshot = %v, want error", r.States())
 }
 
 func TestSubscribersAreSignalledOnChange(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
-	r := newIdleRouter(ev, clock)
+	r := newIdleProvider(ev, clock)
 	ch, cancel := r.Subscribe()
 	defer cancel()
 

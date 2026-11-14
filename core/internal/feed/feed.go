@@ -16,7 +16,7 @@ import (
 
 // Router is the part of the model router feed reads.
 type Router interface {
-	Snapshot() []provider.ModelState
+	States() []provider.ModelState
 	Subscribe() (<-chan struct{}, func())
 }
 
@@ -58,7 +58,7 @@ func State(rt Router, list func() ([]models.Model, error)) (StateBody, error) {
 		return StateBody{}, err
 	}
 	known := map[string]provider.ModelState{}
-	for _, m := range rt.Snapshot() {
+	for _, m := range rt.States() {
 		known[m.ID] = m
 	}
 	out := make([]Model, 0, len(found)) // [] rather than null when empty

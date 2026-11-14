@@ -22,7 +22,7 @@ import (
 
 // Router is the part of the router a removal stops models with.
 type Router interface {
-	Snapshot() []provider.ModelState
+	States() []provider.ModelState
 	Unload(id string) bool
 	Notify()
 }
@@ -170,7 +170,7 @@ func (r *Remover) modelIDs(id string) []string {
 // running lists the models of ids that have a server process. A model in error has none and never turns stopped.
 func (r *Remover) running(ids []string) []string {
 	var out []string
-	for _, m := range r.cfg.Router.Snapshot() {
+	for _, m := range r.cfg.Router.States() {
 		if slices.Contains(ids, m.ID) && (m.State == provider.StateLoading || m.State == provider.StateReady) {
 			out = append(out, m.ID)
 		}

@@ -58,7 +58,7 @@ var layers = map[string]pkg{
 	"api/openapi": {layer: adapter},
 
 	"engine/llamaserver": {layer: impl, seams: []string{"engine"}},
-	"router":             {layer: impl, seams: []string{"engine", "provider"}}, // until it moves in task 3
+	"provider/llamacpp":  {layer: impl, seams: []string{"provider", "engine"}},
 }
 
 // exceptions are imports that break a rule; an unused one is itself a violation. None are left.
