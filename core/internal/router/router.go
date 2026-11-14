@@ -7,27 +7,11 @@ package router
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/engine"
-)
-
-// Kind picks the slot a request uses.
-type Kind int
-
-const (
-	Chat Kind = iota
-	Embedding
-)
-
-var (
-	// ErrUnknownModel means no model with that id exists on disk.
-	ErrUnknownModel = errors.New("unknown model")
-	// ErrNoEmbeddingModel means no embedding model has been chosen yet.
-	ErrNoEmbeddingModel = errors.New("no embedding model chosen")
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // DefaultLoadTimeout is how long a request waits for a model to become ready.
@@ -37,7 +21,7 @@ const stopGrace = 5 * time.Second
 
 // Config wires the router to the outside world.
 type Config struct {
-	// Plan turns a model id into what to start, or returns ErrUnknownModel. Called under the slot lock, before
+	// Plan turns a model id into what to start, or returns provider.ErrUnknownModel. Called under the slot lock, before
 	// anything is stopped. embedding: the request is for the embedding slot.
 	Plan func(id string, embedding bool) (engine.Spec, error)
 	// Start starts the planned server and returns once it is healthy. ctx carries the load timeout.
@@ -80,7 +64,7 @@ type slot struct {
 // Router owns the two slots.
 type Router struct {
 	cfg   Config
-	slots [2]slot // indexed by Kind
+	slots [2]slot // indexed by provider.Kind
 
 	mu      sync.Mutex // guards lastErr and subs
 	lastErr map[string]string
@@ -98,12 +82,12 @@ func New(cfg Config) *Router {
 }
 
 // Acquire returns the base URL of a ready server for the request and a release
-// function the caller must call when the response is fully sent. For Embedding
+// function the caller must call when the response is fully sent. For provider.KindEmbedding
 // the model argument is ignored: the chosen embedding model always serves.
-func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL string, release func(), err error) {
-	if kind == Embedding {
+func (r *Router) Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error) {
+	if kind == provider.KindEmbedding {
 		if model = r.cfg.EmbeddingModel(); model == "" {
-			return "", nil, ErrNoEmbeddingModel
+			return "", nil, provider.ErrNoEmbeddingModel
 		}
 	}
 	s := &r.slots[kind]
@@ -112,7 +96,7 @@ func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL 
 	l := s.cur
 	if l == nil || l.id != model {
 		// Plan first, so an unknown id fails without unloading what is running.
-		spec, err := r.cfg.Plan(model, kind == Embedding)
+		spec, err := r.cfg.Plan(model, kind == provider.KindEmbedding)
 		if err != nil {
 			s.mu.Unlock()
 			return "", nil, err
@@ -238,7 +222,7 @@ func (r *Router) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	inst, err := r.cfg.Start(ctx, next.spec)
 	cancel()
 	if err != nil {
-		next.err = fmt.Errorf("load %s: %w", next.id, err)
+		next.err = &provider.LoadError{Model: next.id, Err: err}
 		r.mu.Lock()
 		r.lastErr[next.id] = err.Error()
 		r.mu.Unlock()

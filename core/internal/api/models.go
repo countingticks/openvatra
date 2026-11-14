@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/feed"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // ModelPath is the input of the routes that name one model.
@@ -32,7 +32,7 @@ func modelRoutes(d Deps) []Route {
 				if err := d.Router.Load(ctx, in.ID); err != nil {
 					return StatusBody{}, acquireError(err)
 				}
-				return StatusBody{router.StateReady}, nil
+				return StatusBody{provider.StateReady}, nil
 			}).
 			WithErrors("model_not_found", "no_embedding_model", "model_load_failed"),
 		// 202: the server may still be finishing a reply and stops in the background.

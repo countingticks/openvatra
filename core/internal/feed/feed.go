@@ -11,12 +11,12 @@ import (
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // Router is the part of the model router feed reads.
 type Router interface {
-	Snapshot() []router.ModelState
+	Snapshot() []provider.ModelState
 	Subscribe() (<-chan struct{}, func())
 }
 
@@ -31,7 +31,7 @@ const StateStopped = "stopped"
 // Model is what the router knows about a model plus facts from disk.
 // The embedded struct's fields are flattened into the same JSON object.
 type Model struct {
-	router.ModelState
+	provider.ModelState
 	SizeBytes int64 `json:"sizeBytes"`
 	// Projector is the detected vision projector's file name (never its path); left out when there is none.
 	Projector string `json:"projector,omitempty"`
@@ -57,7 +57,7 @@ func State(rt Router, list func() ([]models.Model, error)) (StateBody, error) {
 	if err != nil {
 		return StateBody{}, err
 	}
-	known := map[string]router.ModelState{}
+	known := map[string]provider.ModelState{}
 	for _, m := range rt.Snapshot() {
 		known[m.ID] = m
 	}
@@ -65,7 +65,7 @@ func State(rt Router, list func() ([]models.Model, error)) (StateBody, error) {
 	for _, m := range found {
 		st, ok := known[m.ID]
 		if !ok {
-			st = router.ModelState{ID: m.ID, State: StateStopped}
+			st = provider.ModelState{ID: m.ID, State: StateStopped}
 		}
 		projector := ""
 		if m.MMProj != "" {

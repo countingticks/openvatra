@@ -3,36 +3,22 @@ package router
 import (
 	"context"
 	"sort"
-)
 
-// Model states the router reports. "stopped" is left to the caller: the router
-// only knows the models it has touched.
-const (
-	StateLoading = "loading"
-	StateReady   = "ready"
-	StateError   = "error"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
-
-// ModelState is what the router knows about one model.
-type ModelState struct {
-	ID    string `json:"id"`
-	State string `json:"state" enum:"stopped,loading,ready,error"`
-	Busy  bool   `json:"busy"`
-	Error string `json:"error,omitempty"`
-}
 
 // Snapshot lists the loaded and loading models plus any whose last load failed.
-func (r *Router) Snapshot() []ModelState {
-	var out []ModelState
+func (r *Router) Snapshot() []provider.ModelState {
+	var out []provider.ModelState
 	seen := map[string]bool{}
 	for i := range r.slots {
 		s := &r.slots[i]
 		s.mu.Lock()
 		if l := s.cur; l != nil {
-			st := ModelState{ID: l.id, State: StateLoading, Busy: l.active > 0}
+			st := provider.ModelState{ID: l.id, State: provider.StateLoading, Busy: l.active > 0}
 			select {
 			case <-l.ready:
-				st.State = StateReady
+				st.State = provider.StateReady
 			default:
 			}
 			out = append(out, st)
@@ -43,7 +29,7 @@ func (r *Router) Snapshot() []ModelState {
 	r.mu.Lock()
 	for id, msg := range r.lastErr {
 		if !seen[id] {
-			out = append(out, ModelState{ID: id, State: StateError, Error: msg})
+			out = append(out, provider.ModelState{ID: id, State: provider.StateError, Error: msg})
 		}
 	}
 	r.mu.Unlock()
@@ -83,9 +69,9 @@ func (r *Router) notify() {
 // Load loads a model by hand and returns once it is ready. The model is then
 // idle, so the idle timer applies to it like to any other.
 func (r *Router) Load(ctx context.Context, id string) error {
-	kind := Chat
+	kind := provider.KindChat
 	if id == r.cfg.EmbeddingModel() {
-		kind = Embedding
+		kind = provider.KindEmbedding
 	}
 	_, release, err := r.Acquire(ctx, kind, id)
 	if err != nil {

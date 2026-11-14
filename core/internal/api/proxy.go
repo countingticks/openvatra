@@ -9,7 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // maxRequestBody caps what we buffer to read the "model" field. Chat requests with
@@ -18,8 +18,8 @@ const maxRequestBody = 64 << 20
 
 // Router hands out ready llama-servers and reports on them. *router.Router satisfies it.
 type Router interface {
-	Acquire(ctx context.Context, kind router.Kind, model string) (baseURL string, release func(), err error)
-	Snapshot() []router.ModelState
+	Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error)
+	Snapshot() []provider.ModelState
 	Subscribe() (<-chan struct{}, func())
 	Load(ctx context.Context, id string) error
 	Unload(id string) bool
@@ -29,7 +29,7 @@ type Router interface {
 // proxy forwards a request to the llama-server the router picks. Chat requests
 // choose the model by the "model" field of the JSON body; embeddings always go to
 // the chosen embedding model, so their body is passed through unread.
-func proxy(rt Router, kind router.Kind) http.HandlerFunc {
+func proxy(rt Router, kind provider.Kind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 		if err != nil {
@@ -38,7 +38,7 @@ func proxy(rt Router, kind router.Kind) http.HandlerFunc {
 		}
 
 		var model string
-		if kind == router.Chat {
+		if kind == provider.KindChat {
 			var req struct {
 				Model string `json:"model"`
 			}

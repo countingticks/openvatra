@@ -36,6 +36,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/prompt"
+	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/removal"
 	"github.com/countingticks/openvatra/core/internal/router"
 	"github.com/countingticks/openvatra/core/internal/seam"
@@ -388,7 +389,7 @@ func planFunc(resolve func() config.Resolved, logger *slog.Logger) func(id strin
 			}
 		}
 		logger.Warn("unknown model requested", "model", id)
-		return engine.Spec{}, router.ErrUnknownModel
+		return engine.Spec{}, provider.ErrUnknownModel
 	}
 }
 

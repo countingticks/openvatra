@@ -15,7 +15,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
 	"github.com/countingticks/openvatra/core/internal/downloads"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 const entryID = "qwen"
@@ -24,14 +24,14 @@ const entryID = "qwen"
 // (never, when stopAfter is negative).
 type fakeRouter struct {
 	mu        sync.Mutex
-	states    []router.ModelState
+	states    []provider.ModelState
 	stopAfter int
 	unloaded  []string
 	polls     int
 	notified  int
 }
 
-func (f *fakeRouter) Snapshot() []router.ModelState {
+func (f *fakeRouter) Snapshot() []provider.ModelState {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.unloaded) > 0 {
@@ -242,9 +242,9 @@ func TestRemoveNotInstalled(t *testing.T) {
 
 func TestRemoveWaitsForUnload(t *testing.T) {
 	f := newFixture(t)
-	f.router.states = []router.ModelState{
-		{ID: "qwen-q4", State: router.StateReady},
-		{ID: "other", State: router.StateReady},
+	f.router.states = []provider.ModelState{
+		{ID: "qwen-q4", State: provider.StateReady},
+		{ID: "other", State: provider.StateReady},
 	}
 	f.router.stopAfter = 3
 	if err := f.remove(entryID); err != nil {
@@ -263,7 +263,7 @@ func TestRemoveWaitsForUnload(t *testing.T) {
 
 func TestRemoveUnloadTimeout(t *testing.T) {
 	f := newFixture(t)
-	f.router.states = []router.ModelState{{ID: "qwen-q4", State: router.StateLoading}}
+	f.router.states = []provider.ModelState{{ID: "qwen-q4", State: provider.StateLoading}}
 	f.router.stopAfter = -1
 	if err := f.remove(entryID); !errors.Is(err, ErrUnloadTimeout) {
 		t.Fatalf("err = %v, want ErrUnloadTimeout", err)
@@ -275,7 +275,7 @@ func TestRemoveUnloadTimeout(t *testing.T) {
 
 func TestRemoveSkipsModelInError(t *testing.T) {
 	f := newFixture(t)
-	f.router.states = []router.ModelState{{ID: "qwen-q4", State: router.StateError, Error: "boom"}}
+	f.router.states = []provider.ModelState{{ID: "qwen-q4", State: provider.StateError, Error: "boom"}}
 	f.router.stopAfter = -1
 	if err := f.remove(entryID); err != nil {
 		t.Fatalf("Remove: %v", err)

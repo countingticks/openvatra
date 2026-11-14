@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // fakeClock runs timers only when a test advances time, so idle tests never wait.
@@ -79,7 +81,7 @@ func TestIdleModelIsUnloadedAfterTimeout(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	r := newIdleRouter(ev, clock)
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
 
 	clock.Advance(14 * time.Minute)
@@ -97,10 +99,10 @@ func TestTimerRestartsFromTheLastFinishedRequest(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	r := newIdleRouter(ev, clock)
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
 	clock.Advance(10 * time.Minute)
-	_, release, _ = r.Acquire(context.Background(), Chat, "a")
+	_, release, _ = r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
 
 	clock.Advance(10 * time.Minute) // 20 minutes since the first request, 10 since the last
@@ -115,7 +117,7 @@ func TestBusyModelIsNeverUnloaded(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	r := newIdleRouter(ev, clock)
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	clock.Advance(time.Hour) // a long stream: no timer may run while it is open
 	if got := ev.get(); !equal(got, []string{"start a"}) {
 		t.Fatalf("events = %v", got)
@@ -133,7 +135,7 @@ func TestIdleTimeoutZeroMeansNever(t *testing.T) {
 	r := newIdleRouter(ev, clock)
 	r.cfg.IdleTimeout = func(string) time.Duration { return 0 }
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
 	clock.Advance(24 * time.Hour)
 	if got := ev.get(); !equal(got, []string{"start a"}) {
@@ -151,8 +153,8 @@ func TestIdleTimeoutIsPerModel(t *testing.T) {
 		return 5 * time.Minute
 	}
 
-	_, releaseChat, _ := r.Acquire(context.Background(), Chat, "a")
-	_, releaseEmbed, _ := r.Acquire(context.Background(), Embedding, "embed")
+	_, releaseChat, _ := r.Acquire(context.Background(), provider.KindChat, "a")
+	_, releaseEmbed, _ := r.Acquire(context.Background(), provider.KindEmbedding, "embed")
 	releaseChat()
 	releaseEmbed()
 	clock.Advance(5 * time.Minute)
@@ -165,12 +167,12 @@ func TestReloadAfterIdleUnload(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	r := newIdleRouter(ev, clock)
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
 	clock.Advance(15 * time.Minute)
 	waitFor(t, ev, "start a", "stop a")
 
-	_, release, err := r.Acquire(context.Background(), Chat, "a")
+	_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +187,7 @@ func TestManualLoadAndUnload(t *testing.T) {
 	if err := r.Load(context.Background(), "a"); err != nil {
 		t.Fatal(err)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != StateReady || snap[0].Busy {
+	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != provider.StateReady || snap[0].Busy {
 		t.Fatalf("snapshot = %v", snap)
 	}
 	if !r.Unload("a") {
@@ -212,18 +214,18 @@ func TestSnapshotReportsLoadingAndFailure(t *testing.T) {
 		AfterFunc:      clock.AfterFunc,
 	})
 
-	go func() { _, _, _ = r.Acquire(context.Background(), Chat, "a") }()
+	go func() { _, _, _ = r.Acquire(context.Background(), provider.KindChat, "a") }()
 	deadline := time.Now().Add(2 * time.Second)
 	for len(r.Snapshot()) == 0 && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != StateLoading {
+	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != provider.StateLoading {
 		t.Fatalf("snapshot = %v, want loading", snap)
 	}
 	close(gate)
 	deadline = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if snap := r.Snapshot(); len(snap) == 1 && snap[0].State == StateError {
+		if snap := r.Snapshot(); len(snap) == 1 && snap[0].State == provider.StateError {
 			if snap[0].Error == "" {
 				t.Fatal("error state without a message")
 			}
@@ -240,7 +242,7 @@ func TestSubscribersAreSignalledOnChange(t *testing.T) {
 	ch, cancel := r.Subscribe()
 	defer cancel()
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
 	select {
 	case <-ch:

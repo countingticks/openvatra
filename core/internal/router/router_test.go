@@ -3,11 +3,13 @@ package router
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/engine"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // fakeInstance records what the router does to a started server.
@@ -38,7 +40,7 @@ func testStart(events *eventLog, startFn func(id string) func() error) func(cont
 
 func testPlan(id string, _ bool) (engine.Spec, error) {
 	if id == "missing" {
-		return engine.Spec{}, ErrUnknownModel
+		return engine.Spec{}, provider.ErrUnknownModel
 	}
 	return engine.Spec{Model: id}, nil
 }
@@ -86,7 +88,7 @@ func TestSameModelLoadsOnce(t *testing.T) {
 	r := newTestRouter(ev, nil)
 
 	for range 3 {
-		url, release, err := r.Acquire(context.Background(), Chat, "a")
+		url, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
 		if err != nil || url != "http://a" {
 			t.Fatalf("Acquire = %q, %v", url, err)
 		}
@@ -101,14 +103,14 @@ func TestSwapStopsOldAfterItsRequestsFinish(t *testing.T) {
 	ev := &eventLog{}
 	r := newTestRouter(ev, nil)
 
-	_, releaseA, err := r.Acquire(context.Background(), Chat, "a")
+	_, releaseA, err := r.Acquire(context.Background(), provider.KindChat, "a")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	swapped := make(chan error, 1)
 	go func() {
-		_, release, err := r.Acquire(context.Background(), Chat, "b")
+		_, release, err := r.Acquire(context.Background(), provider.KindChat, "b")
 		if err == nil {
 			release()
 		}
@@ -147,7 +149,7 @@ func TestRequestsWaitWhileLoading(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, release, err := r.Acquire(context.Background(), Chat, "a")
+			_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
 			if err == nil {
 				release()
 			}
@@ -183,7 +185,7 @@ func TestCancelledWaiterDoesNotAbortTheLoad(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	first := make(chan error, 1)
 	go func() {
-		_, _, err := r.Acquire(ctx, Chat, "a")
+		_, _, err := r.Acquire(ctx, provider.KindChat, "a")
 		first <- err
 	}()
 	time.Sleep(50 * time.Millisecond)
@@ -193,7 +195,7 @@ func TestCancelledWaiterDoesNotAbortTheLoad(t *testing.T) {
 	}
 
 	close(gate)
-	_, release, err := r.Acquire(context.Background(), Chat, "a")
+	_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
 	if err != nil {
 		t.Fatalf("second request failed: %v", err)
 	}
@@ -213,10 +215,12 @@ func TestFailedLoadIsRetried(t *testing.T) {
 		}
 	})
 
-	if _, _, err := r.Acquire(context.Background(), Chat, "a"); err == nil {
-		t.Fatal("first load should fail")
+	_, _, err := r.Acquire(context.Background(), provider.KindChat, "a")
+	var le *provider.LoadError
+	if !errors.As(err, &le) || !strings.HasPrefix(err.Error(), "load ") {
+		t.Fatalf("first load error = %v, want a *provider.LoadError starting with \"load \"", err)
 	}
-	_, release, err := r.Acquire(context.Background(), Chat, "a")
+	_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
 	if err != nil {
 		t.Fatalf("retry failed: %v", err)
 	}
@@ -227,10 +231,10 @@ func TestUnknownModelKeepsCurrentRunning(t *testing.T) {
 	ev := &eventLog{}
 	r := newTestRouter(ev, nil)
 
-	_, release, _ := r.Acquire(context.Background(), Chat, "a")
+	_, release, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	release()
-	if _, _, err := r.Acquire(context.Background(), Chat, "missing"); !errors.Is(err, ErrUnknownModel) {
-		t.Fatalf("err = %v, want ErrUnknownModel", err)
+	if _, _, err := r.Acquire(context.Background(), provider.KindChat, "missing"); !errors.Is(err, provider.ErrUnknownModel) {
+		t.Fatalf("err = %v, want provider.ErrUnknownModel", err)
 	}
 	if got := ev.get(); !equal(got, []string{"start a"}) {
 		t.Fatalf("events = %v; the running model must not be stopped (and nothing started for missing)", got)
@@ -247,10 +251,10 @@ func TestStartThatOutlastsLoadTimeoutFailsTheLoad(t *testing.T) {
 		EmbeddingModel: func() string { return "" },
 		LoadTimeout:    50 * time.Millisecond,
 	})
-	if _, _, err := r.Acquire(context.Background(), Chat, "a"); !errors.Is(err, context.DeadlineExceeded) {
+	if _, _, err := r.Acquire(context.Background(), provider.KindChat, "a"); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want one wrapping context.DeadlineExceeded", err)
 	}
-	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != StateError {
+	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != provider.StateError {
 		t.Fatalf("snapshot = %v, want the model in error", snap)
 	}
 }
@@ -259,9 +263,9 @@ func TestEmbeddingUsesItsOwnSlotAndIgnoresBodyModel(t *testing.T) {
 	ev := &eventLog{}
 	r := newTestRouter(ev, nil)
 
-	_, rc, _ := r.Acquire(context.Background(), Chat, "a")
+	_, rc, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	defer rc()
-	url, re, err := r.Acquire(context.Background(), Embedding, "whatever")
+	url, re, err := r.Acquire(context.Background(), provider.KindEmbedding, "whatever")
 	if err != nil || url != "http://embed" {
 		t.Fatalf("Acquire = %q, %v", url, err)
 	}
@@ -273,7 +277,7 @@ func TestEmbeddingUsesItsOwnSlotAndIgnoresBodyModel(t *testing.T) {
 
 func TestNoEmbeddingModelChosen(t *testing.T) {
 	r := New(Config{EmbeddingModel: func() string { return "" }})
-	if _, _, err := r.Acquire(context.Background(), Embedding, ""); !errors.Is(err, ErrNoEmbeddingModel) {
+	if _, _, err := r.Acquire(context.Background(), provider.KindEmbedding, ""); !errors.Is(err, provider.ErrNoEmbeddingModel) {
 		t.Fatalf("err = %v", err)
 	}
 }
@@ -281,9 +285,9 @@ func TestNoEmbeddingModelChosen(t *testing.T) {
 func TestCloseStopsEverything(t *testing.T) {
 	ev := &eventLog{}
 	r := newTestRouter(ev, nil)
-	_, ra, _ := r.Acquire(context.Background(), Chat, "a")
+	_, ra, _ := r.Acquire(context.Background(), provider.KindChat, "a")
 	ra()
-	_, re, _ := r.Acquire(context.Background(), Embedding, "")
+	_, re, _ := r.Acquire(context.Background(), provider.KindEmbedding, "")
 	re()
 
 	r.Close()

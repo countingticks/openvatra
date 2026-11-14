@@ -17,12 +17,12 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
 	"github.com/countingticks/openvatra/core/internal/downloads"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // Router is the part of the router a removal stops models with.
 type Router interface {
-	Snapshot() []router.ModelState
+	Snapshot() []provider.ModelState
 	Unload(id string) bool
 	Notify()
 }
@@ -171,7 +171,7 @@ func (r *Remover) modelIDs(id string) []string {
 func (r *Remover) running(ids []string) []string {
 	var out []string
 	for _, m := range r.cfg.Router.Snapshot() {
-		if slices.Contains(ids, m.ID) && (m.State == router.StateLoading || m.State == router.StateReady) {
+		if slices.Contains(ids, m.ID) && (m.State == provider.StateLoading || m.State == provider.StateReady) {
 			out = append(out, m.ID)
 		}
 	}
