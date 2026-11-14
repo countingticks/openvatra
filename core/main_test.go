@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/config"
+	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/models"
@@ -397,26 +398,48 @@ func resolved(qwenArgs string) config.Resolved {
 	return m.Resolve(config.Env{})
 }
 
-func TestServerArgsProjector(t *testing.T) {
+func TestSpecFor(t *testing.T) {
 	m := models.Model{ID: "qwen", Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`}
-	core := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", "8000"}
-	base := append(slices.Clone(core), "-c", "16384")
-	withProjector := append(slices.Clone(base), "--mmproj", m.MMProj)
 	cases := map[string]struct {
 		c         config.Resolved
 		m         models.Model
 		embedding bool
-		want      []string
+		want      engine.Spec
 	}{
-		"on by default":     {resolved(""), m, false, withProjector},
-		"no-mmproj in args": {resolved("--no-mmproj"), m, false, append(slices.Clone(base), "--no-mmproj")},
-		"none found":        {resolved(""), models.Model{ID: "qwen", Path: m.Path}, false, base},
-		"embedding server":  {resolved(""), m, true, append(slices.Clone(core), "--embeddings")},
-		"before user's own": {resolved("-c 4096"), m, false, append(slices.Clone(withProjector), "-c", "4096")},
+		"projector on by default": {resolved(""), m, false, engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 16384}},
+		"no-mmproj in args":       {resolved("--no-mmproj"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Context: 16384, Args: []string{"--no-mmproj"}}},
+		"none found":              {resolved(""), models.Model{ID: "qwen", Path: m.Path}, false, engine.Spec{Model: "qwen", Path: m.Path, Context: 16384}},
+		"embedding":               {resolved(""), m, true, engine.Spec{Model: "qwen", Path: m.Path, Embedding: true}},
+		"user's own args":         {resolved("-c 4096"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 16384, Args: []string{"-c", "4096"}}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if got := serverArgs(tc.c, tc.m, 8000, tc.embedding); !reflect.DeepEqual(got, tc.want) {
+			got := specFor(tc.c, tc.m, tc.embedding)
+			if len(got.Args) == 0 {
+				got.Args = nil // no user args: empty and nil mean the same
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("spec = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestServerArgs(t *testing.T) {
+	core := []string{"-m", "P", "--host", "127.0.0.1"}
+	cases := map[string]struct {
+		spec engine.Spec
+		want []string
+	}{
+		"chat":             {engine.Spec{Path: "P", Context: 16384}, append(slices.Clone(core), "-c", "16384")},
+		"projector":        {engine.Spec{Path: "P", Context: 16384, Projector: "M"}, append(slices.Clone(core), "-c", "16384", "--mmproj", "M")},
+		"embedding":        {engine.Spec{Path: "P", Embedding: true, Context: 0, Projector: "M"}, append(slices.Clone(core), "--embeddings")},
+		"no context":       {engine.Spec{Path: "P"}, core},
+		"user's args last": {engine.Spec{Path: "P", Context: 16384, Projector: "M", Args: []string{"-c", "4096"}}, append(slices.Clone(core), "-c", "16384", "--mmproj", "M", "-c", "4096")},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := serverArgs(tc.spec); !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("args = %v, want %v", got, tc.want)
 			}
 		})

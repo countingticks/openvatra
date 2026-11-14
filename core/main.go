@@ -28,13 +28,13 @@ import (
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/feed"
 	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/process"
 	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/removal"
 	"github.com/countingticks/openvatra/core/internal/router"
@@ -52,7 +52,7 @@ const shutdownGrace = 5 * time.Second
 
 // defaultContext is the chat context size in tokens: llama-server's own default is the model's full context, which
 // can need more memory than the model itself.
-const defaultContext = "16384"
+const defaultContext = 16384
 
 func main() {
 	err := run(os.Args[1:], os.Stdout, os.Stderr)
@@ -175,7 +175,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	// Join a kill-on-close Job Object so llama-servers die with us, even after a crash.
 	// Not fatal: graceful shutdown still covers normal exits.
-	if err := process.SetupTreeCleanup(); err != nil {
+	if err := engine.SetupTreeCleanup(); err != nil {
 		logger.Warn("job object setup failed", "err", err)
 	}
 
@@ -229,16 +229,16 @@ func run(args []string, stdout, stderr io.Writer) error {
 		go trimSystemEvents(ctx, chatStore, 24*time.Hour, time.Now, logger)
 	}
 
-	var engine *downloads.Engine
+	var cuda *downloads.Engine
 	if *llamaManifest != "" && *enginesDir != "" {
-		if engine, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
+		if cuda, err = downloads.LoadEngine(*llamaManifest, *enginesDir); err != nil {
 			logger.Warn("no CUDA engine offered", "err", err) // a build bug at worst: the rest of core is unaffected
-			engine = nil
+			cuda = nil
 		}
 	}
 	env := config.Env{LlamaDir: *llamaDir, EnginesDir: *enginesDir}
-	if engine != nil {
-		env.Tag = engine.Tag
+	if cuda != nil {
+		env.Tag = cuda.Tag
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		env.Home = home
@@ -251,7 +251,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	resolve := func() config.Resolved { return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env) }
 	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	rt := router.New(router.Config{
-		NewBackend:     newBackendFunc(resolve, logger, logOut),
+		Plan:           planFunc(resolve, logger),
+		Start:          startFunc(resolve, logger, logOut),
 		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
 		IdleTimeout: func(id string) time.Duration {
 			r := resolve()
@@ -297,7 +298,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		ModelsDir:     func() string { return resolve().ModelsDir },
 		OnFinish:      rt.Notify,
 		OnEngineReady: func() { switchToCUDA(cfg, logger) },
-		Engine:        engine,
+		Engine:        cuda,
 	})
 	defer dl.Close()
 	remover := removal.New(removal.Config{
@@ -369,47 +370,66 @@ func resolveEmbedding(c config.Resolved) string {
 	return models.ResolveEmbedding(found, c.EmbeddingModel)
 }
 
-// newBackendFunc builds the router's server factory: look the model up on disk,
-// give its llama-server a free port, and add --embeddings when asked. Its output
-// goes to core.log, every line prefixed with the model id.
-func newBackendFunc(resolve func() config.Resolved, logger *slog.Logger, logOut io.Writer) func(id string, embedding bool) (router.Backend, error) {
-	return func(id string, embedding bool) (router.Backend, error) {
+// planFunc builds the router's planner: look the model up on disk and say what to start for it.
+func planFunc(resolve func() config.Resolved, logger *slog.Logger) func(id string, embedding bool) (engine.Spec, error) {
+	return func(id string, embedding bool) (engine.Spec, error) {
 		c := resolve() // one snapshot, so a config change mid-call can't mix old and new values
 		found, err := models.Discover(c.ModelsDir)
 		if err != nil {
-			return nil, err
+			return engine.Spec{}, err
 		}
 		for _, m := range found {
-			if m.ID != id {
-				continue
+			if m.ID == id {
+				return specFor(c, m, embedding), nil
 			}
-			port, err := process.FreePort()
-			if err != nil {
-				return nil, err
-			}
-			args := serverArgs(c, m, port, embedding)
-			logger.Info("starting llama-server", "model", m.ID, "port", port, "embedding", embedding)
-			return process.New(process.Config{Path: c.LlamaServerPath, Args: args, Port: port, Log: logs.Prefixed(logOut, m.ID)}), nil
 		}
 		logger.Warn("unknown model requested", "model", id)
-		return nil, router.ErrUnknownModel
+		return engine.Spec{}, router.ErrUnknownModel
 	}
 }
 
-// serverArgs is one llama-server's full argument list: core's own flags first, then the user's.
-func serverArgs(c config.Resolved, m models.Model, port int, embedding bool) []string {
-	args := []string{"-m", m.Path, "--host", "127.0.0.1", "--port", strconv.Itoa(port)}
-	if embedding {
-		args = append(args, "--embeddings")
-	} else {
+// specFor is what to start for one model: core's choices, then the user's own arguments.
+func specFor(c config.Resolved, m models.Model, embedding bool) engine.Spec {
+	spec := engine.Spec{Model: m.ID, Path: m.Path, Embedding: embedding, Args: modelArgs(c, m.ID)}
+	if !embedding {
 		// The catalog's memory estimates assume this context; the user's own -c comes later and wins.
-		args = append(args, "-c", defaultContext)
+		spec.Context = defaultContext
+		// Embedding servers never take images, so a projector would only cost memory there.
+		if c.UseMMProj(m.ID) {
+			spec.Projector = m.MMProj
+		}
 	}
-	// Embedding servers never take images, so a projector would only cost memory there.
-	if m.MMProj != "" && !embedding && c.UseMMProj(m.ID) {
-		args = append(args, "--mmproj", m.MMProj)
+	return spec
+}
+
+// startFunc starts llama-server for a spec. Its output goes to core.log, every line prefixed with the model id.
+func startFunc(resolve func() config.Resolved, logger *slog.Logger, logOut io.Writer) func(context.Context, engine.Spec) (engine.Instance, error) {
+	var runner engine.Runner
+	return func(ctx context.Context, spec engine.Spec) (engine.Instance, error) {
+		logger.Info("starting llama-server", "model", spec.Model, "embedding", spec.Embedding)
+		inst, err := runner.Start(ctx, engine.Command{
+			Path: resolve().LlamaServerPath, Args: serverArgs(spec), PortFlag: "--port", Health: "/health",
+		}, logs.Prefixed(logOut, spec.Model))
+		if err != nil {
+			return nil, err
+		}
+		logger.Info("llama-server ready", "model", spec.Model, "url", inst.BaseURL())
+		return inst, nil
 	}
-	return append(args, modelArgs(c, m.ID)...)
+}
+
+// serverArgs is one llama-server's argument list without the port: core's own flags first, then the user's.
+func serverArgs(spec engine.Spec) []string {
+	args := []string{"-m", spec.Path, "--host", "127.0.0.1"}
+	if spec.Embedding {
+		args = append(args, "--embeddings")
+	} else if spec.Context > 0 {
+		args = append(args, "-c", strconv.Itoa(spec.Context))
+	}
+	if spec.Projector != "" && !spec.Embedding {
+		args = append(args, "--mmproj", spec.Projector)
+	}
+	return append(args, spec.Args...)
 }
 
 // modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.

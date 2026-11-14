@@ -54,9 +54,8 @@ func (c *fakeClock) Advance(d time.Duration) {
 
 func newIdleRouter(ev *eventLog, clock *fakeClock) *Router {
 	return New(Config{
-		NewBackend: func(id string, _ bool) (Backend, error) {
-			return &fakeBackend{id: id, events: ev}, nil
-		},
+		Plan:           testPlan,
+		Start:          testStart(ev, nil),
 		EmbeddingModel: func() string { return "embed" },
 		IdleTimeout:    func(string) time.Duration { return 15 * time.Minute },
 		AfterFunc:      clock.AfterFunc,
@@ -202,12 +201,13 @@ func TestSnapshotReportsLoadingAndFailure(t *testing.T) {
 	ev, clock := &eventLog{}, &fakeClock{}
 	gate := make(chan struct{})
 	r := New(Config{
-		NewBackend: func(id string, _ bool) (Backend, error) {
-			return &fakeBackend{id: id, events: ev, startFn: func() error {
+		Plan: testPlan,
+		Start: testStart(ev, func(string) func() error {
+			return func() error {
 				<-gate
 				return errors.New("boom")
-			}}, nil
-		},
+			}
+		}),
 		EmbeddingModel: func() string { return "" },
 		AfterFunc:      clock.AfterFunc,
 	})

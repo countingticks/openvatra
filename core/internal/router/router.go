@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/engine"
 )
 
 // Kind picks the slot a request uses.
@@ -33,18 +35,13 @@ const DefaultLoadTimeout = 3 * time.Minute
 
 const stopGrace = 5 * time.Second
 
-// Backend is one model server. *process.Process satisfies it; tests use a fake.
-type Backend interface {
-	Start(ctx context.Context, timeout time.Duration) error
-	Stop(grace time.Duration)
-	BaseURL() string
-}
-
 // Config wires the router to the outside world.
 type Config struct {
-	// NewBackend builds (without starting) the server for a model id, or returns
-	// ErrUnknownModel. The embedding flag tells it to add --embeddings.
-	NewBackend func(id string, embedding bool) (Backend, error)
+	// Plan turns a model id into what to start, or returns ErrUnknownModel. Called under the slot lock, before
+	// anything is stopped. embedding: the request is for the embedding slot.
+	Plan func(id string, embedding bool) (engine.Spec, error)
+	// Start starts the planned server and returns once it is healthy. ctx carries the load timeout.
+	Start func(ctx context.Context, spec engine.Spec) (engine.Instance, error)
 	// EmbeddingModel returns the id of the chosen embedding model, "" if none.
 	// A function because the user can change the choice while core runs.
 	EmbeddingModel func() string
@@ -61,11 +58,12 @@ type Config struct {
 
 // loaded is one model's life in a slot: loading, then ready (or failed).
 type loaded struct {
-	id      string
-	backend Backend
-	ready   chan struct{} // closed when loading has finished, either way
-	err     error         // set before ready is closed
-	users   sync.WaitGroup
+	id    string
+	spec  engine.Spec
+	inst  engine.Instance // set before ready is closed, nil when the load failed
+	ready chan struct{}   // closed when loading has finished, either way
+	err   error           // set before ready is closed
+	users sync.WaitGroup
 
 	// Guarded by the slot's mutex.
 	active    int         // requests currently holding this model
@@ -113,13 +111,13 @@ func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL 
 	s.mu.Lock()
 	l := s.cur
 	if l == nil || l.id != model {
-		// Build first, so an unknown id fails without unloading what is running.
-		b, err := r.cfg.NewBackend(model, kind == Embedding)
+		// Plan first, so an unknown id fails without unloading what is running.
+		spec, err := r.cfg.Plan(model, kind == Embedding)
 		if err != nil {
 			s.mu.Unlock()
 			return "", nil, err
 		}
-		next := &loaded{id: model, backend: b, ready: make(chan struct{})}
+		next := &loaded{id: model, spec: spec, ready: make(chan struct{})}
 		old := s.cur
 		if old != nil {
 			cancelIdle(old)
@@ -147,7 +145,7 @@ func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL 
 		return "", nil, l.err
 	}
 	var once sync.Once
-	return l.backend.BaseURL(), func() { once.Do(func() { r.finish(s, l) }) }, nil
+	return l.inst.BaseURL(), func() { once.Do(func() { r.finish(s, l) }) }, nil
 }
 
 // finish ends one request's hold on l; when it was the last, the idle clock starts.
@@ -217,7 +215,7 @@ func (r *Router) retire(s *slot) {
 		<-l.ready // a half-started server must finish (or fail) before we stop it
 		l.users.Wait()
 		if l.err == nil {
-			l.backend.Stop(stopGrace)
+			l.inst.Stop(stopGrace)
 		}
 	}()
 }
@@ -232,11 +230,14 @@ func (r *Router) load(s *slot, old, next *loaded, after <-chan struct{}) {
 		<-old.ready
 		old.users.Wait()
 		if old.err == nil {
-			old.backend.Stop(stopGrace)
+			old.inst.Stop(stopGrace)
 		}
 	}
 
-	if err := next.backend.Start(context.Background(), r.cfg.LoadTimeout); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), r.cfg.LoadTimeout)
+	inst, err := r.cfg.Start(ctx, next.spec)
+	cancel()
+	if err != nil {
 		next.err = fmt.Errorf("load %s: %w", next.id, err)
 		r.mu.Lock()
 		r.lastErr[next.id] = err.Error()
@@ -252,6 +253,7 @@ func (r *Router) load(s *slot, old, next *loaded, after <-chan struct{}) {
 		return
 	}
 
+	next.inst = inst
 	r.mu.Lock()
 	delete(r.lastErr, next.id)
 	r.mu.Unlock()
