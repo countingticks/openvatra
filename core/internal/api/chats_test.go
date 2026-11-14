@@ -9,10 +9,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/chat"
+	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/event"
-	"github.com/countingticks/openvatra/core/internal/prompt"
+	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/provider/llamacpp"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -32,7 +35,15 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	svc := &chat.Service{Store: st, Router: &stubRouter{baseURL: backend.URL}, Sizes: &prompt.ContextSizes{}}
+	lc := llamacpp.New(llamacpp.Config{
+		Plan: func(id string, _ bool) (engine.Spec, error) { return engine.Spec{Model: id}, nil },
+		Start: func(context.Context, engine.Spec) (engine.Instance, error) {
+			return backendInstance(backend.URL), nil
+		},
+		EmbeddingModel: func() string { return "" },
+		List:           func() ([]provider.Model, error) { return []provider.Model{{ID: "qwen", Kind: provider.ModelChat}}, nil },
+	})
+	svc := &chat.Service{Store: st, Chat: lc, Model: lc.Prepare}
 
 	// The Host check wants the port core listens on, which is only known once the listener exists.
 	srv := httptest.NewUnstartedServer(nil)
@@ -44,6 +55,14 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 	t.Cleanup(srv.Close)
 	return srv, st
 }
+
+// backendInstance is a model server that is already running at url.
+type backendInstance string
+
+func (b backendInstance) BaseURL() string       { return string(b) }
+func (b backendInstance) Stop(time.Duration)    {}
+func (b backendInstance) State() engine.State   { return engine.StateReady }
+func (b backendInstance) Wait() <-chan struct{} { return nil }
 
 func call(t *testing.T, srv *httptest.Server, method, path, body string) *http.Response {
 	t.Helper()

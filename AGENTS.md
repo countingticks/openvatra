@@ -68,6 +68,8 @@ core/            Go module (`core.exe`): listens on 127.0.0.1 only, every reques
                  matching Host header; bundled into the app as an extra resource, built by `npm run build:core`;
                  started detached by the shell (`core.exe --detach`), found through `data/core.json`;
                  one core per data folder (`data/core.lock`)
+core/internal/   engine/ and provider/ are seams with one package per implementation below them;
+                 layers_test.go fails when a package imports across its layer
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
                  query by role or label, the way a user finds things — not by class names
 tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one

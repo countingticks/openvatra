@@ -3,15 +3,12 @@
 package chat
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"strings"
 	"time"
 
@@ -49,22 +46,16 @@ const (
 	CodeContextTooBig  = "context_too_small"
 	CodeBackendFailed  = "backend_failed"
 	CodeNoEmbedding    = "no_embedding_model"
-	fallbackContextTok = 16384 // used if llama-server won't tell its context size
+	fallbackContextTok = 16384 // used if the model's context size is unknown
 )
-
-// Acquirer hands out a ready llama-server for a model. *llamacpp.Provider satisfies it.
-type Acquirer interface {
-	Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error)
-}
 
 // Service runs chat turns.
 type Service struct {
-	Store  *store.Store
-	Router Acquirer
-	Sizes  *prompt.ContextSizes
+	Store *store.Store
+	Chat  provider.Chat
+	// Model readies a model and reports it; its Context is the size the prompt is fitted to (0 = unknown).
+	Model  func(ctx context.Context, id string) (provider.Model, error)
 	Logger *slog.Logger
-	// Client talks to llama-server. It must have no overall timeout: an answer can take minutes.
-	Client *http.Client
 	// Now is the clock for the system prompt's date; nil means the real one.
 	Now func() time.Time
 }
@@ -179,17 +170,7 @@ type turn struct {
 	started            time.Time
 	firstToken         time.Time // first reasoning or answer text
 	reasoningDone      time.Time // first answer text
-	usage              *usage
-	timings            *timings
-}
-
-type usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-}
-
-type timings struct {
-	PredictedPerSecond float64 `json:"predicted_per_second"`
+	usage              provider.Usage
 }
 
 // run answers the newest user message. It always saves the assistant message, whatever happens.
@@ -236,24 +217,18 @@ func errData(code, message string) map[string]string {
 // errors, a code and message for the user.
 func (s *Service) stream(ctx context.Context, c store.Chat, t *turn, emit func(Event)) (status, code, msg string, stats Stats) {
 	emit(Event{EventStatus, "loading-model"})
-	base, release, err := s.Router.Acquire(ctx, provider.KindChat, c.Model)
+	model, err := s.Model(ctx, c.Model)
 	if err != nil {
 		if ctx.Err() != nil {
 			return store.StatusStopped, "", "", stats
 		}
-		switch {
-		case errors.Is(err, provider.ErrUnknownModel):
-			return store.StatusError, CodeModelNotFound, "That model is no longer in your models folder.", stats
-		default:
-			return store.StatusError, CodeModelLoad, "The model could not be loaded: " + err.Error(), stats
-		}
+		code, msg := loadFailure(err)
+		return store.StatusError, code, msg, stats
 	}
-	// Held until the answer is finished, so the model is never swapped out mid-answer.
-	defer release()
 
-	ctxSize, err := s.Sizes.Get(ctx, base)
-	if err != nil {
-		s.log().Warn("context size unknown, using a default", "err", err)
+	ctxSize := model.Context
+	if ctxSize <= 0 {
+		s.log().Warn("context size unknown, using a default", "model", c.Model)
 		ctxSize = fallbackContextTok
 	}
 	stats.ContextSize = ctxSize
@@ -268,16 +243,26 @@ func (s *Service) stream(ctx context.Context, c store.Chat, t *turn, emit func(E
 	for attempt := 0; ; attempt++ {
 		built := prompt.Build(system, history, ctxSize, attempt*2)
 		stats.PromptTokens, stats.DroppedMessages, stats.FirstKeptID = built.PromptTokens, built.Dropped, built.FirstKeptID
-		err := s.call(ctx, base, c.Model, built.Messages, t, emit)
+		msgs := make([]provider.Message, len(built.Messages))
+		for i, m := range built.Messages {
+			msgs[i] = provider.TextMessage(m.Role, m.Content)
+		}
+		res, err := s.Chat.Complete(ctx, provider.Request{Model: c.Model, Messages: msgs}, func(d provider.Delta) { t.add(d, emit) })
+		t.usage = res.Usage
+		var loadErr *provider.LoadError
 		switch {
-		case err == nil:
-		case errors.Is(err, errContextExceeded) && attempt == 0 && t.content.Len() == 0 && t.reasoning.Len() == 0:
+		case err == nil && res.Stop != provider.StopCancelled:
+		case errors.Is(err, provider.ErrContextExceeded) && attempt == 0 && t.content.Len() == 0 && t.reasoning.Len() == 0:
 			s.log().Info("context exceeded, retrying with fewer turns", "chat", c.ID)
 			continue
-		case errors.Is(err, errContextExceeded):
+		case errors.Is(err, provider.ErrContextExceeded):
 			return store.StatusError, CodeContextTooBig, "This message is too long for this model.", s.finishStats(t, stats)
-		case ctx.Err() != nil:
+		case res.Stop == provider.StopCancelled || ctx.Err() != nil:
 			return store.StatusStopped, "", "", s.finishStats(t, stats)
+		case errors.Is(err, provider.ErrUnknownModel), errors.As(err, &loadErr):
+			// The model went away between Model and Complete.
+			code, msg := loadFailure(err)
+			return store.StatusError, code, msg, s.finishStats(t, stats)
 		default:
 			s.log().Warn("model stream failed", "chat", c.ID, "err", err)
 			return store.StatusError, CodeBackendFailed, "The model stopped answering.", s.finishStats(t, stats)
@@ -290,11 +275,41 @@ func (s *Service) stream(ctx context.Context, c store.Chat, t *turn, emit func(E
 	return store.StatusDone, "", "", s.finishStats(t, stats)
 }
 
+// loadFailure words a failure to ready the model for the user.
+func loadFailure(err error) (code, msg string) {
+	if errors.Is(err, provider.ErrUnknownModel) {
+		return CodeModelNotFound, "That model is no longer in your models folder."
+	}
+	return CodeModelLoad, "The model could not be loaded: " + err.Error()
+}
+
+// add copies one delta of the answer into t and on to the user. Tool calls are not offered yet, so none are kept.
+func (t *turn) add(d provider.Delta, emit func(Event)) {
+	switch d.Kind {
+	case provider.PartReasoning:
+		if t.firstToken.IsZero() {
+			t.firstToken = time.Now()
+		}
+		t.reasoning.WriteString(d.Text)
+		emit(Event{EventReasoning, d.Text})
+	case provider.PartText:
+		now := time.Now()
+		if t.firstToken.IsZero() {
+			t.firstToken = now
+		}
+		if t.reasoning.Len() > 0 && t.reasoningDone.IsZero() {
+			t.reasoningDone = now
+		}
+		t.content.WriteString(d.Text)
+		emit(Event{EventDelta, d.Text})
+	}
+}
+
 // finishStats fills the numbers the model reported, or our estimates where it reported none.
 func (s *Service) finishStats(t *turn, st Stats) Stats {
 	st.AnswerTokens = prompt.EstimateTokens(t.content.String() + t.reasoning.String())
-	if t.usage != nil {
-		st.PromptTokens, st.AnswerTokens, st.PromptTokensExact = t.usage.PromptTokens, t.usage.CompletionTokens, true
+	if t.usage.Exact {
+		st.PromptTokens, st.AnswerTokens, st.PromptTokensExact = t.usage.PromptTokens, t.usage.AnswerTokens, true
 	}
 	st.ContextUsed = st.PromptTokens + st.AnswerTokens
 	if !t.firstToken.IsZero() {
@@ -306,116 +321,10 @@ func (s *Service) finishStats(t *turn, st Stats) Stats {
 			st.TokensPerSecond = float64(st.AnswerTokens) / secs
 		}
 	}
-	if t.timings != nil && t.timings.PredictedPerSecond > 0 {
-		st.TokensPerSecond = t.timings.PredictedPerSecond
+	if t.usage.TokensPerSecond > 0 {
+		st.TokensPerSecond = t.usage.TokensPerSecond
 	}
 	return st
-}
-
-var errContextExceeded = errors.New("context exceeded")
-
-// call makes one streaming request to llama-server and forwards what it says.
-func (s *Service) call(ctx context.Context, base, model string, msgs []prompt.Message, t *turn, emit func(Event)) error {
-	body, _ := json.Marshal(map[string]any{
-		"model": model, "messages": msgs, "stream": true,
-		"stream_options": map[string]bool{"include_usage": true},
-	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	client := s.Client
-	if client == nil {
-		client = &http.Client{}
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if exceedsContext(b) {
-			return errContextExceeded
-		}
-		return fmt.Errorf("model server answered %d", resp.StatusCode)
-	}
-
-	sc := bufio.NewScanner(resp.Body)
-	sc.Buffer(make([]byte, 0, 64*1024), 4<<20)
-	for sc.Scan() {
-		line := sc.Text()
-		data, ok := strings.CutPrefix(line, "data:")
-		if !ok {
-			continue // blank separators and comments
-		}
-		data = strings.TrimSpace(data)
-		if data == "[DONE]" {
-			return nil
-		}
-		var chunk struct {
-			Choices []struct {
-				Delta struct {
-					Content   string `json:"content"`
-					Reasoning string `json:"reasoning_content"`
-				} `json:"delta"`
-			} `json:"choices"`
-			Usage   *usage   `json:"usage"`
-			Timings *timings `json:"timings"`
-			Error   *struct {
-				Message string `json:"message"`
-				Type    string `json:"type"`
-			} `json:"error"`
-		}
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue // a malformed line is not worth losing the answer over
-		}
-		if chunk.Error != nil {
-			if exceedsContext([]byte(chunk.Error.Type + " " + chunk.Error.Message)) {
-				return errContextExceeded
-			}
-			return fmt.Errorf("model error: %s", chunk.Error.Message)
-		}
-		if chunk.Usage != nil {
-			t.usage = chunk.Usage
-		}
-		if chunk.Timings != nil {
-			t.timings = chunk.Timings
-		}
-		for _, ch := range chunk.Choices {
-			if r := ch.Delta.Reasoning; r != "" {
-				if t.firstToken.IsZero() {
-					t.firstToken = time.Now()
-				}
-				t.reasoning.WriteString(r)
-				emit(Event{EventReasoning, r})
-			}
-			if d := ch.Delta.Content; d != "" {
-				now := time.Now()
-				if t.firstToken.IsZero() {
-					t.firstToken = now
-				}
-				if t.reasoning.Len() > 0 && t.reasoningDone.IsZero() {
-					t.reasoningDone = now
-				}
-				t.content.WriteString(d)
-				emit(Event{EventDelta, d})
-			}
-		}
-	}
-	// A cancelled request surfaces as a read error; the caller checks ctx to tell Stop from a failure.
-	if err := sc.Err(); err != nil {
-		return err
-	}
-	// The body ended without [DONE]: the server went away mid-answer.
-	return errors.New("stream ended early")
-}
-
-// exceedsContext recognises llama-server's "prompt is longer than the context" reply.
-func exceedsContext(b []byte) bool {
-	s := strings.ToLower(string(b))
-	return strings.Contains(s, "exceed_context_size") || strings.Contains(s, "exceeds the available context")
 }
 
 // Markdown renders a chat as a Markdown document for export. Reasoning is left out: it is not part of the answer.

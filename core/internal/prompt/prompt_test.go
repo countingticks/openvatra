@@ -1,12 +1,7 @@
 package prompt
 
 import (
-	"context"
-	"net/http"
-	"net/http/httptest"
-	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -132,59 +127,5 @@ func TestBuildEmptyHistory(t *testing.T) {
 	r := Build("S", nil, 8192, 0)
 	if len(r.Messages) != 1 || r.FirstKeptID != "" || r.Dropped != 0 {
 		t.Fatalf("unexpected: %+v", r)
-	}
-}
-
-func TestContextSizesCachesPerBaseURL(t *testing.T) {
-	var hits atomic.Int32
-	srv := func(n int) *httptest.Server {
-		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/props" {
-				http.NotFound(w, r)
-				return
-			}
-			hits.Add(1)
-			w.Write([]byte(`{"default_generation_settings":{"n_ctx":` + strconv.Itoa(n) + `}}`))
-		}))
-	}
-	a, b := srv(4096), srv(16384)
-	defer a.Close()
-	defer b.Close()
-
-	var c ContextSizes
-	for range 3 {
-		if n, err := c.Get(context.Background(), a.URL); err != nil || n != 4096 {
-			t.Fatalf("a: %d %v", n, err)
-		}
-	}
-	if n, err := c.Get(context.Background(), b.URL); err != nil || n != 16384 {
-		t.Fatalf("b: %d %v", n, err)
-	}
-	if hits.Load() != 2 {
-		t.Fatalf("asked the servers %d times, want 2 (cached per load)", hits.Load())
-	}
-}
-
-func TestContextSizesErrors(t *testing.T) {
-	cases := map[string]http.HandlerFunc{
-		"status": func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", http.StatusServiceUnavailable) },
-		"json":   func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("not json")) },
-		"no n_ctx": func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(`{"default_generation_settings":{}}`))
-		},
-	}
-	for name, h := range cases {
-		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(h)
-			defer srv.Close()
-			var c ContextSizes
-			if _, err := c.Get(context.Background(), srv.URL); err == nil {
-				t.Fatal("want an error")
-			}
-			// A failure must not be cached.
-			if len(c.sizes) != 0 {
-				t.Fatal("failure was cached")
-			}
-		})
 	}
 }
