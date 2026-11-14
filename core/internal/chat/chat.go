@@ -52,7 +52,7 @@ const (
 	fallbackContextTok = 16384 // used if llama-server won't tell its context size
 )
 
-// Acquirer hands out a ready llama-server for a model. *router.Router satisfies it.
+// Acquirer hands out a ready llama-server for a model. *llamacpp.Provider satisfies it.
 type Acquirer interface {
 	Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error)
 }
