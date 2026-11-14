@@ -6,24 +6,42 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/engine"
 )
 
-// fakeBackend records what the router does to it.
-type fakeBackend struct {
-	id      string
-	events  *eventLog
-	startFn func() error // nil means start succeeds at once
+// fakeInstance records what the router does to a started server.
+type fakeInstance struct {
+	id     string
+	events *eventLog
 }
 
-func (f *fakeBackend) Start(context.Context, time.Duration) error {
-	f.events.add("start " + f.id)
-	if f.startFn != nil {
-		return f.startFn()
+func (f *fakeInstance) Stop(time.Duration)    { f.events.add("stop " + f.id) }
+func (f *fakeInstance) BaseURL() string       { return "http://" + f.id }
+func (f *fakeInstance) State() engine.State   { return engine.StateReady }
+func (f *fakeInstance) Wait() <-chan struct{} { return nil }
+
+// testStart records the start and runs startFn (nil: succeeds at once).
+func testStart(events *eventLog, startFn func(id string) func() error) func(context.Context, engine.Spec) (engine.Instance, error) {
+	return func(ctx context.Context, spec engine.Spec) (engine.Instance, error) {
+		events.add("start " + spec.Model)
+		if startFn != nil {
+			if fn := startFn(spec.Model); fn != nil {
+				if err := fn(); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return &fakeInstance{id: spec.Model, events: events}, nil
 	}
-	return nil
 }
-func (f *fakeBackend) Stop(time.Duration) { f.events.add("stop " + f.id) }
-func (f *fakeBackend) BaseURL() string    { return "http://" + f.id }
+
+func testPlan(id string, _ bool) (engine.Spec, error) {
+	if id == "missing" {
+		return engine.Spec{}, ErrUnknownModel
+	}
+	return engine.Spec{Model: id}, nil
+}
 
 type eventLog struct {
 	mu sync.Mutex
@@ -44,16 +62,8 @@ func (e *eventLog) get() []string {
 
 func newTestRouter(events *eventLog, startFn func(id string) func() error) *Router {
 	return New(Config{
-		NewBackend: func(id string, _ bool) (Backend, error) {
-			if id == "missing" {
-				return nil, ErrUnknownModel
-			}
-			b := &fakeBackend{id: id, events: events}
-			if startFn != nil {
-				b.startFn = startFn(id)
-			}
-			return b, nil
-		},
+		Plan:           testPlan,
+		Start:          testStart(events, startFn),
 		EmbeddingModel: func() string { return "embed" },
 		LoadTimeout:    time.Second,
 	})
@@ -223,7 +233,25 @@ func TestUnknownModelKeepsCurrentRunning(t *testing.T) {
 		t.Fatalf("err = %v, want ErrUnknownModel", err)
 	}
 	if got := ev.get(); !equal(got, []string{"start a"}) {
-		t.Fatalf("events = %v; the running model must not be stopped", got)
+		t.Fatalf("events = %v; the running model must not be stopped (and nothing started for missing)", got)
+	}
+}
+
+func TestStartThatOutlastsLoadTimeoutFailsTheLoad(t *testing.T) {
+	r := New(Config{
+		Plan: testPlan,
+		Start: func(ctx context.Context, _ engine.Spec) (engine.Instance, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+		EmbeddingModel: func() string { return "" },
+		LoadTimeout:    50 * time.Millisecond,
+	})
+	if _, _, err := r.Acquire(context.Background(), Chat, "a"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want one wrapping context.DeadlineExceeded", err)
+	}
+	if snap := r.Snapshot(); len(snap) != 1 || snap[0].State != StateError {
+		t.Fatalf("snapshot = %v, want the model in error", snap)
 	}
 }
 

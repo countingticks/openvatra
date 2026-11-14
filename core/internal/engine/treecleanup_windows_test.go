@@ -1,6 +1,6 @@
 //go:build windows
 
-package process
+package engine
 
 import (
 	"bufio"
@@ -26,13 +26,15 @@ func TestJobHelper(t *testing.T) {
 		fmt.Println("setup error:", err)
 		os.Exit(1)
 	}
-	port, _ := FreePort()
-	p := New(Config{Path: fakeServer, Args: []string{"-port", fmt.Sprint(port)}, Port: port})
-	if err := p.Start(context.Background(), 10*time.Second); err != nil {
+	var r Runner
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	inst, err := r.Start(ctx, Command{Path: fakeServer, PortFlag: "-port", Health: "/health"}, nil)
+	if err != nil {
 		fmt.Println("start error:", err)
 		os.Exit(1)
 	}
-	fmt.Println("pid", p.cmd.Process.Pid)
+	fmt.Println("pid", inst.(*instance).cmd.Process.Pid)
 	time.Sleep(time.Minute) // the parent kills us long before this
 }
 

@@ -2,8 +2,8 @@ OpenVatra core adapts code from llama-swap.
 
   Project:  llama-swap (https://github.com/mostlygeek/llama-swap)
   Commit:   f0a34e78eac17ab699ea78e64d898f54c5bc448d
-  Used in:  internal/process (treecleanup_windows.go, runtime_windows.go; structure of
-            process start, health check and stop)
+  Used in:  internal/engine (treecleanup_windows.go, runtime_windows.go; structure of
+            runner.go: process start, health check and stop)
             testdata/fake-server (idea from cmd/simple-responder)
 
 Each adapted file keeps a header naming its upstream path and commit.
