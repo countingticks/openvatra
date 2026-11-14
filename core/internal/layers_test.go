@@ -43,6 +43,7 @@ var layers = map[string]pkg{
 
 	"engine":            {layer: seamLayer},
 	"engine/enginetest": {layer: seamLayer},
+	"provider":          {layer: seamLayer},
 
 	"catalog":   {layer: application},
 	"chat":      {layer: application},
