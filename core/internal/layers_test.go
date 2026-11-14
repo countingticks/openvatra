@@ -41,9 +41,10 @@ var layers = map[string]pkg{
 	// a test-only fixture of the openapi tests
 	"api/openapi/internal/clash": {layer: foundation},
 
-	"engine":            {layer: seamLayer},
-	"engine/enginetest": {layer: seamLayer},
-	"provider":          {layer: seamLayer},
+	"engine":                {layer: seamLayer},
+	"engine/enginetest":     {layer: seamLayer},
+	"provider":              {layer: seamLayer},
+	"provider/providertest": {layer: seamLayer},
 
 	"catalog":   {layer: application},
 	"chat":      {layer: application},

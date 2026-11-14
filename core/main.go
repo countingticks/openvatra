@@ -35,7 +35,6 @@ import (
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/provider/llamacpp"
 	"github.com/countingticks/openvatra/core/internal/removal"
@@ -284,7 +283,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	})
 	var chats *chat.Service
 	if chatStore != nil {
-		chats = &chat.Service{Store: chatStore, Router: lc, Sizes: &prompt.ContextSizes{}, Logger: logger}
+		chats = &chat.Service{Store: chatStore, Chat: lc, Model: lc.Prepare, Logger: logger}
 	}
 	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
 	hardware := hw.NewChecker(func() string { return resolve().LlamaServerPath }, logger)

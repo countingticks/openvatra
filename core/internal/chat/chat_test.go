@@ -3,9 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -17,47 +15,60 @@ import (
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
-type fakeRouter struct {
-	base string
-	err  error
+// call is one scripted answer of fakeProvider.
+type call struct {
+	deltas []provider.Delta
+	res    provider.Result
+	err    error
+	hang   bool // after the deltas, wait for the request's context to end, then answer StopCancelled
 }
 
-func (f fakeRouter) Acquire(context.Context, provider.Kind, string) (string, func(), error) {
-	return f.base, func() {}, f.err
-}
-
-// upstream is a fake llama-server: /props plus a scripted /v1/chat/completions.
-type upstream struct {
+// fakeProvider plays one scripted call per Complete (the last one repeats) and records each Request.
+type fakeProvider struct {
 	mu       sync.Mutex
-	requests []string
-	handler  func(n int, w http.ResponseWriter, r *http.Request) // n = 0 for the first completion request
+	calls    []call
+	requests []provider.Request
+	modelErr error // what Model returns instead of the model
+	context  int   // the Context Model reports
 }
 
-func (u *upstream) start(t *testing.T) string {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/props" {
-			fmt.Fprint(w, `{"default_generation_settings":{"n_ctx":8192}}`)
-			return
-		}
-		u.mu.Lock()
-		n := len(u.requests)
-		u.requests = append(u.requests, r.URL.Path)
-		u.mu.Unlock()
-		u.handler(n, w, r)
-	}))
-	t.Cleanup(srv.Close)
-	return srv.URL
-}
-
-func sse(w http.ResponseWriter, lines ...string) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	for _, l := range lines {
-		fmt.Fprintf(w, "data: %s\n\n", l)
+func (f *fakeProvider) Complete(ctx context.Context, req provider.Request, emit func(provider.Delta)) (provider.Result, error) {
+	f.mu.Lock()
+	n := len(f.requests)
+	f.requests = append(f.requests, req)
+	c := f.calls[min(n, len(f.calls)-1)]
+	f.mu.Unlock()
+	var parts []provider.Part
+	for _, d := range c.deltas {
+		emit(d)
+		parts = provider.AppendDelta(parts, d)
 	}
-	w.(http.Flusher).Flush()
+	if c.hang {
+		<-ctx.Done()
+		return provider.Result{Parts: parts, Stop: provider.StopCancelled}, nil
+	}
+	res := c.res
+	res.Parts = parts
+	return res, c.err
 }
 
-func newService(t *testing.T, up *upstream) (*Service, store.Chat) {
+func (f *fakeProvider) model(_ context.Context, id string) (provider.Model, error) {
+	if f.modelErr != nil {
+		return provider.Model{}, f.modelErr
+	}
+	return provider.Model{ID: id, Kind: provider.ModelChat, Context: f.context}, nil
+}
+
+func (f *fakeProvider) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.requests)
+}
+
+func text(s string) provider.Delta      { return provider.Delta{Kind: provider.PartText, Text: s} }
+func reasoning(s string) provider.Delta { return provider.Delta{Kind: provider.PartReasoning, Text: s} }
+
+func newService(t *testing.T, calls ...call) (*Service, store.Chat, *fakeProvider) {
 	t.Helper()
 	st, err := store.Open(t.TempDir(), event.NewBus(16))
 	if err != nil {
@@ -68,11 +79,12 @@ func newService(t *testing.T, up *upstream) (*Service, store.Chat) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fp := &fakeProvider{calls: calls, context: 8192}
 	svc := &Service{
-		Store: st, Router: fakeRouter{base: up.start(t)}, Sizes: &prompt.ContextSizes{},
+		Store: st, Chat: fp, Model: fp.model,
 		Now: func() time.Time { return time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC) },
 	}
-	return svc, c
+	return svc, c, fp
 }
 
 type recorder struct{ events []Event }
@@ -102,16 +114,10 @@ func lastAnswer(t *testing.T, svc *Service, chatID string) store.Message {
 }
 
 func TestSendStreamsReasoningAnswerAndUsage(t *testing.T) {
-	up := &upstream{handler: func(_ int, w http.ResponseWriter, _ *http.Request) {
-		sse(w,
-			`{"choices":[{"delta":{"reasoning_content":"hmm "}}]}`,
-			`{"choices":[{"delta":{"reasoning_content":"ok"}}]}`,
-			`{"choices":[{"delta":{"content":"Hel"}}]}`,
-			`{"choices":[{"delta":{"content":"lo"}}]}`,
-			`{"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":7},"timings":{"predicted_per_second":42.5}}`,
-			`[DONE]`)
-	}}
-	svc, c := newService(t, up)
+	svc, c, _ := newService(t, call{
+		deltas: []provider.Delta{reasoning("hmm "), reasoning("ok"), text("Hel"), text("lo")},
+		res:    provider.Result{Usage: provider.Usage{PromptTokens: 20, AnswerTokens: 7, Exact: true, TokensPerSecond: 42.5}},
+	})
 	var rec recorder
 	if err := svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit); err != nil {
 		t.Fatal(err)
@@ -135,31 +141,42 @@ func TestSendStreamsReasoningAnswerAndUsage(t *testing.T) {
 	}
 }
 
+func TestSendWithoutUsageEstimatesCounts(t *testing.T) {
+	svc, c, _ := newService(t, call{deltas: []provider.Delta{reasoning("thinking hard"), text("a fairly short answer")}})
+	var rec recorder
+	_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
+	done := rec.events[len(rec.events)-1].Data.(map[string]any)["stats"].(Stats)
+	want := prompt.EstimateTokens("a fairly short answer" + "thinking hard")
+	if done.PromptTokensExact || done.PromptTokens == 0 || done.AnswerTokens != want {
+		t.Fatalf("stats %+v, want estimated counts (answer %d) and promptTokensExact false", done, want)
+	}
+}
+
 func TestSendPutsDateInSystemPromptAndLeavesReasoningOutOfHistory(t *testing.T) {
-	var bodies []string
-	up := &upstream{handler: func(_ int, w http.ResponseWriter, r *http.Request) {
-		b := make([]byte, 1<<16)
-		n, _ := r.Body.Read(b)
-		bodies = append(bodies, string(b[:n]))
-		sse(w, `{"choices":[{"delta":{"reasoning_content":"SECRET"}}]}`, `{"choices":[{"delta":{"content":"a"}}]}`, `[DONE]`)
-	}}
-	svc, c := newService(t, up)
+	svc, c, fp := newService(t, call{deltas: []provider.Delta{reasoning("SECRET"), text("a")}})
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "one"}, rec.emit)
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "two"}, rec.emit)
-	if !strings.Contains(bodies[0], "Wednesday, 4 November 2026") || !strings.Contains(bodies[0], `"stream_options":{"include_usage":true}`) {
-		t.Fatalf("first request: %s", bodies[0])
+	first, second := fp.requests[0], fp.requests[1]
+	if first.Model != "qwen" || first.Messages[0].Role != "system" || !strings.Contains(first.Messages[0].Parts[0].Text, "Wednesday, 4 November 2026") {
+		t.Fatalf("first request: %+v", first)
 	}
-	if strings.Contains(bodies[1], "SECRET") || !strings.Contains(bodies[1], "one") {
-		t.Fatalf("second request must carry history without reasoning: %s", bodies[1])
+	if first.MaxOut != 0 || len(first.Tools) != 0 || first.Sampling != (provider.Sampling{}) || first.CacheKey != "" {
+		t.Fatalf("first request sets more than model and messages: %+v", first)
+	}
+	want := []provider.Message{
+		first.Messages[0],
+		provider.TextMessage("user", "one"),
+		provider.TextMessage("assistant", "a"),
+		provider.TextMessage("user", "two"),
+	}
+	if !reflect.DeepEqual(second.Messages, want) {
+		t.Fatalf("second request must carry history without reasoning: %+v", second.Messages)
 	}
 }
 
 func TestErrorMidStreamKeepsPartialAnswer(t *testing.T) {
-	up := &upstream{handler: func(_ int, w http.ResponseWriter, _ *http.Request) {
-		sse(w, `{"choices":[{"delta":{"content":"par"}}]}`, `{"error":{"message":"boom","type":"server_error"}}`)
-	}}
-	svc, c := newService(t, up)
+	svc, c, _ := newService(t, call{deltas: []provider.Delta{text("par")}, err: errors.New("model error: boom")})
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
 	last := rec.events[len(rec.events)-1]
@@ -173,27 +190,16 @@ func TestErrorMidStreamKeepsPartialAnswer(t *testing.T) {
 }
 
 func TestContextExceededRetriesOnceWithFewerTurns(t *testing.T) {
-	up := &upstream{handler: func(n int, w http.ResponseWriter, _ *http.Request) {
-		if n < 2 { // earlier turns succeed
-			sse(w, `{"choices":[{"delta":{"content":"ok"}}]}`, `[DONE]`)
-			return
-		}
-		if n == 2 {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprint(w, `{"error":{"type":"exceed_context_size_error","message":"too long"}}`)
-			return
-		}
-		sse(w, `{"choices":[{"delta":{"content":"fits"}}]}`, `[DONE]`)
-	}}
-	svc, c := newService(t, up)
+	ok := call{deltas: []provider.Delta{text("ok")}} // earlier turns succeed
+	svc, c, fp := newService(t, ok, ok, call{err: provider.ErrContextExceeded}, call{deltas: []provider.Delta{text("fits")}})
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "one"}, rec.emit)
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "two"}, rec.emit)
 	rec = recorder{}
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "three"}, rec.emit)
 	m := lastAnswer(t, svc, c.ID)
-	if m.Content != "fits" || m.Status != store.StatusDone || len(up.requests) != 4 {
-		t.Fatalf("saved %+v after %d requests", m, len(up.requests))
+	if m.Content != "fits" || m.Status != store.StatusDone || fp.count() != 4 {
+		t.Fatalf("saved %+v after %d requests", m, fp.count())
 	}
 	if !strings.Contains(string(m.Stats), `"droppedMessages":2`) {
 		t.Fatalf("cut point not recorded: %s", m.Stats)
@@ -201,28 +207,21 @@ func TestContextExceededRetriesOnceWithFewerTurns(t *testing.T) {
 }
 
 func TestContextExceededTwiceTellsTheUser(t *testing.T) {
-	up := &upstream{handler: func(_ int, w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"error":{"type":"exceed_context_size_error"}}`)
-	}}
-	svc, c := newService(t, up)
+	svc, c, fp := newService(t, call{err: provider.ErrContextExceeded})
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
 	last := rec.events[len(rec.events)-1]
 	if last.Name != EventError || last.Data.(map[string]string)["code"] != CodeContextTooBig {
 		t.Fatalf("last event %+v", last)
 	}
-	if len(up.requests) != 2 {
-		t.Fatalf("requests = %d, want exactly one retry", len(up.requests))
+	if fp.count() != 2 {
+		t.Fatalf("requests = %d, want exactly one retry", fp.count())
 	}
 }
 
 func TestCancelSavesPartialAnswerAsStopped(t *testing.T) {
-	up := &upstream{handler: func(_ int, w http.ResponseWriter, r *http.Request) {
-		sse(w, `{"choices":[{"delta":{"content":"half"}}]}`)
-		<-r.Context().Done() // the model keeps "thinking" until we hang up
-	}}
-	svc, c := newService(t, up)
+	// The model keeps "thinking" until we hang up.
+	svc, c, _ := newService(t, call{deltas: []provider.Delta{text("half")}, hang: true})
 	ctx, cancel := context.WithCancel(context.Background())
 	// Stop is pressed once the first text has reached the user.
 	stopOnDelta := func(e Event) {
@@ -240,25 +239,69 @@ func TestCancelSavesPartialAnswerAsStopped(t *testing.T) {
 }
 
 func TestModelLoadFailureIsReportedAndSaved(t *testing.T) {
-	up := &upstream{handler: func(int, http.ResponseWriter, *http.Request) {}}
-	svc, c := newService(t, up)
-	svc.Router = fakeRouter{err: provider.ErrUnknownModel}
+	tests := []struct {
+		name      string
+		err       error
+		code      string
+		inMessage string
+	}{
+		{"unknown model", provider.ErrUnknownModel, CodeModelNotFound, "no longer in your models folder"},
+		{"failed load", &provider.LoadError{Model: "qwen", Err: errors.New("exited")}, CodeModelLoad, "load qwen: exited"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, c, fp := newService(t, call{})
+			fp.modelErr = tt.err
+			var rec recorder
+			_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
+			last := rec.events[len(rec.events)-1]
+			data := last.Data.(map[string]string)
+			if last.Name != EventError || data["code"] != tt.code || !strings.Contains(data["message"], tt.inMessage) {
+				t.Fatalf("last event %+v", last)
+			}
+			if m := lastAnswer(t, svc, c.ID); m.Status != store.StatusError {
+				t.Fatalf("saved %+v", m)
+			}
+			if fp.count() != 0 {
+				t.Fatalf("Complete called %d times after Model failed", fp.count())
+			}
+		})
+	}
+}
+
+func TestCompleteOutcomes(t *testing.T) {
+	t.Run("LoadError from Complete is model_load_failed", func(t *testing.T) {
+		svc, c, _ := newService(t, call{err: &provider.LoadError{Model: "qwen", Err: errors.New("exited")}})
+		var rec recorder
+		_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
+		last := rec.events[len(rec.events)-1]
+		if last.Name != EventError || last.Data.(map[string]string)["code"] != CodeModelLoad {
+			t.Fatalf("last event %+v", last)
+		}
+	})
+	t.Run("StopLength is saved as done", func(t *testing.T) {
+		svc, c, _ := newService(t, call{deltas: []provider.Delta{text("cut")}, res: provider.Result{Stop: provider.StopLength}})
+		var rec recorder
+		_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
+		if m := lastAnswer(t, svc, c.ID); m.Status != store.StatusDone || m.Content != "cut" {
+			t.Fatalf("saved %+v", m)
+		}
+	})
+}
+
+func TestUnknownContextSizeUsesTheDefault(t *testing.T) {
+	svc, c, fp := newService(t, call{deltas: []provider.Delta{text("a")}})
+	fp.context = 0
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
-	last := rec.events[len(rec.events)-1]
-	if last.Name != EventError || last.Data.(map[string]string)["code"] != CodeModelNotFound {
-		t.Fatalf("last event %+v", last)
-	}
-	if m := lastAnswer(t, svc, c.ID); m.Status != store.StatusError {
-		t.Fatalf("saved %+v", m)
+	done := rec.events[len(rec.events)-1].Data.(map[string]any)["stats"].(Stats)
+	if done.ContextSize != 16384 {
+		t.Fatalf("context size %d, want 16384", done.ContextSize)
 	}
 }
 
 func TestRegenerateReplacesTheLastAnswer(t *testing.T) {
-	up := &upstream{handler: func(n int, w http.ResponseWriter, _ *http.Request) {
-		sse(w, fmt.Sprintf(`{"choices":[{"delta":{"content":"answer %d"}}]}`, n), `[DONE]`)
-	}}
-	svc, c := newService(t, up)
+	svc, c, _ := newService(t, call{deltas: []provider.Delta{text("answer 0")}}, call{deltas: []provider.Delta{text("answer 1")}})
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
 	_ = svc.Regenerate(context.Background(), c.ID, rec.emit)
@@ -269,10 +312,7 @@ func TestRegenerateReplacesTheLastAnswer(t *testing.T) {
 }
 
 func TestReplaceLastSwapsQuestionAndAnswer(t *testing.T) {
-	up := &upstream{handler: func(_ int, w http.ResponseWriter, _ *http.Request) {
-		sse(w, `{"choices":[{"delta":{"content":"x"}}]}`, `[DONE]`)
-	}}
-	svc, c := newService(t, up)
+	svc, c, _ := newService(t, call{deltas: []provider.Delta{text("x")}})
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "typo"}, rec.emit)
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "fixed", ReplaceLast: true}, rec.emit)
@@ -283,8 +323,7 @@ func TestReplaceLastSwapsQuestionAndAnswer(t *testing.T) {
 }
 
 func TestBadInputAndUnknownChat(t *testing.T) {
-	up := &upstream{handler: func(int, http.ResponseWriter, *http.Request) {}}
-	svc, c := newService(t, up)
+	svc, c, _ := newService(t, call{})
 	noop := func(Event) {}
 	if err := svc.Send(context.Background(), c.ID, Input{Text: "  "}, noop); !errors.Is(err, ErrBadInput) {
 		t.Fatalf("empty text: %v", err)
