@@ -13,7 +13,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // Deps is everything the routes reach.
@@ -25,7 +25,8 @@ type Deps struct {
 	Shutdown func() // called once the reply is sent, when a client asks core to stop
 	// ListModels reports the models on disk now (a function: the folder changes at runtime).
 	ListModels func() ([]models.Model, error)
-	Router     Router
+	Resident   provider.Resident
+	Upstream   provider.Upstream
 	Config     Config // nil only in tests: the config routes answer 503
 	Hardware   Hardware
 	Catalog    Catalog
@@ -89,11 +90,11 @@ func routes(d Deps, t *tokens) []Route {
 			modelList(d.ListModels)).
 			WithErrors("models_unreadable"),
 		Raw(http.MethodPost, "/v1/chat/completions", UI, "openaiChatCompletions", "Chat with a model, OpenAI style",
-			proxy(d.Router, router.Chat)).
+			proxy(d.Upstream, provider.KindChat)).
 			WithErrors("body_unreadable", "bad_request", "model_not_found", "model_load_failed", "bad_backend",
 				"backend_failed"),
 		Raw(http.MethodPost, "/v1/embeddings", UI, "openaiEmbeddings", "Embed text with the embedding model, OpenAI style",
-			proxy(d.Router, router.Embedding)).
+			proxy(d.Upstream, provider.KindEmbedding)).
 			WithErrors("body_unreadable", "no_embedding_model", "model_load_failed", "bad_backend", "backend_failed"),
 		JSON(http.MethodPost, "/api/tokens", Shell, "issueToken", "Issue a token for the app's window",
 			func(_ context.Context, in TokenRequest) (TokenBody, error) {

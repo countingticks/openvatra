@@ -11,18 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // stubRouter always answers with one backend and records what was asked.
 type stubRouter struct {
 	baseURL  string
 	err      error
-	kind     router.Kind
+	kind     provider.Kind
 	model    string
 	released atomic.Bool
 
-	snapshot []router.ModelState
+	snapshot []provider.ModelState
 	changes  chan struct{}
 	loaded   string
 	unloaded string
@@ -30,7 +30,7 @@ type stubRouter struct {
 	notified int
 }
 
-func (s *stubRouter) Snapshot() []router.ModelState { return s.snapshot }
+func (s *stubRouter) States() []provider.ModelState { return s.snapshot }
 func (s *stubRouter) Subscribe() (<-chan struct{}, func()) {
 	return s.changes, func() {}
 }
@@ -38,7 +38,7 @@ func (s *stubRouter) Load(_ context.Context, id string) error { s.loaded = id; r
 func (s *stubRouter) Unload(id string) bool                   { s.unloaded = id; return s.unloadOK }
 func (s *stubRouter) Notify()                                 { s.notified++ }
 
-func (s *stubRouter) Acquire(_ context.Context, kind router.Kind, model string) (string, func(), error) {
+func (s *stubRouter) Acquire(_ context.Context, kind provider.Kind, model string) (string, func(), error) {
 	s.kind, s.model = kind, model
 	if s.err != nil {
 		return "", nil, s.err
@@ -71,12 +71,12 @@ func TestChatProxyPicksModelFromBodyAndStripsToken(t *testing.T) {
 	rt := &stubRouter{baseURL: backend.URL}
 
 	body := `{"model":"qwen","messages":[]}`
-	resp := post(t, proxy(rt, router.Chat), body)
+	resp := post(t, proxy(rt, provider.KindChat), body)
 
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
-	if rt.kind != router.Chat || rt.model != "qwen" {
+	if rt.kind != provider.KindChat || rt.model != "qwen" {
 		t.Fatalf("router asked for %v %q", rt.kind, rt.model)
 	}
 	if gotBody != body {
@@ -102,8 +102,8 @@ func TestEmbeddingsProxyDoesNotNeedModelField(t *testing.T) {
 	defer backend.Close()
 	rt := &stubRouter{baseURL: backend.URL}
 
-	resp := post(t, proxy(rt, router.Embedding), `{"input":"hi"}`)
-	if resp.StatusCode != 200 || rt.kind != router.Embedding {
+	resp := post(t, proxy(rt, provider.KindEmbedding), `{"input":"hi"}`)
+	if resp.StatusCode != 200 || rt.kind != provider.KindEmbedding {
 		t.Fatalf("status = %d, kind = %v", resp.StatusCode, rt.kind)
 	}
 }
@@ -119,7 +119,7 @@ func TestChatProxyStreamsChunksAsTheyArrive(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	resp := post(t, proxy(&stubRouter{baseURL: backend.URL}, router.Chat), `{"model":"m"}`)
+	resp := post(t, proxy(&stubRouter{baseURL: backend.URL}, provider.KindChat), `{"model":"m"}`)
 	r := bufio.NewReader(resp.Body)
 
 	first := make(chan string, 1)
@@ -142,17 +142,17 @@ func TestChatProxyStreamsChunksAsTheyArrive(t *testing.T) {
 func TestProxyErrors(t *testing.T) {
 	cases := []struct {
 		name   string
-		kind   router.Kind
+		kind   provider.Kind
 		body   string
 		err    error
 		status int
 		code   string
 	}{
-		{"no model field", router.Chat, `{}`, nil, 400, "bad_request"},
-		{"not json", router.Chat, `nope`, nil, 400, "bad_request"},
-		{"unknown model", router.Chat, `{"model":"x"}`, router.ErrUnknownModel, 404, "model_not_found"},
-		{"no embedding model", router.Embedding, `{}`, router.ErrNoEmbeddingModel, 409, "no_embedding_model"},
-		{"load failed", router.Chat, `{"model":"x"}`, io.ErrUnexpectedEOF, 503, "model_load_failed"},
+		{"no model field", provider.KindChat, `{}`, nil, 400, "bad_request"},
+		{"not json", provider.KindChat, `nope`, nil, 400, "bad_request"},
+		{"unknown model", provider.KindChat, `{"model":"x"}`, provider.ErrUnknownModel, 404, "model_not_found"},
+		{"no embedding model", provider.KindEmbedding, `{}`, provider.ErrNoEmbeddingModel, 409, "no_embedding_model"},
+		{"load failed", provider.KindChat, `{"model":"x"}`, io.ErrUnexpectedEOF, 503, "model_load_failed"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

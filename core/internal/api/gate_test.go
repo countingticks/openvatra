@@ -25,7 +25,7 @@ func newGate(t *testing.T) *gateFixture {
 	f := &gateFixture{}
 	d := testDeps(Deps{
 		Origins:    []string{testOrigin},
-		Router:     &stubRouter{},
+		Resident:   &stubRouter{},
 		ListModels: func() ([]models.Model, error) { return nil, nil },
 		Shutdown:   func() { f.shutdowns++ },
 	})

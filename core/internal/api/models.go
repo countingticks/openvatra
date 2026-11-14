@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/feed"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // ModelPath is the input of the routes that name one model.
@@ -20,7 +20,7 @@ func modelRoutes(d Deps) []Route {
 	return []Route{
 		JSON(http.MethodGet, "/api/models", UI, "listModels", "List the models on disk with their state",
 			func(context.Context, struct{}) (feed.StateBody, error) {
-				body, err := feed.State(d.Router, d.ListModels)
+				body, err := feed.State(d.Resident, d.ListModels)
 				if err != nil {
 					return feed.StateBody{}, errModelsUnreadable
 				}
@@ -29,16 +29,16 @@ func modelRoutes(d Deps) []Route {
 			WithErrors("models_unreadable"),
 		JSON(http.MethodPost, "/api/models/{id}/load", UI, "loadModel", "Load a model and answer once it is ready",
 			func(ctx context.Context, in ModelPath) (StatusBody, error) {
-				if err := d.Router.Load(ctx, in.ID); err != nil {
+				if err := d.Resident.Load(ctx, in.ID); err != nil {
 					return StatusBody{}, acquireError(err)
 				}
-				return StatusBody{router.StateReady}, nil
+				return StatusBody{provider.StateReady}, nil
 			}).
 			WithErrors("model_not_found", "no_embedding_model", "model_load_failed"),
 		// 202: the server may still be finishing a reply and stops in the background.
 		JSON(http.MethodPost, "/api/models/{id}/unload", UI, "unloadModel", "Unload a model",
 			func(_ context.Context, in ModelPath) (StatusBody, error) {
-				if !d.Router.Unload(in.ID) {
+				if !d.Resident.Unload(in.ID) {
 					return StatusBody{}, &Error{Status: http.StatusNotFound, Code: "model_not_loaded",
 						Message: "that model is not loaded"}
 				}
@@ -50,7 +50,7 @@ func modelRoutes(d Deps) []Route {
 		// it.
 		JSON(http.MethodPost, "/api/models/refresh", UI, "refreshModels", "Tell every listener to re-read the models folder",
 			func(context.Context, struct{}) (StatusBody, error) {
-				d.Router.Notify()
+				d.Resident.Notify()
 				return StatusBody{"refreshing"}, nil
 			}).
 			WithStatus(http.StatusAccepted),

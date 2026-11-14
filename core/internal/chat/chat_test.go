@@ -13,7 +13,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/prompt"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -22,7 +22,7 @@ type fakeRouter struct {
 	err  error
 }
 
-func (f fakeRouter) Acquire(context.Context, router.Kind, string) (string, func(), error) {
+func (f fakeRouter) Acquire(context.Context, provider.Kind, string) (string, func(), error) {
 	return f.base, func() {}, f.err
 }
 
@@ -242,7 +242,7 @@ func TestCancelSavesPartialAnswerAsStopped(t *testing.T) {
 func TestModelLoadFailureIsReportedAndSaved(t *testing.T) {
 	up := &upstream{handler: func(int, http.ResponseWriter, *http.Request) {}}
 	svc, c := newService(t, up)
-	svc.Router = fakeRouter{err: router.ErrUnknownModel}
+	svc.Router = fakeRouter{err: provider.ErrUnknownModel}
 	var rec recorder
 	_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
 	last := rec.events[len(rec.events)-1]

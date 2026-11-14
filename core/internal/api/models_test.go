@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
-func callModels(t *testing.T, rt Router, method, path string) *httptest.ResponseRecorder {
+func callModels(t *testing.T, rt provider.Resident, method, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
@@ -19,12 +19,12 @@ func callModels(t *testing.T, rt Router, method, path string) *httptest.Response
 	list := func() ([]models.Model, error) {
 		return []models.Model{{ID: "qwen", SizeBytes: 5, Kind: models.KindChat}, {ID: "gemma", SizeBytes: 7, Kind: models.KindChat}}, nil
 	}
-	testHandler(t, Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Resident: rt, ListModels: list}).ServeHTTP(rec, req)
 	return rec
 }
 
 func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
-	rt := &stubRouter{snapshot: []router.ModelState{{ID: "qwen", State: router.StateReady, Busy: true}}}
+	rt := &stubRouter{snapshot: []provider.ModelState{{ID: "qwen", State: provider.StateReady, Busy: true}}}
 	rec := callModels(t, rt, http.MethodGet, "/api/models")
 	want := `{"models":[` +
 		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat"},` +
@@ -35,10 +35,10 @@ func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 }
 
 func TestListModelsStatesAndKindsAreDocumentedEnumValues(t *testing.T) {
-	rt := &stubRouter{snapshot: []router.ModelState{
-		{ID: "a", State: router.StateLoading},
-		{ID: "b", State: router.StateReady},
-		{ID: "c", State: router.StateError, Error: "exited"},
+	rt := &stubRouter{snapshot: []provider.ModelState{
+		{ID: "a", State: provider.StateLoading},
+		{ID: "b", State: provider.StateReady},
+		{ID: "c", State: provider.StateError, Error: "exited"},
 	}}
 	list := func() ([]models.Model, error) {
 		return []models.Model{
@@ -53,7 +53,7 @@ func TestListModelsStatesAndKindsAreDocumentedEnumValues(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
 	// checked fails the test on a state or kind outside the document's enum.
-	testHandler(t, Deps{Router: rt, ListModels: list}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Resident: rt, ListModels: list}).ServeHTTP(rec, req)
 	for _, want := range []string{`"state":"loading"`, `"state":"ready"`, `"state":"error"`, `"state":"stopped"`,
 		`"kind":"chat"`, `"kind":"embedding"`, `"kind":"unreadable"`} {
 		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
@@ -77,7 +77,7 @@ func TestLoadAndUnload(t *testing.T) {
 		contains string
 	}{
 		{"load", &stubRouter{}, "/api/models/qwen/load", 200, `{"status":"ready"}`},
-		{"load of an unknown model", &stubRouter{err: router.ErrUnknownModel}, "/api/models/nope/load", 404, `"error":"model_not_found"`},
+		{"load of an unknown model", &stubRouter{err: provider.ErrUnknownModel}, "/api/models/nope/load", 404, `"error":"model_not_found"`},
 		{"failed load", &stubRouter{err: errors.New("llama-server exited")}, "/api/models/qwen/load", 503, `"error":"model_load_failed","message":"llama-server exited"`},
 		{"unload", &stubRouter{unloadOK: true}, "/api/models/qwen/unload", 202, `{"status":"stopped"}`},
 		{"unload of a model not loaded", &stubRouter{}, "/api/models/qwen/unload", 404, `"error":"model_not_loaded"`},

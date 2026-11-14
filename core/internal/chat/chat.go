@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/prompt"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -52,9 +52,9 @@ const (
 	fallbackContextTok = 16384 // used if llama-server won't tell its context size
 )
 
-// Acquirer hands out a ready llama-server for a model. *router.Router satisfies it.
+// Acquirer hands out a ready llama-server for a model. *llamacpp.Provider satisfies it.
 type Acquirer interface {
-	Acquire(ctx context.Context, kind router.Kind, model string) (baseURL string, release func(), err error)
+	Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error)
 }
 
 // Service runs chat turns.
@@ -236,13 +236,13 @@ func errData(code, message string) map[string]string {
 // errors, a code and message for the user.
 func (s *Service) stream(ctx context.Context, c store.Chat, t *turn, emit func(Event)) (status, code, msg string, stats Stats) {
 	emit(Event{EventStatus, "loading-model"})
-	base, release, err := s.Router.Acquire(ctx, router.Chat, c.Model)
+	base, release, err := s.Router.Acquire(ctx, provider.KindChat, c.Model)
 	if err != nil {
 		if ctx.Err() != nil {
 			return store.StatusStopped, "", "", stats
 		}
 		switch {
-		case errors.Is(err, router.ErrUnknownModel):
+		case errors.Is(err, provider.ErrUnknownModel):
 			return store.StatusError, CodeModelNotFound, "That model is no longer in your models folder.", stats
 		default:
 			return store.StatusError, CodeModelLoad, "The model could not be loaded: " + err.Error(), stats

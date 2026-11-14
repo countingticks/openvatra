@@ -1,38 +1,24 @@
-package router
+package llamacpp
 
 import (
 	"context"
 	"sort"
+
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
-// Model states the router reports. "stopped" is left to the caller: the router
-// only knows the models it has touched.
-const (
-	StateLoading = "loading"
-	StateReady   = "ready"
-	StateError   = "error"
-)
-
-// ModelState is what the router knows about one model.
-type ModelState struct {
-	ID    string `json:"id"`
-	State string `json:"state" enum:"stopped,loading,ready,error"`
-	Busy  bool   `json:"busy"`
-	Error string `json:"error,omitempty"`
-}
-
-// Snapshot lists the loaded and loading models plus any whose last load failed.
-func (r *Router) Snapshot() []ModelState {
-	var out []ModelState
+// States lists the loaded and loading models plus any whose last load failed.
+func (r *Provider) States() []provider.ModelState {
+	var out []provider.ModelState
 	seen := map[string]bool{}
 	for i := range r.slots {
 		s := &r.slots[i]
 		s.mu.Lock()
 		if l := s.cur; l != nil {
-			st := ModelState{ID: l.id, State: StateLoading, Busy: l.active > 0}
+			st := provider.ModelState{ID: l.id, State: provider.StateLoading, Busy: l.active > 0}
 			select {
 			case <-l.ready:
-				st.State = StateReady
+				st.State = provider.StateReady
 			default:
 			}
 			out = append(out, st)
@@ -43,7 +29,7 @@ func (r *Router) Snapshot() []ModelState {
 	r.mu.Lock()
 	for id, msg := range r.lastErr {
 		if !seen[id] {
-			out = append(out, ModelState{ID: id, State: StateError, Error: msg})
+			out = append(out, provider.ModelState{ID: id, State: provider.StateError, Error: msg})
 		}
 	}
 	r.mu.Unlock()
@@ -53,8 +39,8 @@ func (r *Router) Snapshot() []ModelState {
 
 // Subscribe returns a channel that receives a signal after any state change, and
 // a function to stop listening. Signals coalesce: a slow reader gets one signal
-// for several changes and should call Snapshot again.
-func (r *Router) Subscribe() (<-chan struct{}, func()) {
+// for several changes and should call States again.
+func (r *Provider) Subscribe() (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	r.mu.Lock()
 	r.subs[ch] = struct{}{}
@@ -66,10 +52,10 @@ func (r *Router) Subscribe() (<-chan struct{}, func()) {
 	}
 }
 
-// Notify tells every subscriber to re-read the state, for changes the router doesn't see itself (the config).
-func (r *Router) Notify() { r.notify() }
+// Notify tells every subscriber to re-read the state, for changes the provider doesn't see itself (the config).
+func (r *Provider) Notify() { r.notify() }
 
-func (r *Router) notify() {
+func (r *Provider) notify() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for ch := range r.subs {
@@ -82,10 +68,10 @@ func (r *Router) notify() {
 
 // Load loads a model by hand and returns once it is ready. The model is then
 // idle, so the idle timer applies to it like to any other.
-func (r *Router) Load(ctx context.Context, id string) error {
-	kind := Chat
+func (r *Provider) Load(ctx context.Context, id string) error {
+	kind := provider.KindChat
 	if id == r.cfg.EmbeddingModel() {
-		kind = Embedding
+		kind = provider.KindEmbedding
 	}
 	_, release, err := r.Acquire(ctx, kind, id)
 	if err != nil {
@@ -97,7 +83,7 @@ func (r *Router) Load(ctx context.Context, id string) error {
 
 // Unload stops a model by hand once its running requests finish and reports
 // whether it was loaded. The server stops in the background.
-func (r *Router) Unload(id string) bool {
+func (r *Provider) Unload(id string) bool {
 	found := false
 	for i := range r.slots {
 		s := &r.slots[i]

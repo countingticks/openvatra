@@ -23,7 +23,7 @@ const (
 
 type pkg struct {
 	layer layer
-	seam  string // impl only: its own seam package, e.g. "engine"
+	seams []string // impl only: the seam packages it implements, e.g. "engine"
 }
 
 const modPrefix = "github.com/countingticks/openvatra/core/internal/"
@@ -43,6 +43,7 @@ var layers = map[string]pkg{
 
 	"engine":            {layer: seamLayer},
 	"engine/enginetest": {layer: seamLayer},
+	"provider":          {layer: seamLayer},
 
 	"catalog":   {layer: application},
 	"chat":      {layer: application},
@@ -56,12 +57,12 @@ var layers = map[string]pkg{
 	"api":         {layer: adapter},
 	"api/openapi": {layer: adapter},
 
-	"engine/llamaserver": {layer: impl, seam: "engine"},
-	"router":             {layer: impl, seam: "engine"}, // until slice 2 moves it
+	"engine/llamaserver": {layer: impl, seams: []string{"engine"}},
+	"provider/llamacpp":  {layer: impl, seams: []string{"provider", "engine"}},
 }
 
-// exceptions are imports that break a rule until slice 2 removes them; an unused one is itself a violation.
-var exceptions = [][2]string{{"api", "router"}, {"chat", "router"}, {"feed", "router"}, {"removal", "router"}}
+// exceptions are imports that break a rule; an unused one is itself a violation. None are left.
+var exceptions [][2]string
 
 // approved are the third-party modules an implementation may import.
 var approved = []string{"golang.org/x/sys/windows", "modernc.org/sqlite"}
@@ -106,7 +107,7 @@ func violations(layers map[string]pkg, imports map[string][]string, exceptions [
 			}
 			switch {
 			case fp.layer == impl:
-				if to != fp.seam && to != "seam" && tp.layer != foundation {
+				if !slices.Contains(fp.seams, to) && to != "seam" && tp.layer != foundation {
 					add(from, to, "an implementation may import only its seam, seam and foundations")
 				}
 			case tp.layer != impl && tp.layer > fp.layer:
@@ -186,11 +187,13 @@ func TestViolations(t *testing.T) {
 		"found": {layer: foundation},
 		"seam":  {layer: foundation},
 		"eng":   {layer: seamLayer},
+		"eng2":  {layer: seamLayer},
 		"app":   {layer: application},
 		"app2":  {layer: application},
 		"api":   {layer: adapter},
-		"impl":  {layer: impl, seam: "eng"},
-		"impl2": {layer: impl, seam: "eng"},
+		"impl":  {layer: impl, seams: []string{"eng"}},
+		"impl2": {layer: impl, seams: []string{"eng"}},
+		"impl3": {layer: impl, seams: []string{"eng", "eng2"}},
 	}
 	graph := func(edges map[string][]string) map[string][]string {
 		g := map[string][]string{}
@@ -220,6 +223,13 @@ func TestViolations(t *testing.T) {
 		"impl importing an application package": {
 			edges: map[string][]string{"impl": {m("app")}},
 			want:  []string{"impl imports app: an implementation may import only its seam, seam and foundations"},
+		},
+		"impl importing a second listed seam": {
+			edges: map[string][]string{"impl3": {m("eng"), m("eng2")}},
+		},
+		"impl importing an unlisted seam": {
+			edges: map[string][]string{"impl": {m("eng2")}},
+			want:  []string{"impl imports eng2: an implementation may import only its seam, seam and foundations"},
 		},
 		"impl importing another impl": {
 			edges: map[string][]string{"impl": {m("impl2")}},

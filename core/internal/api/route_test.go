@@ -16,7 +16,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/downloads"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -253,8 +253,8 @@ func TestErrorMapping(t *testing.T) {
 		{downloads.ErrInstalled, 409, "already_installed"},
 		{downloads.ErrNoSpace, 409, "not_enough_space"},
 		{downloads.ErrNotResumable, 409, "not_paused"},
-		{router.ErrUnknownModel, 404, "model_not_found"},
-		{router.ErrNoEmbeddingModel, 409, "no_embedding_model"},
+		{provider.ErrUnknownModel, 404, "model_not_found"},
+		{provider.ErrNoEmbeddingModel, 409, "no_embedding_model"},
 		{store.ErrNotFound, 404, "chat_not_found"},
 		{fmt.Errorf("%w: the message is empty", chat.ErrBadInput), 400, "bad_request"},
 	}

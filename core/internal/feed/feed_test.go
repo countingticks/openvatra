@@ -12,7 +12,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 func twoModels() ([]models.Model, error) {
@@ -26,16 +26,16 @@ func twoModels() ([]models.Model, error) {
 // stubRouter has a settable snapshot and a channel the test sends signals on.
 type stubRouter struct {
 	mu       sync.Mutex
-	snapshot []router.ModelState
+	snapshot []provider.ModelState
 	changes  chan struct{}
 }
 
-func (s *stubRouter) Snapshot() []router.ModelState {
+func (s *stubRouter) States() []provider.ModelState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snapshot
 }
-func (s *stubRouter) set(m ...router.ModelState) {
+func (s *stubRouter) set(m ...provider.ModelState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snapshot = m
@@ -95,7 +95,7 @@ func modelsIn(t *testing.T, e event.Event) []map[string]any {
 }
 
 func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
-	rt := &stubRouter{snapshot: []router.ModelState{{ID: "b", State: router.StateReady, Busy: true}}}
+	rt := &stubRouter{snapshot: []provider.ModelState{{ID: "b", State: provider.StateReady, Busy: true}}}
 	body, err := State(rt, twoModels)
 	if err != nil {
 		t.Fatal(err)
@@ -126,7 +126,7 @@ func TestRouterSignalPublishesNewModelState(t *testing.T) {
 	Start(t.Context(), log, rt, twoModels, nil)
 	next(t, live) // the first scan
 
-	rt.set(router.ModelState{ID: "a", State: router.StateLoading})
+	rt.set(provider.ModelState{ID: "a", State: provider.StateLoading})
 	rt.changes <- struct{}{}
 	e := next(t, live)
 	if got := modelsIn(t, e)[0]["state"]; got != "loading" {
@@ -284,3 +284,8 @@ func TestNoDownloadsSourcePublishesNoProgress(t *testing.T) {
 		}
 	}
 }
+
+// The rest of provider.Resident: feed never calls it.
+func (s *stubRouter) Load(context.Context, string) error { return nil }
+func (s *stubRouter) Unload(string) bool                 { return false }
+func (s *stubRouter) Notify()                            {}

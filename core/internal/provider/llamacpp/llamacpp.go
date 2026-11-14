@@ -1,33 +1,19 @@
-// Package router decides which llama-server answers a request. It keeps at most
+// Package llamacpp is the provider that runs GGUF models with llama-server. It keeps at most
 // one chat model and one embedding model loaded: asking for another chat model
 // stops the current one first, and requests for a model that is still loading
 // wait instead of failing. A model nobody has used for a while is unloaded. The
 // shape follows llama-swap's proxy manager, cut down to two slots.
-package router
+package llamacpp
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/engine"
-)
-
-// Kind picks the slot a request uses.
-type Kind int
-
-const (
-	Chat Kind = iota
-	Embedding
-)
-
-var (
-	// ErrUnknownModel means no model with that id exists on disk.
-	ErrUnknownModel = errors.New("unknown model")
-	// ErrNoEmbeddingModel means no embedding model has been chosen yet.
-	ErrNoEmbeddingModel = errors.New("no embedding model chosen")
+	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/seam"
 )
 
 // DefaultLoadTimeout is how long a request waits for a model to become ready.
@@ -35,9 +21,9 @@ const DefaultLoadTimeout = 3 * time.Minute
 
 const stopGrace = 5 * time.Second
 
-// Config wires the router to the outside world.
+// Config wires the provider to the outside world.
 type Config struct {
-	// Plan turns a model id into what to start, or returns ErrUnknownModel. Called under the slot lock, before
+	// Plan turns a model id into what to start, or returns provider.ErrUnknownModel. Called under the slot lock, before
 	// anything is stopped. embedding: the request is for the embedding slot.
 	Plan func(id string, embedding bool) (engine.Spec, error)
 	// Start starts the planned server and returns once it is healthy. ctx carries the load timeout.
@@ -54,6 +40,10 @@ type Config struct {
 	// AfterFunc runs f after d and returns a function that cancels it. Tests swap
 	// in a fake clock; nil means the real one.
 	AfterFunc func(d time.Duration, f func()) (stop func() bool)
+	// List is what Plan can start (the models folder), for Models. nil = no models.
+	List func() ([]provider.Model, error)
+	// Client talks to llama-server; nil = a client with no overall timeout. Unused until 048.
+	Client *http.Client
 }
 
 // loaded is one model's life in a slot: loading, then ready (or failed).
@@ -77,33 +67,56 @@ type slot struct {
 	stopping chan struct{} // closed when the last retired server has exited; nil if none
 }
 
-// Router owns the two slots.
-type Router struct {
+// The compiler checks the seams a llama.cpp provider fills.
+var (
+	_ provider.Provider = (*Provider)(nil)
+	_ provider.Resident = (*Provider)(nil)
+	_ provider.Upstream = (*Provider)(nil)
+)
+
+// Provider owns the two slots; it is a provider.Provider, a provider.Resident and a provider.Upstream.
+type Provider struct {
 	cfg   Config
-	slots [2]slot // indexed by Kind
+	slots [2]slot // indexed by provider.Kind
 
 	mu      sync.Mutex // guards lastErr and subs
 	lastErr map[string]string
 	subs    map[chan struct{}]struct{}
 }
 
-func New(cfg Config) *Router {
+func New(cfg Config) *Provider {
 	if cfg.LoadTimeout == 0 {
 		cfg.LoadTimeout = DefaultLoadTimeout
+	}
+	if cfg.Client == nil {
+		cfg.Client = &http.Client{}
 	}
 	if cfg.AfterFunc == nil {
 		cfg.AfterFunc = func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
 	}
-	return &Router{cfg: cfg, lastErr: map[string]string{}, subs: map[chan struct{}]struct{}{}}
+	return &Provider{cfg: cfg, lastErr: map[string]string{}, subs: map[chan struct{}]struct{}{}}
+}
+
+// Describe says what this provider is.
+func (r *Provider) Describe() seam.Descriptor {
+	return seam.Descriptor{ID: "provider.llamacpp", Title: "llama.cpp", Description: "Runs GGUF models on this PC with llama-server."}
+}
+
+// Models lists what Plan can start, as List reports it. Context is 0: it is only known after loading.
+func (r *Provider) Models(context.Context) ([]provider.Model, error) {
+	if r.cfg.List == nil {
+		return []provider.Model{}, nil
+	}
+	return r.cfg.List()
 }
 
 // Acquire returns the base URL of a ready server for the request and a release
-// function the caller must call when the response is fully sent. For Embedding
+// function the caller must call when the response is fully sent. For provider.KindEmbedding
 // the model argument is ignored: the chosen embedding model always serves.
-func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL string, release func(), err error) {
-	if kind == Embedding {
+func (r *Provider) Acquire(ctx context.Context, kind provider.Kind, model string) (baseURL string, release func(), err error) {
+	if kind == provider.KindEmbedding {
 		if model = r.cfg.EmbeddingModel(); model == "" {
-			return "", nil, ErrNoEmbeddingModel
+			return "", nil, provider.ErrNoEmbeddingModel
 		}
 	}
 	s := &r.slots[kind]
@@ -112,7 +125,7 @@ func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL 
 	l := s.cur
 	if l == nil || l.id != model {
 		// Plan first, so an unknown id fails without unloading what is running.
-		spec, err := r.cfg.Plan(model, kind == Embedding)
+		spec, err := r.cfg.Plan(model, kind == provider.KindEmbedding)
 		if err != nil {
 			s.mu.Unlock()
 			return "", nil, err
@@ -149,7 +162,7 @@ func (r *Router) Acquire(ctx context.Context, kind Kind, model string) (baseURL 
 }
 
 // finish ends one request's hold on l; when it was the last, the idle clock starts.
-func (r *Router) finish(s *slot, l *loaded) {
+func (r *Provider) finish(s *slot, l *loaded) {
 	s.mu.Lock()
 	l.active--
 	l.users.Done()
@@ -169,7 +182,7 @@ func cancelIdle(l *loaded) {
 // armIdle starts the idle timer if l is loaded, unused and still current. The
 // caller holds s.mu. The generation check makes a timer that already fired but
 // lost the race against a new request harmless.
-func (r *Router) armIdle(s *slot, l *loaded) {
+func (r *Provider) armIdle(s *slot, l *loaded) {
 	if r.cfg.IdleTimeout == nil || l.active > 0 || s.cur != l {
 		return
 	}
@@ -200,7 +213,7 @@ func (r *Router) armIdle(s *slot, l *loaded) {
 // retire empties the slot and stops its server in the background. The caller
 // holds s.mu. The model counts as stopped at once; a load that follows waits on
 // s.stopping, so two servers never hold the GPU together.
-func (r *Router) retire(s *slot) {
+func (r *Provider) retire(s *slot) {
 	l := s.cur
 	s.cur = nil
 	cancelIdle(l)
@@ -222,7 +235,7 @@ func (r *Router) retire(s *slot) {
 
 // load replaces old (if any) with next. It runs on its own goroutine with its own
 // timeout so that one impatient client cancelling cannot abort a load others wait for.
-func (r *Router) load(s *slot, old, next *loaded, after <-chan struct{}) {
+func (r *Provider) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	if after != nil {
 		<-after
 	}
@@ -238,7 +251,7 @@ func (r *Router) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	inst, err := r.cfg.Start(ctx, next.spec)
 	cancel()
 	if err != nil {
-		next.err = fmt.Errorf("load %s: %w", next.id, err)
+		next.err = &provider.LoadError{Model: next.id, Err: err}
 		r.mu.Lock()
 		r.lastErr[next.id] = err.Error()
 		r.mu.Unlock()
@@ -266,7 +279,7 @@ func (r *Router) load(s *slot, old, next *loaded, after <-chan struct{}) {
 }
 
 // Close stops every loaded server; call it when core shuts down.
-func (r *Router) Close() {
+func (r *Provider) Close() {
 	for i := range r.slots {
 		s := &r.slots[i]
 		s.mu.Lock()

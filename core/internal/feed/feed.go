@@ -1,4 +1,4 @@
-// Package feed turns the signals of the router and the download queue into retained events on the bus, from one
+// Package feed turns the signals of the provider and the download queue into retained events on the bus, from one
 // place, so every stream shows the same state.
 package feed
 
@@ -11,14 +11,8 @@ import (
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/models"
-	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/provider"
 )
-
-// Router is the part of the model router feed reads.
-type Router interface {
-	Snapshot() []router.ModelState
-	Subscribe() (<-chan struct{}, func())
-}
 
 // Downloads is the part of the download queue feed reads.
 type Downloads interface {
@@ -28,10 +22,10 @@ type Downloads interface {
 
 const StateStopped = "stopped"
 
-// Model is what the router knows about a model plus facts from disk.
+// Model is what the provider knows about a model plus facts from disk.
 // The embedded struct's fields are flattened into the same JSON object.
 type Model struct {
-	router.ModelState
+	provider.ModelState
 	SizeBytes int64 `json:"sizeBytes"`
 	// Projector is the detected vision projector's file name (never its path); left out when there is none.
 	Projector string `json:"projector,omitempty"`
@@ -50,28 +44,28 @@ type StateBody struct {
 	Models []Model `json:"models"`
 }
 
-// State lists every model on disk: what the router knows about it, or
+// State lists every model on disk: what the provider knows about it, or
 // "stopped" when it has never been touched or has been unloaded.
-func State(rt Router, list func() ([]models.Model, error)) (StateBody, error) {
+func State(res provider.Resident, list func() ([]models.Model, error)) (StateBody, error) {
 	found, err := list()
 	if err != nil {
 		return StateBody{}, err
 	}
-	known := map[string]router.ModelState{}
-	for _, m := range rt.Snapshot() {
+	known := map[string]provider.ModelState{}
+	for _, m := range res.States() {
 		known[m.ID] = m
 	}
 	out := make([]Model, 0, len(found)) // [] rather than null when empty
 	for _, m := range found {
 		st, ok := known[m.ID]
 		if !ok {
-			st = router.ModelState{ID: m.ID, State: StateStopped}
+			st = provider.ModelState{ID: m.ID, State: StateStopped}
 		}
 		projector := ""
 		if m.MMProj != "" {
 			projector = filepath.Base(m.MMProj)
 		}
-		// Both the router and the header can have an error; the outer field shadows the embedded one in JSON, so merge.
+		// Both the provider and the header can have an error; the outer field shadows the embedded one in JSON, so merge.
 		errText := st.Error
 		if errText == "" {
 			errText = m.Error
@@ -87,9 +81,9 @@ const downloadsInterval = 250 * time.Millisecond
 // Start publishes the model state, and the download progress when dl is not nil, now and after every signal until
 // ctx ends. It returns at once. A failing scan publishes nothing: the bus keeps the last value, and GET /api/models
 // shows the error.
-func Start(ctx context.Context, log event.Log, rt Router, list func() ([]models.Model, error), dl Downloads) {
+func Start(ctx context.Context, log event.Log, res provider.Resident, list func() ([]models.Model, error), dl Downloads) {
 	// Subscribe before the first scan, so a change in between is not lost.
-	changed, cancel := rt.Subscribe()
+	changed, cancel := res.Subscribe()
 	// A nil channel never fires, so without a downloads source its cases below simply never run.
 	var dlChanged <-chan struct{}
 	cancelDL := func() {}
@@ -100,7 +94,7 @@ func Start(ctx context.Context, log event.Log, rt Router, list func() ([]models.
 		defer cancel()
 		defer cancelDL()
 		publish := func() {
-			body, err := State(rt, list)
+			body, err := State(res, list)
 			if err != nil {
 				return
 			}
