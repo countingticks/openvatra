@@ -18,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +28,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/engine"
+	"github.com/countingticks/openvatra/core/internal/engine/llamaserver"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/feed"
 	"github.com/countingticks/openvatra/core/internal/host"
@@ -38,6 +38,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/prompt"
 	"github.com/countingticks/openvatra/core/internal/removal"
 	"github.com/countingticks/openvatra/core/internal/router"
+	"github.com/countingticks/openvatra/core/internal/seam"
 	"github.com/countingticks/openvatra/core/internal/store"
 	"github.com/countingticks/openvatra/core/internal/trash"
 )
@@ -250,9 +251,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	registerSections(cfg, env)
 	resolve := func() config.Resolved { return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env) }
 	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
+	engineSeam := seam.NewRegistry[engine.Engine]()
+	llama := llamaserver.New(func() string { return resolve().LlamaServerPath }, logOut)
+	engineSeam.Register(llama)
 	rt := router.New(router.Config{
 		Plan:           planFunc(resolve, logger),
-		Start:          startFunc(resolve, logger, logOut),
+		Start:          startFunc(llama, logger),
 		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
 		IdleTimeout: func(id string) time.Duration {
 			r := resolve()
@@ -402,34 +406,17 @@ func specFor(c config.Resolved, m models.Model, embedding bool) engine.Spec {
 	return spec
 }
 
-// startFunc starts llama-server for a spec. Its output goes to core.log, every line prefixed with the model id.
-func startFunc(resolve func() config.Resolved, logger *slog.Logger, logOut io.Writer) func(context.Context, engine.Spec) (engine.Instance, error) {
-	var runner engine.Runner
+// startFunc wraps the engine's start with the two log lines core.log has always had.
+func startFunc(llama *llamaserver.Engine, logger *slog.Logger) func(context.Context, engine.Spec) (engine.Instance, error) {
 	return func(ctx context.Context, spec engine.Spec) (engine.Instance, error) {
 		logger.Info("starting llama-server", "model", spec.Model, "embedding", spec.Embedding)
-		inst, err := runner.Start(ctx, engine.Command{
-			Path: resolve().LlamaServerPath, Args: serverArgs(spec), PortFlag: "--port", Health: "/health",
-		}, logs.Prefixed(logOut, spec.Model))
+		inst, err := llama.Start(ctx, spec)
 		if err != nil {
 			return nil, err
 		}
 		logger.Info("llama-server ready", "model", spec.Model, "url", inst.BaseURL())
 		return inst, nil
 	}
-}
-
-// serverArgs is one llama-server's argument list without the port: core's own flags first, then the user's.
-func serverArgs(spec engine.Spec) []string {
-	args := []string{"-m", spec.Path, "--host", "127.0.0.1"}
-	if spec.Embedding {
-		args = append(args, "--embeddings")
-	} else if spec.Context > 0 {
-		args = append(args, "-c", strconv.Itoa(spec.Context))
-	}
-	if spec.Projector != "" && !spec.Embedding {
-		args = append(args, "--mmproj", spec.Projector)
-	}
-	return append(args, spec.Args...)
 }
 
 // modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.

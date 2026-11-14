@@ -425,27 +425,6 @@ func TestSpecFor(t *testing.T) {
 	}
 }
 
-func TestServerArgs(t *testing.T) {
-	core := []string{"-m", "P", "--host", "127.0.0.1"}
-	cases := map[string]struct {
-		spec engine.Spec
-		want []string
-	}{
-		"chat":             {engine.Spec{Path: "P", Context: 16384}, append(slices.Clone(core), "-c", "16384")},
-		"projector":        {engine.Spec{Path: "P", Context: 16384, Projector: "M"}, append(slices.Clone(core), "-c", "16384", "--mmproj", "M")},
-		"embedding":        {engine.Spec{Path: "P", Embedding: true, Context: 0, Projector: "M"}, append(slices.Clone(core), "--embeddings")},
-		"no context":       {engine.Spec{Path: "P"}, core},
-		"user's args last": {engine.Spec{Path: "P", Context: 16384, Projector: "M", Args: []string{"-c", "4096"}}, append(slices.Clone(core), "-c", "16384", "--mmproj", "M", "-c", "4096")},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			if got := serverArgs(tc.spec); !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("args = %v, want %v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
 	t.Setenv(logDirEnv, t.TempDir())
 	bad := filepath.Join(t.TempDir(), "bad.json")
