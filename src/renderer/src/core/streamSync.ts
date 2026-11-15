@@ -7,7 +7,12 @@ type CachedSelect = (arg: undefined) => (state: RootState) => { data?: unknown }
 
 /** The rev of the cached getConfig<Section> answer, or null when there is no such endpoint or nothing cached. */
 function cachedRev(section: string, state: RootState): number | null {
-  const name = `getConfig${section.charAt(0).toUpperCase()}${section.slice(1)}`
+  // core's operationId rule: each dot-separated part capitalised, joined (engine.llamaserver -> EngineLlamaserver).
+  const title = section
+    .split('.')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('')
+  const name = `getConfig${title}`
   if (!Object.hasOwn(coreApi.endpoints, name)) return null
   const endpoint = coreApi.endpoints[name as keyof typeof coreApi.endpoints]
   // The name is only known at runtime, so the endpoint's own argument type can't be; config sections take none.

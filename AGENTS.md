@@ -19,6 +19,8 @@ It controls, but does not replace, these local services (all bound to `127.0.0.1
 **Status:** early development; the app shell works (see README), Chat, Code and Automations are placeholders.
 Core keeps running when the window closes or the shell restarts; Quit stops it.
 Settings: `%APPDATA%\OpenVatra\settings.json` (validated, typed IPC); log: `%APPDATA%\OpenVatra\logs\main.log`.
+Model settings live in core (`openvatra.db`), as the sections `engine.llamaserver` and `provider.llamacpp`, each
+owned by its package (`core/internal/engine/llamaserver`, `core/internal/provider/llamacpp`).
 
 ## Stack
 

@@ -154,7 +154,7 @@ func TestAllowedOriginGetsCORSHeadersOnEveryAnswer(t *testing.T) {
 
 func TestPreflightFromAnAllowedOriginNeedsNoToken(t *testing.T) {
 	f := newGate(t)
-	rec := f.send(gateReq{method: http.MethodOptions, path: "/api/config/models", origin: testOrigin, noAuth: true})
+	rec := f.send(gateReq{method: http.MethodOptions, path: "/api/config/engine.test", origin: testOrigin, noAuth: true})
 	h := rec.Header()
 	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 ||
 		h.Get("Access-Control-Allow-Origin") != testOrigin ||
@@ -163,7 +163,7 @@ func TestPreflightFromAnAllowedOriginNeedsNoToken(t *testing.T) {
 		h.Get("Access-Control-Max-Age") != "600" {
 		t.Fatalf("got %d %q, headers %v", rec.Code, rec.Body.String(), h)
 	}
-	other := f.send(gateReq{method: http.MethodOptions, path: "/api/config/models", origin: "https://evil.example.com", noAuth: true})
+	other := f.send(gateReq{method: http.MethodOptions, path: "/api/config/engine.test", origin: "https://evil.example.com", noAuth: true})
 	wantCode(t, other, http.StatusForbidden, "forbidden_origin")
 }
 

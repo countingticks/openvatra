@@ -1,104 +1,216 @@
-// The window's writes to core's models section. One at a time per store, each PUT with the rev it last saw, and
-// the screen changes only when core answers (no optimistic update): a failure leaves the cached value as it was.
+// The window's writes to core's two model sections, engine.llamaserver and provider.llamacpp. One at a time per
+// store and section, each PUT with the rev it last saw, and the screen changes only when core answers (no optimistic
+// update): a failure leaves the cached value as it was.
+// ModelsView and ModelsChange keep the shape the screens had before the split; they go once each screen reads the
+// section that owns its field.
 import { failureReason } from '../lib/modelText'
 import type { AppDispatch, RootState } from '../store/store'
 import { coreApi } from './coreApi'
-import type { GetConfigModelsApiResponse, Models } from './generated'
+import type {
+  GetConfigEngineLlamaserverApiResponse,
+  GetConfigProviderLlamacppApiResponse,
+  LlamaCppSettings,
+  LlamaServerSettings,
+  ModelOptions
+} from './generated'
 
-/** core's defaults for the models section (config.DefaultModels). */
-export const defaultCoreModels: Readonly<Models> = {
+/** Both model sections as one value, with the names the screens use. */
+export interface ModelsView {
+  llamaServerPath: string | null
+  modelsDir: string | null
+  embeddingModel: string | null
+  idleUnloadMinutes: number | null
+  options: Record<string, ModelOptions>
+  engine: 'bundled' | 'cuda'
+}
+
+/** core's defaults for engine.llamaserver (llamaserver.DefaultSettings). */
+export const defaultEngineSettings: Readonly<LlamaServerSettings> = { build: 'bundled', path: null }
+
+/** core's defaults for provider.llamacpp (llamacpp.DefaultSettings). */
+export const defaultLlamacppSettings: Readonly<LlamaCppSettings> = {
   embeddingModel: null,
-  engine: 'bundled',
   idleUnloadMinutes: 15,
-  llamaServerPath: null,
   modelsDir: null,
   options: {}
 }
 
+/** Both sections' values as the screens see them. */
+export function toModelsView(engine: LlamaServerSettings, llamacpp: LlamaCppSettings): ModelsView {
+  return {
+    embeddingModel: llamacpp.embeddingModel,
+    engine: engine.build,
+    idleUnloadMinutes: llamacpp.idleUnloadMinutes,
+    llamaServerPath: engine.path,
+    modelsDir: llamacpp.modelsDir,
+    options: llamacpp.options
+  }
+}
+
+/** core's defaults for both sections, as one value. */
+export const defaultCoreModels: Readonly<ModelsView> = toModelsView(
+  defaultEngineSettings,
+  defaultLlamacppSettings
+)
+
 /** What the window may change: the paths only back to null (decision 2); `options` replaces the whole map. */
 export type ModelsChange = Partial<
-  Pick<Models, 'embeddingModel' | 'idleUnloadMinutes' | 'options' | 'engine'>
+  Pick<ModelsView, 'embeddingModel' | 'idleUnloadMinutes' | 'options' | 'engine'>
 > & {
   llamaServerPath?: null
   modelsDir?: null
 }
 
-type Entry = GetConfigModelsApiResponse
-
-interface Conflict {
-  status: 409
-  data: { error: 'config_conflict'; current: Entry }
+interface Entry<V> {
+  rev: number
+  value: V
 }
 
-function isConflict(error: unknown): error is Conflict {
+/** How one section is read, cached and written; the endpoints differ, the rules don't. */
+interface Section<V extends object, E extends Entry<V>> {
+  name: string
+  cached(getState: () => RootState): E | undefined
+  read(dispatch: AppDispatch): Promise<E>
+  remember(dispatch: AppDispatch, entry: E): Promise<void>
+  put(dispatch: AppDispatch, body: Entry<V>): Promise<E>
+}
+
+const engineSection: Section<LlamaServerSettings, GetConfigEngineLlamaserverApiResponse> = {
+  name: 'engine.llamaserver',
+  cached: (getState) => coreApi.endpoints.getConfigEngineLlamaserver.select()(getState()).data,
+  read: (dispatch) =>
+    dispatch(coreApi.endpoints.getConfigEngineLlamaserver.initiate(undefined, { subscribe: false })).unwrap(),
+  remember: async (dispatch, entry) => {
+    await dispatch(coreApi.util.upsertQueryData('getConfigEngineLlamaserver', undefined, entry))
+  },
+  put: (dispatch, body) =>
+    dispatch(coreApi.endpoints.putConfigEngineLlamaserver.initiate({ body }, { track: false })).unwrap()
+}
+
+const llamacppSection: Section<LlamaCppSettings, GetConfigProviderLlamacppApiResponse> = {
+  name: 'provider.llamacpp',
+  cached: (getState) => coreApi.endpoints.getConfigProviderLlamacpp.select()(getState()).data,
+  read: (dispatch) =>
+    dispatch(coreApi.endpoints.getConfigProviderLlamacpp.initiate(undefined, { subscribe: false })).unwrap(),
+  remember: async (dispatch, entry) => {
+    await dispatch(coreApi.util.upsertQueryData('getConfigProviderLlamacpp', undefined, entry))
+  },
+  put: (dispatch, body) =>
+    dispatch(coreApi.endpoints.putConfigProviderLlamacpp.initiate({ body }, { track: false })).unwrap()
+}
+
+interface Conflict<E> {
+  status: 409
+  data: { error: 'config_conflict'; current: E }
+}
+
+function isConflict<E>(error: unknown): error is Conflict<E> {
   if (typeof error !== 'object' || error === null) return false
   const { status, data } = error as { status?: unknown; data?: { error?: unknown; current?: unknown } }
   return status === 409 && data?.error === 'config_conflict' && typeof data.current === 'object'
 }
 
 /** Keys set to undefined are left out; the rest replace what core has. */
-function merge(value: Models, change: ModelsChange): Models {
-  const next: Record<string, unknown> = { ...value }
+function merge<V extends object>(value: V, change: Partial<V>): V {
+  const next = { ...value } as Record<string, unknown>
   for (const [key, changed] of Object.entries(change)) {
     if (changed !== undefined) next[key] = changed
   }
-  return next as Models
+  return next as V
 }
 
-// One promise chain per store, so a change is PUT with the rev the previous one got back.
-const queues = new WeakMap<AppDispatch, Promise<void>>()
-
-async function cachedOrRead(dispatch: AppDispatch, getState: () => RootState): Promise<Entry> {
-  const cached = coreApi.endpoints.getConfigModels.select()(getState()).data
-  if (cached) return cached
-  return dispatch(coreApi.endpoints.getConfigModels.initiate(undefined, { subscribe: false })).unwrap()
+async function put<V extends object, E extends Entry<V>>(
+  section: Section<V, E>,
+  dispatch: AppDispatch,
+  entry: E,
+  change: Partial<V>
+): Promise<void> {
+  const answer = await section.put(dispatch, { rev: entry.rev, value: merge(entry.value, change) })
+  await section.remember(dispatch, answer)
 }
 
-async function remember(dispatch: AppDispatch, entry: Entry): Promise<void> {
-  await dispatch(coreApi.util.upsertQueryData('getConfigModels', undefined, entry))
-}
-
-async function put(dispatch: AppDispatch, entry: Entry, change: ModelsChange): Promise<void> {
-  const body = { rev: entry.rev, value: merge(entry.value, change) }
-  const answer = await dispatch(
-    coreApi.endpoints.putConfigModels.initiate({ body }, { track: false })
-  ).unwrap()
-  await remember(dispatch, answer)
-}
-
-async function write(change: ModelsChange, dispatch: AppDispatch, getState: () => RootState): Promise<void> {
-  const entry = await cachedOrRead(dispatch, getState)
+async function write<V extends object, E extends Entry<V>>(
+  section: Section<V, E>,
+  change: Partial<V>,
+  dispatch: AppDispatch,
+  getState: () => RootState
+): Promise<void> {
+  const entry = section.cached(getState) ?? (await section.read(dispatch))
   try {
-    await put(dispatch, entry, change)
+    await put(section, dispatch, entry, change)
   } catch (error) {
-    if (!isConflict(error)) throw error
+    if (!isConflict<E>(error)) throw error
     // Someone else wrote in between: apply this change on top of theirs, once.
-    await remember(dispatch, error.data.current)
+    await section.remember(dispatch, error.data.current)
     try {
-      await put(dispatch, error.data.current, change)
+      await put(section, dispatch, error.data.current, change)
     } catch (again) {
-      if (isConflict(again)) await remember(dispatch, again.data.current)
+      if (isConflict<E>(again)) await section.remember(dispatch, again.data.current)
       throw again
     }
   }
 }
 
-/** Queues one write; resolves when core saved it, rejects with an Error whose message is failureReason's text. */
+// One promise chain per store and section, so a change is PUT with the rev the previous one got back.
+const queues = new WeakMap<AppDispatch, Map<string, Promise<void>>>()
+
+function enqueue<V extends object, E extends Entry<V>>(
+  section: Section<V, E>,
+  change: Partial<V>,
+  dispatch: AppDispatch,
+  getState: () => RootState,
+  after: Promise<unknown> = Promise.resolve()
+): Promise<void> {
+  let perSection = queues.get(dispatch)
+  if (!perSection) {
+    perSection = new Map()
+    queues.set(dispatch, perSection)
+  }
+  const previous = perSection.get(section.name) ?? Promise.resolve()
+  const run = Promise.all([previous, after.catch(() => undefined)]).then(() =>
+    write(section, change, dispatch, getState)
+  )
+  // A failed write must not block the next one.
+  perSection.set(
+    section.name,
+    run.catch(() => undefined)
+  )
+  return run
+}
+
+/** The change split by the section that owns each key; a section with no key gets undefined. */
+function splitChange(change: ModelsChange): {
+  engine?: Partial<LlamaServerSettings>
+  llamacpp?: Partial<LlamaCppSettings>
+} {
+  const engine: Partial<LlamaServerSettings> = {}
+  const llamacpp: Partial<LlamaCppSettings> = {}
+  if (change.llamaServerPath !== undefined) engine.path = change.llamaServerPath
+  if (change.engine !== undefined) engine.build = change.engine
+  if (change.modelsDir !== undefined) llamacpp.modelsDir = change.modelsDir
+  if (change.embeddingModel !== undefined) llamacpp.embeddingModel = change.embeddingModel
+  if (change.idleUnloadMinutes !== undefined) llamacpp.idleUnloadMinutes = change.idleUnloadMinutes
+  if (change.options !== undefined) llamacpp.options = change.options
+  return {
+    engine: Object.keys(engine).length > 0 ? engine : undefined,
+    llamacpp: Object.keys(llamacpp).length > 0 ? llamacpp : undefined
+  }
+}
+
+/**
+ * Queues the change on the section(s) that own its keys, the engine section first; resolves when core saved it,
+ * rejects with an Error whose message is failureReason's text for the first write that failed.
+ */
 export function updateModels(
   change: ModelsChange
 ): (dispatch: AppDispatch, getState: () => RootState) => Promise<void> {
-  return (dispatch, getState) => {
-    const previous = queues.get(dispatch) ?? Promise.resolve()
-    const run = previous
-      .then(() => write(change, dispatch, getState))
-      .catch((error: unknown) => {
-        throw new Error(failureReason(error))
-      })
-    // A failed write must not block the next one.
-    queues.set(
-      dispatch,
-      run.catch(() => undefined)
-    )
-    return run
+  return async (dispatch, getState) => {
+    const split = splitChange(change)
+    const runs: Promise<void>[] = []
+    if (split.engine) runs.push(enqueue(engineSection, split.engine, dispatch, getState))
+    if (split.llamacpp) runs.push(enqueue(llamacppSection, split.llamacpp, dispatch, getState, runs[0]))
+    const results = await Promise.allSettled(runs)
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed) throw new Error(failureReason(failed.reason))
   }
 }

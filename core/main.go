@@ -119,7 +119,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Nothing is opened or read: the document comes from the route table alone, so it needs no token.
 	if *openapi {
 		cfg := config.New(nil, nil)
-		registerSections(cfg, config.Env{})
+		registerSections(cfg, llamaserver.Env{}, "")
 		_, err := stdout.Write(api.Document(api.Deps{Version: version, Config: cfg}))
 		return err
 	}
@@ -237,22 +237,28 @@ func run(args []string, stdout, stderr io.Writer) error {
 			cuda = nil
 		}
 	}
-	env := config.Env{LlamaDir: *llamaDir, EnginesDir: *enginesDir}
+	env := llamaserver.Env{LlamaDir: *llamaDir, EnginesDir: *enginesDir}
 	if cuda != nil {
 		env.Tag = cuda.Tag
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		env.Home = home
-	}
+	home, _ := os.UserHomeDir() // "" = no default models folder
 
-	// The models section lives in openvatra.db and is the only model config. Every use reads the live value, so a
-	// change in Settings applies without restarting core.
+	// The model settings live in openvatra.db, one section per owner. Every use reads the live value, so a change in
+	// Settings applies without restarting core.
 	cfg := config.New(cfgDB, logger)
-	registerSections(cfg, env)
-	resolve := func() config.Resolved { return config.Get[config.Models](cfg, config.ModelsSection).Resolve(env) }
+	if err := config.SplitModels(ctx, cfgDB, logger); err != nil {
+		logger.Error("split models config section", "err", err) // the old row stays; both sections use defaults
+	}
+	registerSections(cfg, env, home)
+	enginePath := func() string {
+		return config.Get[llamaserver.LlamaServerSettings](cfg, llamaserver.ID).Resolve(env)
+	}
+	resolve := func() llamacpp.Resolved {
+		return config.Get[llamacpp.LlamaCppSettings](cfg, llamacpp.ID).Resolve(home)
+	}
 	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	engineSeam := seam.NewRegistry[engine.Engine]()
-	llama := llamaserver.New(func() string { return resolve().LlamaServerPath }, logOut)
+	llama := llamaserver.New(enginePath, logOut)
 	engineSeam.Register(llama)
 	providerSeam := seam.NewRegistry[provider.Provider]()
 	lc := llamacpp.New(llamacpp.Config{
@@ -277,7 +283,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	})
 	providerSeam.Register(lc)
 	cfg.Subscribe(func(section string, _ int) {
-		if section == config.ModelsSection {
+		if section == llamacpp.ID {
 			lc.Notify() // a new models folder changes the list although no model changed state
 		}
 	})
@@ -286,7 +292,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		chats = &chat.Service{Store: chatStore, Chat: lc, Model: lc.Prepare, Logger: logger}
 	}
 	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
-	hardware := hw.NewChecker(func() string { return resolve().LlamaServerPath }, logger)
+	hardware := hw.NewChecker(enginePath, logger)
 	entries, err := catalog.Builtin()
 	if err != nil {
 		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
@@ -361,22 +367,15 @@ func isOrigin(v string) bool {
 		u.RawQuery == "" && !u.ForceQuery && u.Fragment == ""
 }
 
-// registerSections registers every config section on cfg; run and --openapi share it.
-func registerSections(cfg *config.Store, env config.Env) {
-	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(env))
-}
-
-// effectiveModels is the models section's read-only view: the paths core really uses when none is chosen.
-func effectiveModels(env config.Env) func(config.Models) config.ModelsEffective {
-	return func(m config.Models) config.ModelsEffective {
-		r := m.Resolve(env)
-		return config.ModelsEffective{LlamaServerPath: r.LlamaServerPath, ModelsDir: r.ModelsDir}
-	}
+// registerSections registers every config section on cfg, each with its owner's type; run and --openapi share it.
+func registerSections(cfg *config.Store, env llamaserver.Env, home string) {
+	config.Register(cfg, llamaserver.ID, llamaserver.DefaultSettings(), llamaserver.Effective(env))
+	config.Register(cfg, llamacpp.ID, llamacpp.DefaultSettings(), llamacpp.Effective(home))
 }
 
 // resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,
 // else the first one found (Automatic), else "".
-func resolveEmbedding(c config.Resolved) string {
+func resolveEmbedding(c llamacpp.Resolved) string {
 	found, err := models.Discover(c.ModelsDir)
 	if err != nil {
 		return ""
@@ -385,7 +384,7 @@ func resolveEmbedding(c config.Resolved) string {
 }
 
 // toProviderModels is the models folder as the provider seam shows it: readable chat and embedding models, in order.
-func toProviderModels(c config.Resolved, found []models.Model) []provider.Model {
+func toProviderModels(c llamacpp.Resolved, found []models.Model) []provider.Model {
 	out := make([]provider.Model, 0, len(found))
 	for _, m := range found {
 		switch m.Kind {
@@ -399,7 +398,7 @@ func toProviderModels(c config.Resolved, found []models.Model) []provider.Model 
 }
 
 // planFunc builds the provider's planner: look the model up on disk and say what to start for it.
-func planFunc(resolve func() config.Resolved, logger *slog.Logger) func(id string, embedding bool) (engine.Spec, error) {
+func planFunc(resolve func() llamacpp.Resolved, logger *slog.Logger) func(id string, embedding bool) (engine.Spec, error) {
 	return func(id string, embedding bool) (engine.Spec, error) {
 		c := resolve() // one snapshot, so a config change mid-call can't mix old and new values
 		found, err := models.Discover(c.ModelsDir)
@@ -417,7 +416,7 @@ func planFunc(resolve func() config.Resolved, logger *slog.Logger) func(id strin
 }
 
 // specFor is what to start for one model: core's choices, then the user's own arguments.
-func specFor(c config.Resolved, m models.Model, embedding bool) engine.Spec {
+func specFor(c llamacpp.Resolved, m models.Model, embedding bool) engine.Spec {
 	spec := engine.Spec{Model: m.ID, Path: m.Path, Embedding: embedding, Args: modelArgs(c, m.ID)}
 	if !embedding {
 		// The catalog's memory estimates assume this context; the user's own -c comes later and wins.
@@ -444,7 +443,7 @@ func startFunc(llama *llamaserver.Engine, logger *slog.Logger) func(context.Cont
 }
 
 // modelArgs are the user's arguments for one model. A copy, so appending to it never writes into the config.
-func modelArgs(c config.Resolved, id string) []string {
+func modelArgs(c llamacpp.Resolved, id string) []string {
 	return c.Args(id)
 }
 
@@ -625,29 +624,29 @@ func trimSystemEvents(ctx context.Context, t systemTrimmer, every time.Duration,
 	}
 }
 
-// switchToCUDA stores engine "cuda" once its download is finished. A concurrent write (a Settings save) may win the
+// switchToCUDA stores build "cuda" in engine.llamaserver once its download is finished. A concurrent write (a Settings save) may win the
 // revision, so it reads again and retries once; after that it gives up and logs, because the user can still pick the
 // engine by hand and core must not loop.
 func switchToCUDA(cfg sectionWriter, logger *slog.Logger) {
 	var err error
 	for attempt := 0; attempt < 2; attempt++ {
 		var entry config.SectionEntry
-		if entry, err = cfg.Section(config.ModelsSection); err != nil {
+		if entry, err = cfg.Section(llamaserver.ID); err != nil {
 			break
 		}
-		var m config.Models
+		var m llamaserver.LlamaServerSettings
 		if err = json.Unmarshal(entry.Value, &m); err != nil {
 			break
 		}
-		if m.Engine == "cuda" {
+		if m.Build == "cuda" {
 			return
 		}
-		m.Engine = "cuda"
+		m.Build = "cuda"
 		var value []byte
 		if value, err = json.Marshal(m); err != nil {
 			break
 		}
-		if _, err = cfg.Put(config.ModelsSection, entry.Rev, value); !errors.Is(err, config.ErrConflict) {
+		if _, err = cfg.Put(llamaserver.ID, entry.Rev, value); !errors.Is(err, config.ErrConflict) {
 			break
 		}
 	}
