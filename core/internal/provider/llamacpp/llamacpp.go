@@ -104,7 +104,7 @@ func New(cfg Config) *Provider {
 
 // Describe says what this provider is.
 func (r *Provider) Describe() seam.Descriptor {
-	return seam.Descriptor{ID: "provider.llamacpp", Title: "llama.cpp", Description: "Runs GGUF models on this PC with llama-server."}
+	return seam.Descriptor{ID: ID, Title: "llama.cpp", Description: "Runs GGUF models on this PC with llama-server."}
 }
 
 // Models lists what Plan can start, as List reports it. Context is set for a model that is ready in a slot; the
