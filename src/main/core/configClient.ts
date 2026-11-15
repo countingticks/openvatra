@@ -1,38 +1,60 @@
-// core's model settings (GET and PUT /api/config/models). core owns them; main writes only the v6 import and a path
-// the user picked in its file dialog. No Electron imports, so tests need only a fake `request`.
+// core's model settings: GET and PUT /api/config/engine.llamaserver and /api/config/provider.llamacpp. core owns
+// them; main writes only the v6 import and a path the user picked in its file dialog. No Electron imports, so tests
+// need only a fake `request`.
 import { z } from 'zod'
-import { engines, type LegacyModels } from '../../shared/settings'
+import type { PickTarget } from '../../shared/ipc'
+import { engines } from '../../shared/settings'
 import { coreErrorMessage } from './coreError'
 
-/** The `models` section as core stores it: the same six keys as a v6 file's `legacyModels`. */
-export type CoreModels = LegacyModels
+type Engine = (typeof engines)[number]
 
-export interface ModelsEntry {
-  rev: number // 0 = never written; value is the defaults
-  value: CoreModels
-  effective: { llamaServerPath: string; modelsDir: string }
+/** The engine.llamaserver section: which llama-server core starts. */
+export interface EngineSection {
+  path: string | null
+  build: Engine
 }
+
+/** The provider.llamacpp section: where the models are and how they run. */
+export interface LlamacppSection {
+  modelsDir: string | null
+  embeddingModel: string | null
+  idleUnloadMinutes: number | null
+  options: Record<string, { args?: string }>
+}
+
+export interface SectionEntry<V, E> {
+  rev: number // 0 = never written; value is the defaults
+  value: V
+  effective: E
+}
+
+export type EngineEntry = SectionEntry<EngineSection, { path: string }>
+export type LlamacppEntry = SectionEntry<LlamacppSection, { modelsDir: string }>
 
 // core's own rules, not the UI's narrower ones (e.g. any 1–1440 minutes), so a value the UI can't pick never makes
 // the whole section unreadable.
-const entrySchema = z.object({
+const engineSchema = z.object({
+  rev: z.number().int().min(0),
+  value: z.object({ path: z.string().nullable(), build: z.enum(engines) }),
+  effective: z.object({ path: z.string() })
+})
+
+const llamacppSchema = z.object({
   rev: z.number().int().min(0),
   value: z.object({
-    llamaServerPath: z.string().nullable(),
     modelsDir: z.string().nullable(),
     embeddingModel: z.string().nullable(),
     idleUnloadMinutes: z.number().int().min(1).max(1440).nullable(),
-    options: z.record(z.string(), z.object({ args: z.string().optional() })),
-    engine: z.enum(engines)
+    options: z.record(z.string(), z.object({ args: z.string().optional() }))
   }),
-  effective: z.object({ llamaServerPath: z.string(), modelsDir: z.string() })
+  effective: z.object({ modelsDir: z.string() })
 })
 
-/** The PUT carried a rev core no longer has; `current` is core's entry now. */
-export class ConfigConflictError extends Error {
+/** The PUT carried a rev core no longer has; `current` is core's entry of that section now. */
+export class ConfigConflictError<E> extends Error {
   constructor(
     message: string,
-    readonly current: ModelsEntry
+    readonly current: E
   ) {
     super(message)
     this.name = 'ConfigConflictError'
@@ -56,23 +78,24 @@ export class ConfigUnavailableError extends Error {
 }
 
 export interface ConfigClient {
-  getModels(): Promise<ModelsEntry>
-  putModels(rev: number, value: CoreModels): Promise<ModelsEntry>
-  /** GETs the models section, sets key to path, PUTs it with that rev; one more try on a conflict. */
-  setModelPath(key: 'llamaServerPath' | 'modelsDir', path: string): Promise<void>
+  getEngine(): Promise<EngineEntry>
+  putEngine(rev: number, value: EngineSection): Promise<EngineEntry>
+  getLlamacpp(): Promise<LlamacppEntry>
+  putLlamacpp(rev: number, value: LlamacppSection): Promise<LlamacppEntry>
+  /** GETs the section that owns the path, sets it, PUTs it with that rev; one more try on a conflict. */
+  setModelPath(target: PickTarget, path: string): Promise<void>
 }
 
-const path = '/api/config/models'
-
-function parseEntry(body: unknown): ModelsEntry {
-  const result = entrySchema.safeParse(body)
-  if (!result.success) throw new Error('core sent a malformed config')
-  // The schema allows any minutes core accepts; the IPC type names the UI's choices, so this is a widening on purpose.
-  return result.data as ModelsEntry
+function parser<E>(schema: z.ZodType<E>): (body: unknown) => E {
+  return (body) => {
+    const result = schema.safeParse(body)
+    if (!result.success) throw new Error('core sent a malformed config')
+    return result.data
+  }
 }
 
-async function answer(response: Response): Promise<ModelsEntry> {
-  if (response.ok) return parseEntry(await response.json().catch(() => undefined))
+async function answer<E>(response: Response, parse: (body: unknown) => E): Promise<E> {
+  if (response.ok) return parse(await response.json().catch(() => undefined))
   const body: unknown = await response
     .clone()
     .json()
@@ -80,37 +103,74 @@ async function answer(response: Response): Promise<ModelsEntry> {
   const code = (body as { error?: unknown } | undefined)?.error
   const message = await coreErrorMessage(response)
   if (response.status === 409 && code === 'config_conflict') {
-    throw new ConfigConflictError(message, parseEntry((body as { current?: unknown }).current))
+    throw new ConfigConflictError(message, parse((body as { current?: unknown }).current))
   }
   if (response.status === 400 && code === 'invalid_config') throw new ConfigInvalidError(message)
   if (response.status === 503 && code === 'config_unavailable') throw new ConfigUnavailableError(message)
   throw new Error(message)
 }
 
-export function createConfigClient(
-  request: (path: string, init?: RequestInit) => Promise<Response>
-): ConfigClient {
-  const getModels = async (): Promise<ModelsEntry> => answer(await request(path))
-  const putModels = async (rev: number, value: CoreModels): Promise<ModelsEntry> =>
-    answer(
-      await request(path, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rev, value })
-      })
-    )
+type Request = (path: string, init?: RequestInit) => Promise<Response>
+
+interface Section<V, E extends SectionEntry<V, unknown>> {
+  get(): Promise<E>
+  put(rev: number, value: V): Promise<E>
+}
+
+function section<V, E extends SectionEntry<V, unknown>>(
+  request: Request,
+  path: string,
+  parse: (body: unknown) => E
+): Section<V, E> {
   return {
-    getModels,
-    putModels,
-    setModelPath: async (key, chosen) => {
-      const base = await getModels()
-      try {
-        await putModels(base.rev, { ...base.value, [key]: chosen })
-      } catch (error) {
-        if (!(error instanceof ConfigConflictError)) throw error
-        // Someone else wrote first (core's engine switch): apply the path to theirs, once.
-        await putModels(error.current.rev, { ...error.current.value, [key]: chosen })
-      }
-    }
+    get: async () => answer(await request(path), parse),
+    put: async (rev, value) =>
+      answer(
+        await request(path, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rev, value })
+        }),
+        parse
+      )
+  }
+}
+
+/** Sets one field of a section; on a conflict (core's engine switch wrote first) applies it to theirs, once. */
+async function setField<V, E extends SectionEntry<V, unknown>>(
+  s: Section<V, E>,
+  change: Partial<V>
+): Promise<void> {
+  const base = await s.get()
+  try {
+    await s.put(base.rev, { ...base.value, ...change })
+  } catch (error) {
+    if (!(error instanceof ConfigConflictError)) throw error
+    const current = error.current as E
+    await s.put(current.rev, { ...current.value, ...change })
+  }
+}
+
+export function createConfigClient(request: Request): ConfigClient {
+  // The schemas allow any minutes core accepts; the types name the UI's choices, so this is a widening on purpose.
+  const engine = section<EngineSection, EngineEntry>(
+    request,
+    '/api/config/engine.llamaserver',
+    parser(engineSchema)
+  )
+  const llamacpp = section<LlamacppSection, LlamacppEntry>(
+    request,
+    '/api/config/provider.llamacpp',
+    parser(llamacppSchema)
+  )
+  return {
+    getEngine: engine.get,
+    putEngine: engine.put,
+    getLlamacpp: llamacpp.get,
+    putLlamacpp: llamacpp.put,
+    setModelPath: (target, chosen) =>
+      target === 'llamaServer'
+        ? setField(engine, { path: chosen })
+        : setField(llamacpp, { modelsDir: chosen })
   }
 }

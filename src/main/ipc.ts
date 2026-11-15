@@ -29,7 +29,7 @@ export function registerIpcHandlers(
   settings: SettingsService,
   appUrl: string,
   locations: FileLocations,
-  config: Pick<ConfigClient, 'getModels' | 'setModelPath'>,
+  config: Pick<ConfigClient, 'getEngine' | 'getLlamacpp' | 'setModelPath'>,
   core: CoreControl
 ): void {
   const folders: Record<AppFolder, string> = {
@@ -133,14 +133,15 @@ export function registerIpcHandlers(
       log.warn('Refused to pick an unknown path', target)
       throw new Error('Unknown path')
     }
-    const key = parsed.data === 'llamaServer' ? 'llamaServerPath' : 'modelsDir'
+    const chosen = parsed.data
     // Only a starting folder: the dialog still opens when core can't be read.
-    const current = await config
-      .getModels()
-      .then((entry) => entry.value[key] ?? undefined)
-      .catch(() => undefined)
+    const stored =
+      chosen === 'llamaServer'
+        ? config.getEngine().then((entry) => entry.value.path)
+        : config.getLlamacpp().then((entry) => entry.value.modelsDir)
+    const current = await stored.then((path) => path ?? undefined).catch(() => undefined)
     const result =
-      parsed.data === 'llamaServer'
+      chosen === 'llamaServer'
         ? await dialog.showOpenDialog(window, {
             title: 'Choose llama-server.exe',
             defaultPath: current,
@@ -155,10 +156,10 @@ export function registerIpcHandlers(
     const [path] = result.filePaths
     if (result.canceled || !path) return false
     try {
-      await config.setModelPath(key, path)
+      await config.setModelPath(chosen, path)
       return true
     } catch (error) {
-      log.warn(`Could not set ${key}`, error)
+      log.warn(`Could not set the ${chosen === 'llamaServer' ? 'llama-server path' : 'models folder'}`, error)
       // Electron sends only the message to the UI; the cause stays in main.
       throw new Error(error instanceof Error ? error.message : String(error), { cause: error })
     }
