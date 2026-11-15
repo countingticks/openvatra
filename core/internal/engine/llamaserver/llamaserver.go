@@ -40,19 +40,39 @@ func (e *Engine) Describe() seam.Descriptor {
 func (e *Engine) Command(spec engine.Spec) engine.Command {
 	args := []string{"-m", spec.Path, "--host", "127.0.0.1"}
 	if spec.Embedding {
+		// Embedding servers keep llama-server's own size and placement, and never take images (a projector would
+		// only cost memory there).
 		args = append(args, "--embeddings")
-	} else if spec.Context > 0 {
-		args = append(args, "-c", strconv.Itoa(spec.Context))
-	}
-	// Embedding servers never take images, so a projector would only cost memory there.
-	if spec.Projector != "" && !spec.Embedding {
-		args = append(args, "--mmproj", spec.Projector)
+	} else {
+		if spec.Context > 0 {
+			args = append(args, "-c", strconv.Itoa(spec.Context))
+		}
+		args = append(args, placementArgs(spec.Placement)...)
+		// llama-server's own fitting is on by default and would change what core chose; off, what runs is what fit said.
+		args = append(args, "--fit", "off")
+		if spec.Projector != "" {
+			args = append(args, "--mmproj", spec.Projector)
+		}
 	}
 	return engine.Command{
 		Path:     e.path(),
 		Args:     append(args, spec.Args...),
 		PortFlag: "--port",
 		Health:   "/health",
+	}
+}
+
+// placementArgs are llama-server's flags for where the weights go.
+func placementArgs(p engine.Placement) []string {
+	switch p.Kind {
+	case engine.PlaceExperts:
+		return []string{"-ngl", "all", "--cpu-moe"}
+	case engine.PlaceLayers:
+		return []string{"-ngl", strconv.Itoa(p.Layers)}
+	case engine.PlaceCPU:
+		return []string{"-ngl", "0"}
+	default:
+		return []string{"-ngl", "all"}
 	}
 }
 
