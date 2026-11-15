@@ -93,12 +93,7 @@ func (m Models) Validate() error {
 	return nil
 }
 
-func validatePath(field string, p *string) error {
-	if p != nil && (*p == "" || !filepath.IsAbs(*p) || strings.ContainsRune(*p, 0)) {
-		return fmt.Errorf("%s must be an absolute path", field)
-	}
-	return nil
-}
+func validatePath(field string, p *string) error { return ValidatePath(field, p) }
 
 // Env is what Resolve needs from outside the section: where the engines and the user's home are.
 type Env struct {

@@ -33,6 +33,7 @@ type Validator interface{ Validate() error }
 type DB interface {
 	ConfigGet(ctx context.Context, section string) (int, []byte, error)
 	ConfigPut(ctx context.Context, section string, expectRev int, value []byte) (int, error)
+	ConfigMove(ctx context.Context, from string, to map[string][]byte) (bool, error)
 }
 
 // SectionEntry is one section as clients see it.
