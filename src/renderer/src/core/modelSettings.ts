@@ -214,3 +214,46 @@ export function updateModels(
     if (failed) throw new Error(failureReason(failed.reason))
   }
 }
+
+/** What the window may change in engine.llamaserver: `path` only back to null (decision 2). */
+export type EngineChange = Partial<Pick<LlamaServerSettings, 'build'>> & { path?: null }
+
+/** What the window may change in provider.llamacpp: `modelsDir` only back to null; `options` replaces the map. */
+export type LlamacppChange = Partial<
+  Pick<LlamaCppSettings, 'embeddingModel' | 'idleUnloadMinutes' | 'options'>
+> & {
+  modelsDir?: null
+}
+
+/** One section as a screen sees it. */
+export interface SectionSettings<V, E, C> {
+  /** core's value; the section's defaults until core has answered once (decision 36). */
+  value: V
+  /** What core really uses; null until it has answered. */
+  effective: E | null
+  update(change: C): Promise<void>
+}
+
+type Thunk = (dispatch: AppDispatch, getState: () => RootState) => Promise<void>
+
+/** Queues the change on the section; rejects with an Error whose message is failureReason's text. */
+function updateSection<V extends object, E extends Entry<V>>(
+  section: Section<V, E>,
+  change: Partial<V>
+): Thunk {
+  return async (dispatch, getState) => {
+    try {
+      await enqueue(section, change, dispatch, getState)
+    } catch (error) {
+      throw new Error(failureReason(error), { cause: error })
+    }
+  }
+}
+
+export function updateEngine(change: EngineChange): Thunk {
+  return updateSection(engineSection, change)
+}
+
+export function updateLlamacpp(change: LlamacppChange): Thunk {
+  return updateSection(llamacppSection, change)
+}
