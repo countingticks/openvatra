@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/countingticks/openvatra/core/internal/event"
 )
@@ -69,4 +70,69 @@ func (s *Store) ConfigPut(ctx context.Context, section string, expectRev int, va
 	}
 	s.bus.Publish(events...)
 	return newRev, nil
+}
+
+// ConfigMove replaces section from with the sections in to, in one transaction. The new sections are written at
+// rev 1 only when none of them exists yet (moved is true); otherwise, or when to is empty, from is just deleted, so
+// sections written by a newer version win. Each new section gets a config.changed, in name order.
+func (s *Store) ConfigMove(ctx context.Context, from string, to map[string][]byte) (moved bool, err error) {
+	if s.readOnly != nil {
+		return false, ErrReadOnly
+	}
+	s.appendMu.Lock()
+	defer s.appendMu.Unlock()
+	tx, err := s.writer().BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("config move: %w", err)
+	}
+	defer tx.Rollback()
+
+	exists := func(section string) (bool, error) {
+		var n int
+		err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM config WHERE section = ?", section).Scan(&n)
+		return n > 0, err
+	}
+	found, err := exists(from)
+	if err != nil {
+		return false, fmt.Errorf("config move: %w", err)
+	}
+	if !found {
+		return false, nil
+	}
+	names := make([]string, 0, len(to))
+	for name := range to {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		taken, err := exists(name)
+		if err != nil {
+			return false, fmt.Errorf("config move: %w", err)
+		}
+		if taken {
+			names = nil
+			break
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM config WHERE section = ?", from); err != nil {
+		return false, fmt.Errorf("config move: %w", err)
+	}
+	payloads := make([]event.Payload, 0, len(names))
+	for _, name := range names {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO config (section, rev, value) VALUES (?, 1, ?)", name, string(to[name])); err != nil {
+			return false, fmt.Errorf("config move: %w", err)
+		}
+		payloads = append(payloads, event.ConfigChanged{Section: name, Rev: 1})
+	}
+	var events []event.Event
+	if len(payloads) > 0 {
+		if events, err = s.appendTx(ctx, tx, "system", payloads); err != nil {
+			return false, fmt.Errorf("config move: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("config move: %w", err)
+	}
+	s.bus.Publish(events...)
+	return len(names) > 0, nil
 }
