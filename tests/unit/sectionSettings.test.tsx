@@ -45,7 +45,7 @@ function show(options: Parameters<typeof renderWithStore>[2] = {}): ReturnType<t
   return renderWithStore(
     <Probe />,
     {},
-    { coreState: ready, modelSettings: { idleUnloadMinutes: 30 }, ...options }
+    { coreState: ready, llamacppSettings: { idleUnloadMinutes: 30 }, ...options }
   )
 }
 

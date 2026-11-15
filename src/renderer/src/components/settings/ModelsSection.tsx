@@ -9,18 +9,18 @@ import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
 import { useGetEnginesQuery } from '@renderer/core/generated'
 import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
-import { useModelSettings } from '@renderer/hooks/useModelSettings'
+import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
 import { modelsDialogOpened, settingsClosed } from '@renderer/store/uiSlice'
-import type { ModelsChange } from '@renderer/core/modelSettings'
+import type { LlamacppChange } from '@renderer/core/modelSettings'
 import type { PickTarget } from '../../../../shared/ipc'
 
 /** Settings → Models: the simple view (folder, installed models, get more, unload timer) and, behind *Show advanced*, the engine, embedding model and per-model options. */
 export function ModelsSection(): React.JSX.Element {
   const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
-  const { value: models, update } = useModelSettings()
+  const { value: llamacpp, update } = useLlamacppSettings()
   const { value: engine, update: updateEngine } = useEngineSettings()
   const dispatch = useAppDispatch()
   const idleId = useId()
@@ -40,7 +40,7 @@ export function ModelsSection(): React.JSX.Element {
     }
   }
 
-  function change(next: ModelsChange): void {
+  function change(next: LlamacppChange): void {
     setProblem(undefined)
     update(next).catch((error: Error) => setProblem(error.message))
   }
@@ -50,14 +50,14 @@ export function ModelsSection(): React.JSX.Element {
     write.catch((error: Error) => setProblem(error.message))
   }
 
-  const idle = idleOptions.find((option) => option.minutes === models.idleUnloadMinutes) ?? idleOptions[1]
+  const idle = idleOptions.find((option) => option.minutes === llamacpp.idleUnloadMinutes) ?? idleOptions[1]
 
   return (
     <div className="flex flex-col">
       <PathRow
         label="Models folder"
         hint="Where your downloaded models are kept."
-        path={models.modelsDir}
+        path={llamacpp.modelsDir}
         defaultText="The OpenVatra\Models folder in your user folder"
         browseText="Change…"
         onBrowse={() => void pick('modelsDir')}

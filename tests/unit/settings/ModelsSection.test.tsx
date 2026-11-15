@@ -3,12 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { coreApi } from '@renderer/core/coreApi'
 import type { LlamaCppSettings, LlamaServerSettings } from '@renderer/core/generated'
-import {
-  defaultCoreModels,
-  defaultEngineSettings,
-  defaultLlamacppSettings,
-  type ModelsView
-} from '@renderer/core/modelSettings'
+import { defaultEngineSettings, defaultLlamacppSettings } from '@renderer/core/modelSettings'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState } from '../../../src/shared/core'
 import type { ModelInfo } from '@renderer/core/types'
@@ -17,14 +12,13 @@ import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
 /** The two window flags that sit beside core's models section in a test's arguments. */
-type Preferences = Partial<Omit<ModelsView, 'llamaServerPath' | 'engine'>> & {
+type Preferences = Partial<LlamaCppSettings> & {
   engineSettings?: Partial<LlamaServerSettings>
   showAdvanced?: boolean
   cudaOfferDismissed?: boolean
 }
 
 const chosen: Preferences = {
-  ...defaultCoreModels,
   engineSettings: { path: 'C:\\llama\\llama-server.exe' },
   modelsDir: 'D:\\models',
   showAdvanced: true
@@ -86,7 +80,7 @@ async function openModels(
   const rendered = renderWithStore(
     <App />,
     { showAdvancedModels: showAdvanced, cudaOfferDismissed },
-    { modelSettings: core, engineSettings, ...options }
+    { llamacppSettings: core, engineSettings, ...options }
   )
   act(() => {
     rendered.store.dispatch(settingsOpened('models'))
@@ -311,6 +305,7 @@ describe('Settings → Models', () => {
 
     await waitFor(() => expect(within(group).getByRole('radio', { name: 'Never' })).toBeChecked())
     expect(putValues(coreHttp).map((value) => value.idleUnloadMinutes)).toEqual([60, null])
+    expect(enginePutValues(coreHttp)).toEqual([])
   })
 
   describe('empty and problem states', () => {
@@ -432,7 +427,7 @@ describe('Settings → Models', () => {
 
   describe('per-model options', () => {
     async function openOptions(
-      options: ModelsView['options'] = {}
+      options: LlamaCppSettings['options'] = {}
     ): Promise<Rendered & { group: HTMLElement }> {
       const rendered = await openModels({ ...chosen, options }, { coreState: ready, models: [qwen, nomic] })
       // The arguments box starts from what core has, so wait for core's answer (its folder shows) first.

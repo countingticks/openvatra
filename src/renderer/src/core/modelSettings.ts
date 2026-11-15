@@ -1,8 +1,6 @@
 // The window's writes to core's two model sections, engine.llamaserver and provider.llamacpp. One at a time per
 // store and section, each PUT with the rev it last saw, and the screen changes only when core answers (no optimistic
 // update): a failure leaves the cached value as it was.
-// ModelsView and ModelsChange keep the shape the screens had before the split; they go once each screen reads the
-// section that owns its field.
 import { failureReason } from '../lib/modelText'
 import type { AppDispatch, RootState } from '../store/store'
 import { coreApi } from './coreApi'
@@ -10,19 +8,8 @@ import type {
   GetConfigEngineLlamaserverApiResponse,
   GetConfigProviderLlamacppApiResponse,
   LlamaCppSettings,
-  LlamaServerSettings,
-  ModelOptions
+  LlamaServerSettings
 } from './generated'
-
-/** Both model sections as one value, with the names the screens use. */
-export interface ModelsView {
-  llamaServerPath: string | null
-  modelsDir: string | null
-  embeddingModel: string | null
-  idleUnloadMinutes: number | null
-  options: Record<string, ModelOptions>
-  engine: 'bundled' | 'cuda'
-}
 
 /** core's defaults for engine.llamaserver (llamaserver.DefaultSettings). */
 export const defaultEngineSettings: Readonly<LlamaServerSettings> = { build: 'bundled', path: null }
@@ -33,32 +20,6 @@ export const defaultLlamacppSettings: Readonly<LlamaCppSettings> = {
   idleUnloadMinutes: 15,
   modelsDir: null,
   options: {}
-}
-
-/** Both sections' values as the screens see them. */
-export function toModelsView(engine: LlamaServerSettings, llamacpp: LlamaCppSettings): ModelsView {
-  return {
-    embeddingModel: llamacpp.embeddingModel,
-    engine: engine.build,
-    idleUnloadMinutes: llamacpp.idleUnloadMinutes,
-    llamaServerPath: engine.path,
-    modelsDir: llamacpp.modelsDir,
-    options: llamacpp.options
-  }
-}
-
-/** core's defaults for both sections, as one value. */
-export const defaultCoreModels: Readonly<ModelsView> = toModelsView(
-  defaultEngineSettings,
-  defaultLlamacppSettings
-)
-
-/** What the window may change: the paths only back to null (decision 2); `options` replaces the whole map. */
-export type ModelsChange = Partial<
-  Pick<ModelsView, 'embeddingModel' | 'idleUnloadMinutes' | 'options' | 'engine'>
-> & {
-  llamaServerPath?: null
-  modelsDir?: null
 }
 
 interface Entry<V> {
@@ -176,43 +137,6 @@ function enqueue<V extends object, E extends Entry<V>>(
     run.catch(() => undefined)
   )
   return run
-}
-
-/** The change split by the section that owns each key; a section with no key gets undefined. */
-function splitChange(change: ModelsChange): {
-  engine?: Partial<LlamaServerSettings>
-  llamacpp?: Partial<LlamaCppSettings>
-} {
-  const engine: Partial<LlamaServerSettings> = {}
-  const llamacpp: Partial<LlamaCppSettings> = {}
-  if (change.llamaServerPath !== undefined) engine.path = change.llamaServerPath
-  if (change.engine !== undefined) engine.build = change.engine
-  if (change.modelsDir !== undefined) llamacpp.modelsDir = change.modelsDir
-  if (change.embeddingModel !== undefined) llamacpp.embeddingModel = change.embeddingModel
-  if (change.idleUnloadMinutes !== undefined) llamacpp.idleUnloadMinutes = change.idleUnloadMinutes
-  if (change.options !== undefined) llamacpp.options = change.options
-  return {
-    engine: Object.keys(engine).length > 0 ? engine : undefined,
-    llamacpp: Object.keys(llamacpp).length > 0 ? llamacpp : undefined
-  }
-}
-
-/**
- * Queues the change on the section(s) that own its keys, the engine section first; resolves when core saved it,
- * rejects with an Error whose message is failureReason's text for the first write that failed.
- */
-export function updateModels(
-  change: ModelsChange
-): (dispatch: AppDispatch, getState: () => RootState) => Promise<void> {
-  return async (dispatch, getState) => {
-    const split = splitChange(change)
-    const runs: Promise<void>[] = []
-    if (split.engine) runs.push(enqueue(engineSection, split.engine, dispatch, getState))
-    if (split.llamacpp) runs.push(enqueue(llamacppSection, split.llamacpp, dispatch, getState, runs[0]))
-    const results = await Promise.allSettled(runs)
-    const failed = results.find((result) => result.status === 'rejected')
-    if (failed) throw new Error(failureReason(failed.reason))
-  }
 }
 
 /** What the window may change in engine.llamaserver: `path` only back to null (decision 2). */

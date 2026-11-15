@@ -147,7 +147,7 @@ describe('welcome card', () => {
     renderWithStore(
       <App />,
       {},
-      { coreState: ready, setup: { catalog }, modelSettings: { modelsDir: 'D:\\AI' } }
+      { coreState: ready, setup: { catalog }, llamacppSettings: { modelsDir: 'D:\\AI' } }
     )
 
     expect(await screen.findByText(/saved in D:\\AI\./)).toBeInTheDocument()
