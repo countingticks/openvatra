@@ -22,7 +22,7 @@ const llamacppValue: LlamacppSection = {
   modelsDir: 'D:\\Models',
   embeddingModel: null,
   idleUnloadMinutes: 15,
-  options: { qwen: { args: '-c 8192' } }
+  options: { qwen: { args: '--jinja', context: 8192 } }
 }
 const engineEntry = (rev: number, value: EngineSection = engineValue): EngineEntry => ({
   rev,

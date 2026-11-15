@@ -41,7 +41,7 @@ test("the unload timer and a model's arguments survive a restart and are not in 
     if ((await advanced.getAttribute('aria-checked')) !== 'true') await advanced.click()
     await dialog.getByRole('button', { name: 'Options for tiny' }).click()
     const args = dialog.getByRole('textbox', { name: 'Arguments' })
-    await args.fill('-c 4096')
+    await args.fill('--temp 0.5')
     // The field saves on blur.
     await args.blur()
     await expect
@@ -60,7 +60,7 @@ test("the unload timer and a model's arguments survive a restart and are not in 
           return body.value.options['tiny']?.args ?? null
         })
       )
-      .toBe('-c 4096')
+      .toBe('--temp 0.5')
     await first.close()
 
     const file = JSON.parse(await readFile(join(userDataDir, 'settings.json'), 'utf8')) as Record<
@@ -76,7 +76,7 @@ test("the unload timer and a model's arguments survive a restart and are not in 
       const secondDialog = await openModels(secondWindow)
       await expect(secondDialog.getByRole('radio', { name: '1 hour' })).toBeChecked()
       await secondDialog.getByRole('button', { name: 'Options for tiny' }).click()
-      await expect(secondDialog.getByRole('textbox', { name: 'Arguments' })).toHaveValue('-c 4096')
+      await expect(secondDialog.getByRole('textbox', { name: 'Arguments' })).toHaveValue('--temp 0.5')
     } finally {
       await second.close()
     }

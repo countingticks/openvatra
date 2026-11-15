@@ -453,17 +453,17 @@ describe('Settings → Models', () => {
     })
 
     it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
-      const { coreHttp, group } = await openOptions({ 'nomic-embed': { args: '-ngl 0' } })
+      const { coreHttp, group } = await openOptions({ 'nomic-embed': { args: '--jinja' } })
       const args = within(group).getByLabelText('Arguments')
 
-      fireEvent.change(args, { target: { value: '  -c 131072 --alias "my qwen"\n' } })
+      fireEvent.change(args, { target: { value: '  --temp 0.7 --alias "my qwen"\n' } })
       expect(putValues(coreHttp)).toEqual([])
       fireEvent.blur(args)
 
       await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
       expect(putValues(coreHttp)[0]?.options).toEqual({
-        'nomic-embed': { args: '-ngl 0' },
-        [qwen.id]: { args: '-c 131072 --alias "my qwen"' }
+        'nomic-embed': { args: '--jinja' },
+        [qwen.id]: { args: '--temp 0.7 --alias "my qwen"' }
       })
     })
 
@@ -486,7 +486,7 @@ describe('Settings → Models', () => {
       const { coreHttp, group } = await openOptions()
       const args = within(group).getByLabelText('Arguments')
 
-      fireEvent.change(args, { target: { value: '-c 4096 --port 9000' } })
+      fireEvent.change(args, { target: { value: '--temp 0.7 --port 9000' } })
       fireEvent.blur(args)
 
       expect(args).toHaveAttribute('aria-invalid', 'true')
@@ -494,10 +494,22 @@ describe('Settings → Models', () => {
       expect(putValues(coreHttp)).toEqual([])
     })
 
-    it('drops the model’s entry when the box is emptied', async () => {
-      const { coreHttp, group } = await openOptions({ [qwen.id]: { args: '-c 8192' } })
+    it('refuses the size and placement flags, which OpenVatra sets itself', async () => {
+      const { coreHttp, group } = await openOptions()
       const args = within(group).getByLabelText('Arguments')
-      expect(args).toHaveValue('-c 8192')
+
+      fireEvent.change(args, { target: { value: '-ngl 20' } })
+      fireEvent.blur(args)
+
+      expect(args).toHaveAttribute('aria-invalid', 'true')
+      expect(args).toHaveAccessibleDescription("-ngl is set by OpenVatra and can't be changed.")
+      expect(putValues(coreHttp)).toEqual([])
+    })
+
+    it('drops the model’s entry when the box is emptied', async () => {
+      const { coreHttp, group } = await openOptions({ [qwen.id]: { args: '--jinja' } })
+      const args = within(group).getByLabelText('Arguments')
+      expect(args).toHaveValue('--jinja')
 
       fireEvent.change(args, { target: { value: ' ' } })
       fireEvent.blur(args)

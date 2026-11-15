@@ -2,8 +2,8 @@
 // splitArgs turns it into an argument list that is handed straight to the process. Shared so the settings schema
 // (main) and the form (renderer) accept exactly the same text.
 
-/** Flags core sets itself (core/internal/config keeps the same list); typing one would fight core's own. */
-export const reservedFlags = [
+/** The flags settings.json v6 reserved; a v6 file is still read against these, so its size flags reach the import. */
+export const legacyReservedFlags = [
   '-m',
   '--model',
   '--host',
@@ -12,6 +12,25 @@ export const reservedFlags = [
   '--embeddings',
   '-mm',
   '--mmproj'
+]
+
+/**
+ * Flags core sets itself (core/internal/config keeps the same list); typing one would fight core's own. The size and
+ * placement flags are core's since it picks them per model (options.context and options.placement).
+ */
+export const reservedFlags = [
+  ...legacyReservedFlags,
+  '-c',
+  '--ctx-size',
+  '-ngl',
+  '--gpu-layers',
+  '--n-gpu-layers',
+  '-cmoe',
+  '--cpu-moe',
+  '-ncmoe',
+  '--n-cpu-moe',
+  '-fit',
+  '--fit'
 ]
 
 /** The longest argument text a box may hold. */

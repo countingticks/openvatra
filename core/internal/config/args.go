@@ -14,8 +14,13 @@ import (
 // MaxArgsLength is the longest argument text, in UTF-16 code units (what JavaScript's .length counts).
 const MaxArgsLength = 2000
 
-// ReservedFlags are set by core itself; the same list, in the same order, as src/shared/args.ts.
-var ReservedFlags = []string{"-m", "--model", "--host", "--port", "--embedding", "--embeddings", "-mm", "--mmproj"}
+// ReservedFlags are set by core itself; the same list, in the same order, as src/shared/args.ts. The size and placement
+// flags (from -c on) are core's because it picks them per model (UpgradeArgs moves old ones into the options).
+var ReservedFlags = []string{
+	"-m", "--model", "--host", "--port", "--embedding", "--embeddings", "-mm", "--mmproj",
+	"-c", "--ctx-size", "-ngl", "--gpu-layers", "--n-gpu-layers", "-cmoe", "--cpu-moe", "-ncmoe", "--n-cpu-moe",
+	"-fit", "--fit",
+}
 
 // isJSSpace is JavaScript's \s, not unicode.IsSpace: the two differ at U+0085 and U+FEFF, and the UI and core must
 // split the same text the same way.

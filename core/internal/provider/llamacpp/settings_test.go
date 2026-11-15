@@ -43,7 +43,8 @@ func TestSettingsValidateNamesTheField(t *testing.T) {
 		{"empty model id", func(s *LlamaCppSettings) { s.Options = map[string]ModelOptions{"": {}} }, "options has an empty model id"},
 		{"NUL in args", func(s *LlamaCppSettings) { s.Options = map[string]ModelOptions{"m": {Args: "a\x00b"}} }, `options for "m": args must not contain a NUL character`},
 		{"reserved flag", func(s *LlamaCppSettings) { s.Options = map[string]ModelOptions{"m": {Args: "--port 1"}} }, `options for "m": --port`},
-		{"open quote", func(s *LlamaCppSettings) { s.Options = map[string]ModelOptions{"m": {Args: `"-c`}} }, `options for "m": A quote`},
+		{"open quote", func(s *LlamaCppSettings) { s.Options = map[string]ModelOptions{"m": {Args: `"--jinja`}} }, `options for "m": A quote`},
+		{"reserved size flag", func(s *LlamaCppSettings) { s.Options = map[string]ModelOptions{"m": {Args: "-c 4096"}} }, `options for "m": -c is set by OpenVatra`},
 		{"first field wins", func(s *LlamaCppSettings) {
 			s.ModelsDir, s.IdleUnloadMinutes = settingsPtr("Models"), settingsPtr(0)
 		}, "modelsDir"},
@@ -63,7 +64,7 @@ func TestSettingsValidateNamesTheField(t *testing.T) {
 
 	ok := DefaultSettings()
 	ok.ModelsDir, ok.EmbeddingModel, ok.IdleUnloadMinutes = settingsPtr(abs), settingsPtr("nomic"), nil
-	ok.Options["m"] = ModelOptions{Args: `-c 8192 --no-mmproj --chat-template-file "C:\my templates\t.jinja"`}
+	ok.Options["m"] = ModelOptions{Args: `--temp 0.7 --no-mmproj --chat-template-file "C:\my templates\t.jinja"`}
 	if err := ok.Validate(); err != nil {
 		t.Fatalf("valid value rejected: %v", err)
 	}
@@ -113,11 +114,11 @@ func TestSettingsIdleTimeout(t *testing.T) {
 
 func TestSettingsArgsIsACopy(t *testing.T) {
 	s := DefaultSettings()
-	s.Options["m"] = ModelOptions{Args: "-c 4096"}
+	s.Options["m"] = ModelOptions{Args: "--temp 0.7"}
 	r := s.Resolve("")
 	got := r.Args("m")
 	_ = append(got[:1], "x")
-	if again := r.Args("m"); len(again) != 2 || again[1] != "4096" {
+	if again := r.Args("m"); len(again) != 2 || again[1] != "0.7" {
 		t.Fatalf("Args after a write into the copy = %v", again)
 	}
 	if r.Args("other") != nil {
@@ -127,8 +128,8 @@ func TestSettingsArgsIsACopy(t *testing.T) {
 
 func TestSettingsUseMMProj(t *testing.T) {
 	s := DefaultSettings()
-	s.Options["off"] = ModelOptions{Args: "-c 4096 --no-mmproj"}
-	s.Options["on"] = ModelOptions{Args: "-c 4096"}
+	s.Options["off"] = ModelOptions{Args: "--jinja --no-mmproj"}
+	s.Options["on"] = ModelOptions{Args: "--jinja"}
 	r := s.Resolve("")
 	for id, want := range map[string]bool{"off": false, "on": true, "unknown": true} {
 		if got := r.UseMMProj(id); got != want {

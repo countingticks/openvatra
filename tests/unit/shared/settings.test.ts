@@ -79,6 +79,11 @@ describe('the window settings', () => {
     expect(settingsFileSchema.safeParse({ schemaVersion: 7, legacyModels: models }).success).toBe(false)
   })
 
+  it('legacyModels accepts the size flags v6 allowed, for the import to move', () => {
+    const models = { options: { qwen: { args: '-c 8192' } } }
+    expect(settingsFileSchema.safeParse({ schemaVersion: 7, legacyModels: models }).success).toBe(true)
+  })
+
   it('the patch schema accepts the two flags and rejects models', () => {
     expect(
       settingsPatchSchema.safeParse({ showAdvancedModels: true, cudaOfferDismissed: true }).success

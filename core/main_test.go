@@ -377,9 +377,9 @@ func TestRunStopsOnShutdownRequest(t *testing.T) {
 }
 
 func TestModelArgs(t *testing.T) {
-	c := llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "-c 131072"}}}.Resolve("")
+	c := llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "--temp 0.7"}}}.Resolve("")
 	got := modelArgs(c, "qwen")
-	if want := []string{"-c", "131072"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"--temp", "0.7"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
 	}
 	if got := modelArgs(c, "other"); len(got) != 0 {
@@ -387,7 +387,7 @@ func TestModelArgs(t *testing.T) {
 	}
 	// The list is a copy: writing into it must never change the config.
 	got[1] = "x"
-	if again := modelArgs(c, "qwen"); again[1] != "131072" {
+	if again := modelArgs(c, "qwen"); again[1] != "0.7" {
 		t.Fatalf("config args changed: %v", again)
 	}
 }
@@ -413,7 +413,7 @@ func TestSpecFor(t *testing.T) {
 		"no-mmproj in args":       {resolved("--no-mmproj"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Context: 16384, Args: []string{"--no-mmproj"}}},
 		"none found":              {resolved(""), models.Model{ID: "qwen", Path: m.Path}, false, engine.Spec{Model: "qwen", Path: m.Path, Context: 16384}},
 		"embedding":               {resolved(""), m, true, engine.Spec{Model: "qwen", Path: m.Path, Embedding: true}},
-		"user's own args":         {resolved("-c 4096"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 16384, Args: []string{"-c", "4096"}}},
+		"user's own args":         {resolved("--temp 0.7"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 16384, Args: []string{"--temp", "0.7"}}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -36,8 +36,8 @@ export function ModelOptionsForm({
       <ArgsField
         label="Arguments"
         value={options?.args ?? ''}
-        placeholder="-c 131072"
-        hint="llama-server arguments, e.g. -c 131072"
+        placeholder="--jinja --temp 0.7"
+        hint="llama-server arguments, e.g. --temp 0.7"
         onCommit={(text) => onChange(withArgs(options, text))}
       />
     </div>
