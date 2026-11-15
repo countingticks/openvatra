@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/engine"
 )
 
 // kv is one key/value pair of a synthetic header; raw is the value's bytes, typ its GGUF type.
@@ -207,5 +209,194 @@ func TestDiscoverKindsAndResolve(t *testing.T) {
 	}
 	if r := ResolveEmbedding([]Model{{ID: "chat", Kind: KindChat}}, ""); r != "" {
 		t.Errorf("with only a chat model got %q, want none", r)
+	}
+}
+
+// tensor is one entry of a synthetic tensor table.
+type tensor struct {
+	name   string
+	dims   []uint64
+	offset uint64
+}
+
+func arrKV(k string, vals ...uint32) kv {
+	raw := append(le32(typeUint32), le64(uint64(len(vals)))...)
+	for _, v := range vals {
+		raw = append(raw, le32(v)...)
+	}
+	return kv{k, typeArray, raw}
+}
+
+// tableOf writes the tensor table; claimed is the count the header states.
+func tableOf(tensors []tensor) []byte {
+	var b []byte
+	for _, x := range tensors {
+		b = append(b, gstr(x.name)...)
+		b = append(b, le32(uint32(len(x.dims)))...)
+		for _, d := range x.dims {
+			b = append(b, le64(d)...)
+		}
+		b = append(b, le32(0)...) // type
+		b = append(b, le64(x.offset)...)
+	}
+	return b
+}
+
+// buildFile builds a whole GGUF file: keys, tensor table, padding to the alignment and dataBytes of zeros.
+func buildFile(version uint32, pairs []kv, tensors []tensor, dataBytes int) []byte {
+	b := append([]byte("GGUF"), le32(version)...)
+	b = append(b, le64(uint64(len(tensors)))...)
+	b = append(b, le64(uint64(len(pairs)))...)
+	align := 32
+	for _, p := range pairs {
+		b = append(b, gstr(p.key)...)
+		b = append(b, le32(p.typ)...)
+		b = append(b, p.raw...)
+		if p.key == "general.alignment" {
+			align = int(binary.LittleEndian.Uint32(p.raw))
+		}
+	}
+	b = append(b, tableOf(tensors)...)
+	b = append(b, make([]byte, (align-len(b)%align)%align)...)
+	return append(b, make([]byte, dataBytes)...)
+}
+
+func shapeOf(t *testing.T, data []byte) (header, engine.Shape) {
+	t.Helper()
+	h, err := readHeader(bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h, h.shape(int64(len(data)))
+}
+
+func denseKeys(extra ...kv) []kv {
+	return append([]kv{
+		strKV("general.architecture", "llama"), u32KV("llama.context_length", 4096), u32KV("llama.block_count", 32),
+		u32KV("llama.attention.head_count", 16), u32KV("llama.attention.head_count_kv", 4),
+		u32KV("llama.attention.key_length", 128), u32KV("llama.attention.value_length", 96),
+		u32KV("llama.embedding_length", 2048),
+	}, extra...)
+}
+
+func TestShapeFromHeader(t *testing.T) {
+	moeTensors := []tensor{
+		{"blk.0.attn_q.weight", []uint64{4, 4}, 0},
+		{"blk.0.ffn_up_exps.weight", []uint64{4, 4, 8}, 1000},
+		{"blk.1.ffn_up_exps.weight", []uint64{4, 4, 8}, 3000},
+	}
+	tests := []struct {
+		name    string
+		pairs   []kv
+		tensors []tensor
+		data    int
+		want    engine.Shape
+	}{
+		{
+			"dense", denseKeys(), []tensor{{"blk.0.attn_q.weight", []uint64{4}, 0}}, 100,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 4, KeyLen: 128, ValueLen: 96},
+		},
+		{
+			"moe: the last expert tensor runs to the end of the file", denseKeys(u32KV("llama.expert_count", 8)), moeTensors, 5000,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 4, KeyLen: 128, ValueLen: 96, ExpertBytes: 2000 + 2000},
+		},
+		{
+			"expert tensors without expert_count", denseKeys(), moeTensors, 5000,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 4, KeyLen: 128, ValueLen: 96},
+		},
+		{
+			"head_count_kv as an array takes the largest", denseKeys(arrKV("llama.attention.head_count_kv", 0, 8, 4)), nil, 0,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 96},
+		},
+		{
+			"head_count_kv missing falls back to head_count",
+			[]kv{strKV("general.architecture", "llama"), u32KV("llama.block_count", 2), u32KV("llama.attention.head_count", 16)}, nil, 0,
+			engine.Shape{Layers: 2, KVHeads: 16},
+		},
+		{
+			"key and value length missing fall back to embedding_length / head_count",
+			[]kv{
+				strKV("general.architecture", "llama"), u32KV("llama.attention.head_count", 16),
+				u32KV("llama.embedding_length", 2050), u32KV("llama.attention.head_count_kv", 2),
+			}, nil, 0,
+			engine.Shape{KVHeads: 2, KeyLen: 128, ValueLen: 128},
+		},
+		{
+			"keys before the architecture still count",
+			[]kv{u32KV("llama.block_count", 7), vocab(3), strKV("general.architecture", "llama")}, nil, 0,
+			engine.Shape{Layers: 7},
+		},
+		{
+			"alignment 64 shifts the data start",
+			denseKeys(u32KV("llama.expert_count", 2), u32KV("general.alignment", 64)),
+			[]tensor{{"blk.0.ffn_gate_exps.weight", []uint64{1}, 0}}, 300,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 4, KeyLen: 128, ValueLen: 96, ExpertBytes: 300},
+		},
+		{
+			"a tensor with 9 dimensions fails the table", denseKeys(u32KV("llama.expert_count", 2)),
+			[]tensor{{"blk.0.ffn_gate_exps.weight", make([]uint64, 9), 0}}, 300,
+			engine.Shape{MaxContext: 4096, KVHeads: 4, KeyLen: 128, ValueLen: 96},
+		},
+		{
+			"an offset past the end of the file fails the table", denseKeys(u32KV("llama.expert_count", 2)),
+			[]tensor{{"blk.0.ffn_gate_exps.weight", []uint64{1}, 1000}}, 300,
+			engine.Shape{MaxContext: 4096, KVHeads: 4, KeyLen: 128, ValueLen: 96},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := buildFile(3, tt.pairs, tt.tensors, tt.data)
+			h, got := shapeOf(t, data)
+			if got != tt.want {
+				t.Fatalf("shape = %+v, want %+v", got, tt.want)
+			}
+			if h.kind() != KindChat {
+				t.Fatalf("kind = %q, want chat", h.kind())
+			}
+		})
+	}
+}
+
+func TestTensorCountOverLimitFailsTheTableOnly(t *testing.T) {
+	data := buildFile(3, denseKeys(u32KV("llama.expert_count", 2)), nil, 0)
+	copy(data[8:16], le64(maxTensorCount+1)) // claim a million and one tensors; none follow
+	h, got := shapeOf(t, data)
+	if got.Layers != 0 || got.ExpertBytes != 0 || got.KVHeads != 4 || h.kind() != KindChat {
+		t.Fatalf("shape = %+v kind %q, want the keys kept, Layers and ExpertBytes 0, chat", got, h.kind())
+	}
+	if cap(h.tensors) != 0 {
+		t.Fatalf("allocated room for %d tensors", cap(h.tensors))
+	}
+}
+
+func TestKindOfCachesTheShape(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "m.gguf")
+	a := buildFile(3, denseKeys(), nil, 8)
+	b := buildFile(3, append(denseKeys()[:2:2], denseKeys()[3:]...), nil, 8) // another shape, other length
+	b = append(b, make([]byte, len(a)-len(b))...)
+	if len(b) != len(a) {
+		t.Fatalf("test setup: %d != %d", len(a), len(b))
+	}
+	t0 := time.Now().Add(-time.Hour)
+	write := func(data []byte, mtime time.Time) {
+		t.Helper()
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(a, t0)
+	if l := inspect(path, true).shape.Layers; l != 32 {
+		t.Fatalf("Layers = %d, want 32", l)
+	}
+	write(b, t0)
+	if l := inspect(path, true).shape.Layers; l != 32 {
+		t.Fatalf("Layers = %d, want the cached 32", l)
+	}
+	write(b, t0.Add(time.Minute))
+	if l := inspect(path, true).shape.Layers; l != 0 {
+		t.Fatalf("Layers = %d, want 0 after the file changed", l)
 	}
 }

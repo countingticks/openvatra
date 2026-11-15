@@ -3,11 +3,16 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
+
+	"github.com/countingticks/openvatra/core/internal/engine"
 )
 
 // Model is one model the user can load.
@@ -25,6 +30,9 @@ type Model struct {
 	// Kind comes from the GGUF header (chat, embedding or unreadable); Error says why when it is unreadable.
 	Kind  Kind
 	Error string
+	// Shape is what the header says about the model's size and layout (zero fields are unknown); callers ignore it
+	// for embedding and unreadable models.
+	Shape engine.Shape
 }
 
 // ResolveEmbedding returns the id of the embedding model that serves: the chosen one if it exists and is an
@@ -46,7 +54,7 @@ func ResolveEmbedding(list []Model, chosen string) string {
 }
 
 // splitPart matches "name-00002-of-00003" (the file name without ".gguf").
-var splitPart = regexp.MustCompile(`^(.+)-(\d{5})-of-\d{5}$`)
+var splitPart = regexp.MustCompile(`^(.+)-(\d{5})-of-(\d{5})$`)
 
 // Discover returns every model under root, subfolders included, sorted by ID.
 // A missing or empty root is not an error: the user simply has no models yet.
@@ -58,6 +66,7 @@ func Discover(root string) ([]Model, error) {
 	var found []Model
 	projectors := map[string][]string{} // folder -> mmproj files, in walk order
 	sizes := map[string]int64{}         // folder + id -> bytes, so every part of a split model counts
+	partCount := map[string]int{}       // first part's path -> parts in the model
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -92,6 +101,9 @@ func Discover(root string) ([]Model, error) {
 		}
 		if first { // a split model is listed once, via its first part
 			found = append(found, Model{ID: id, Path: path})
+			if m := splitPart.FindStringSubmatch(stem); m != nil {
+				partCount[path], _ = strconv.Atoi(m[3])
+			}
 		}
 		return nil
 	})
@@ -124,7 +136,17 @@ func Discover(root string) ([]Model, error) {
 			continue
 		}
 		// Read the header only for models that stay listed. Rerankers are hidden until a RAG step can use one.
-		m.Kind, m.Error = kindOf(m.Path)
+		info := inspect(m.Path, true)
+		m.Kind, m.Error, m.Shape = info.kind, info.msg, info.shape
+		if n := partCount[m.Path]; n > 1 && m.Kind != KindUnreadable {
+			m.Shape = withParts(m, n, info)
+		}
+		m.Shape.FileBytes = m.SizeBytes
+		if m.MMProj != "" {
+			if fi, err := os.Stat(m.MMProj); err == nil {
+				m.Shape.ProjectorBytes = fi.Size()
+			}
+		}
 		if m.Kind == KindReranker {
 			continue
 		}
@@ -165,4 +187,29 @@ func commonPrefixLen(a, b string) int {
 		n++
 	}
 	return n
+}
+
+// withParts completes the shape of a split model from its other parts: the expert tensors of every part count, and a
+// part that is missing or whose tensor table doesn't read leaves the shape unknown. The keys are the first part's.
+func withParts(m Model, n int, first fileInfo) engine.Shape {
+	s := first.shape
+	ok := first.tableOK
+	if first.moe {
+		s.ExpertBytes = first.rawExperts
+	}
+	dir := filepath.Dir(m.Path)
+	for k := 2; ok && k <= n; k++ {
+		part := inspect(filepath.Join(dir, fmt.Sprintf("%s-%05d-of-%05d.gguf", m.ID, k, n)), false)
+		if part.kind == KindUnreadable || !part.tableOK {
+			ok = false
+			break
+		}
+		if first.moe {
+			s.ExpertBytes += part.rawExperts
+		}
+	}
+	if !ok {
+		s.Layers, s.ExpertBytes = 0, 0
+	}
+	return s
 }

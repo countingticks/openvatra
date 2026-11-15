@@ -8,9 +8,12 @@ import (
 	"io"
 	"math"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/engine"
 )
 
 // Kind says what a model file is for.
@@ -30,6 +33,10 @@ const (
 	maxHeaderBytes = 64 << 20
 	maxStringBytes = 1 << 20
 	maxKeyCount    = 100_000
+	maxTensorCount = 1_000_000
+	maxTensorDims  = 8
+	// defaultAlignment is where tensor data starts when the file has no general.alignment.
+	defaultAlignment = 32
 )
 
 // The GGUF value types (the number after each key). Only the string and integer ones are ever read.
@@ -63,10 +70,38 @@ var encoderArchitectures = map[string]bool{
 	"modern-bert": true, "neo-bert": true, "gemma-embedding": true, "t5encoder": true,
 }
 
+// shapeSuffixes are the "<arch>." keys the shape is read from; the architecture key may come after them, so they
+// are kept by full key and looked up at the end, like pooling_type.
+var shapeSuffixes = []string{
+	".context_length", ".block_count", ".embedding_length", ".expert_count",
+	".attention.head_count", ".attention.head_count_kv", ".attention.key_length", ".attention.value_length",
+}
+
+func isShapeKey(key string) bool {
+	for _, s := range shapeSuffixes {
+		if strings.HasSuffix(key, s) {
+			return true
+		}
+	}
+	return key == "general.alignment"
+}
+
+// tensorRef is what the tensor table is kept for: where a tensor starts and whether it holds expert weights.
+type tensorRef struct {
+	offset uint64
+	expert bool
+}
+
 // header is the little we need from a GGUF file.
 type header struct {
 	architecture string
 	pooling      map[string]int64 // "<arch>.pooling_type" -> value; the architecture key may come after it
+	ints         map[string]int64 // shape keys by full key; head_count_kv holds the largest of an array
+
+	// The tensor table. A table that fails to read leaves tableOK false and the keys intact.
+	tableOK   bool
+	dataStart int64
+	tensors   []tensorRef
 }
 
 // kind applies the rule from the spec.
@@ -225,10 +260,77 @@ func (g *ggufReader) readInt(t uint32) (int64, bool, error) {
 	return int64(u), true, nil
 }
 
-// readHeader parses the key/value section of a GGUF stream.
-func readHeader(r io.Reader) (header, error) {
+// readHeader parses the key/value section and the tensor table of a GGUF stream.
+func readHeader(r io.Reader) (header, error) { return parseHeader(r, true) }
+
+// readArrayMax reads an array and returns its largest integer.
+func (g *ggufReader) readArrayMax() (int64, bool, error) {
+	et, err := g.u32()
+	if err != nil {
+		return 0, false, err
+	}
+	count, err := g.u64()
+	if err != nil {
+		return 0, false, err
+	}
+	var best int64
+	found := false
+	for i := uint64(0); i < count; i++ {
+		v, ok, err := g.readInt(et)
+		if err != nil {
+			return 0, false, err
+		}
+		if ok && (!found || v > best) {
+			best, found = v, true
+		}
+	}
+	return best, found, nil
+}
+
+// readTable reads the tensor table that follows the keys. Any failure is the table's alone.
+func (g *ggufReader) readTable(count uint64, h *header) error {
+	if count > maxTensorCount {
+		return fmt.Errorf("header claims %d tensors", count)
+	}
+	var refs []tensorRef // grown as tensors are read: a lying count allocates nothing
+	for i := uint64(0); i < count; i++ {
+		name, err := g.str()
+		if err != nil {
+			return err
+		}
+		dims, err := g.u32()
+		if err != nil {
+			return err
+		}
+		if dims > maxTensorDims {
+			return fmt.Errorf("a tensor has %d dimensions", dims)
+		}
+		if err := g.skip(uint64(dims) * 8); err != nil {
+			return err
+		}
+		if _, err := g.u32(); err != nil { // the type: sizes come from the offsets
+			return err
+		}
+		off, err := g.u64()
+		if err != nil {
+			return err
+		}
+		refs = append(refs, tensorRef{off, strings.Contains(name, "_exps")})
+	}
+	h.tensors = refs
+	align := h.ints["general.alignment"]
+	if align <= 0 {
+		align = defaultAlignment
+	}
+	h.dataStart = (g.pos + align - 1) / align * align
+	return nil
+}
+
+// parseHeader is readHeader; requireArch is false for the later parts of a split model, which may carry no
+// general.architecture.
+func parseHeader(r io.Reader, requireArch bool) (header, error) {
 	g := &ggufReader{r: bufio.NewReaderSize(r, 1<<16)}
-	h := header{pooling: map[string]int64{}}
+	h := header{pooling: map[string]int64{}, ints: map[string]int64{}}
 
 	var magic [4]byte
 	if err := g.read(magic[:]); err != nil || string(magic[:]) != "GGUF" {
@@ -241,7 +343,8 @@ func readHeader(r io.Reader) (header, error) {
 	if version != 2 && version != 3 {
 		return h, fmt.Errorf("unsupported GGUF version %d", version)
 	}
-	if _, err := g.u64(); err != nil { // tensor count: not needed
+	tensorCount, err := g.u64()
+	if err != nil {
 		return h, err
 	}
 	count, err := g.u64()
@@ -274,30 +377,133 @@ func readHeader(r io.Reader) (header, error) {
 			if ok {
 				h.pooling[key] = v
 			}
+		case isShapeKey(key) && t == typeArray:
+			if !strings.HasSuffix(key, ".attention.head_count_kv") {
+				if err := g.skipValue(t); err != nil {
+					return h, err
+				}
+				break
+			}
+			v, ok, err := g.readArrayMax()
+			if err != nil {
+				return h, err
+			}
+			if ok {
+				h.ints[key] = v
+			}
+		case isShapeKey(key):
+			v, ok, err := g.readInt(t)
+			if err != nil {
+				return h, err
+			}
+			if ok {
+				h.ints[key] = v
+			}
 		default:
 			if err := g.skipValue(t); err != nil {
 				return h, err
 			}
 		}
 	}
-	if h.architecture == "" {
+	h.tableOK = g.readTable(tensorCount, &h) == nil
+	if !h.tableOK {
+		h.tensors = nil
+	}
+	if requireArch && h.architecture == "" {
 		return h, errors.New("the file has no general.architecture")
 	}
 	return h, nil
 }
 
-// classify reads one file's header and returns its kind, or KindUnreadable with the reason.
-func classify(path string) (Kind, string) {
+// expertBytes sums the sizes of the expert tensors in a file of fileSize bytes. Each tensor runs to the next one's
+// offset, the last to the end of the file. false when the table failed or a size comes out negative.
+func (h header) expertBytes(fileSize int64) (int64, bool) {
+	if !h.tableOK {
+		return 0, false
+	}
+	t := append([]tensorRef(nil), h.tensors...)
+	sort.Slice(t, func(i, j int) bool { return t[i].offset < t[j].offset })
+	var sum int64
+	for i, x := range t {
+		next := fileSize - h.dataStart
+		if i+1 < len(t) {
+			if t[i+1].offset > math.MaxInt64 {
+				return 0, false
+			}
+			next = int64(t[i+1].offset)
+		}
+		if x.offset > math.MaxInt64 || next < int64(x.offset) {
+			return 0, false
+		}
+		if x.expert {
+			sum += next - int64(x.offset)
+		}
+	}
+	return sum, true
+}
+
+// shape is what the keys and the tensor table say about a file of fileSize bytes; FileBytes and ProjectorBytes are
+// the caller's. A table that failed leaves Layers and ExpertBytes 0, so the estimate is unknown.
+func (h header) shape(fileSize int64) engine.Shape {
+	get := func(suffix string) (int, bool) {
+		v, ok := h.ints[h.architecture+suffix]
+		return int(max(v, 0)), ok
+	}
+	var s engine.Shape
+	var ok bool
+	s.MaxContext, _ = get(".context_length")
+	s.Layers, _ = get(".block_count")
+	headCount, _ := get(".attention.head_count")
+	if s.KVHeads, ok = get(".attention.head_count_kv"); !ok {
+		s.KVHeads = headCount
+	}
+	embedding, _ := get(".embedding_length")
+	fallback := 0
+	if headCount > 0 {
+		fallback = embedding / headCount
+	}
+	if s.KeyLen, ok = get(".attention.key_length"); !ok {
+		s.KeyLen = fallback
+	}
+	if s.ValueLen, ok = get(".attention.value_length"); !ok {
+		s.ValueLen = fallback
+	}
+	experts, _ := get(".expert_count")
+	bytes, tableOK := h.expertBytes(fileSize)
+	switch {
+	case !tableOK:
+		s.Layers = 0
+	case experts > 0: // decision 3: MoE means the key and the tensors
+		s.ExpertBytes = bytes
+	}
+	return s
+}
+
+// fileInfo is what one read of a file's header gives.
+type fileInfo struct {
+	kind  Kind
+	msg   string
+	shape engine.Shape
+	// rawExperts is the size of the expert tensors whatever expert_count says: the later parts of a split model
+	// carry no keys. tableOK says the tensor table read.
+	rawExperts int64
+	tableOK    bool
+	moe        bool // expert_count > 0
+}
+
+// classify reads one file's header and returns its kind and shape, or KindUnreadable with the reason.
+func classify(path string, size int64, requireArch bool) fileInfo {
 	f, err := os.Open(path)
 	if err != nil {
-		return KindUnreadable, "can't open the file"
+		return fileInfo{kind: KindUnreadable, msg: "can't open the file"}
 	}
 	defer f.Close()
-	h, err := readHeader(f)
+	h, err := parseHeader(f, requireArch)
 	if err != nil {
-		return KindUnreadable, err.Error()
+		return fileInfo{kind: KindUnreadable, msg: err.Error()}
 	}
-	return h.kind(), ""
+	raw, ok := h.expertBytes(size)
+	return fileInfo{kind: h.kind(), shape: h.shape(size), rawExperts: raw, tableOK: ok, moe: h.ints[h.architecture+".expert_count"] > 0}
 }
 
 type cacheKey struct {
@@ -306,33 +512,34 @@ type cacheKey struct {
 	mtime time.Time
 }
 
-type cacheEntry struct {
-	kind Kind
-	msg  string
-}
-
 var (
 	cacheMu sync.Mutex
-	cache   = map[cacheKey]cacheEntry{}
+	cache   = map[cacheKey]fileInfo{}
 )
 
-// kindOf is classify with a cache keyed by path, size and modification time, so rescans (every state event runs
+// inspect is classify with a cache keyed by path, size and modification time, so rescans (every state event runs
 // one) don't reread files that haven't changed.
-func kindOf(path string) (Kind, string) {
+func inspect(path string, requireArch bool) fileInfo {
 	info, err := os.Stat(path)
 	if err != nil {
-		return KindUnreadable, "can't open the file"
+		return fileInfo{kind: KindUnreadable, msg: "can't open the file"}
 	}
 	key := cacheKey{path, info.Size(), info.ModTime()}
 	cacheMu.Lock()
 	e, ok := cache[key]
 	cacheMu.Unlock()
 	if ok {
-		return e.kind, e.msg
+		return e
 	}
-	k, msg := classify(path)
+	e = classify(path, info.Size(), requireArch)
 	cacheMu.Lock()
-	cache[key] = cacheEntry{k, msg}
+	cache[key] = e
 	cacheMu.Unlock()
-	return k, msg
+	return e
+}
+
+// kindOf is the kind of one model file, with the reason when it is unreadable.
+func kindOf(path string) (Kind, string) {
+	i := inspect(path, true)
+	return i.kind, i.msg
 }

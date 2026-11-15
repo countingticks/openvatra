@@ -39,7 +39,7 @@ const (
 
 type Placement struct {
 	Kind   PlaceKind
-	Layers int // PlaceLayers only: layers on the GPU; 0 = let the engine choose
+	Layers int // PlaceLayers only: layers on the GPU; 0 = none
 }
 
 type Shape struct {

@@ -129,8 +129,62 @@ func TestCheck(t *testing.T) {
 	}
 }
 
-func TestNeedsIsUnknown(t *testing.T) {
-	if got := New(fakePath, nil).Needs(engine.Spec{}); got.Known {
-		t.Fatalf("Needs = %+v, want Known false", got)
+func TestNeeds(t *testing.T) {
+	const mib = 1 << 20
+	dense := engine.Shape{
+		FileBytes: 4000 * mib, ProjectorBytes: 100 * mib, Layers: 32, KVHeads: 4, KeyLen: 128, ValueLen: 128, MaxContext: 32768,
+	}
+	moe := dense
+	moe.ExpertBytes = 3000 * mib
+	// 8192 × 32 × 4 × 256 × 2 bytes
+	const kv = 8192 * 32 * 4 * 256 * 2
+	const fixed = 100*mib + kv + computeAllowance
+
+	spec := func(s engine.Shape, p engine.Placement) engine.Spec {
+		return engine.Spec{Shape: s, Context: 8192, Placement: p}
+	}
+	tests := []struct {
+		name string
+		spec engine.Spec
+		want engine.Resources
+	}{
+		{"gpu", spec(dense, engine.Placement{}), engine.Resources{VRAMBytes: 4000*mib + fixed, Known: true, Source: "estimate"}},
+		{"experts", spec(moe, engine.Placement{Kind: engine.PlaceExperts}),
+			engine.Resources{VRAMBytes: 1000*mib + fixed, RAMBytes: 3000 * mib, Known: true, Source: "estimate"}},
+		{"experts on a dense shape is gpu", spec(dense, engine.Placement{Kind: engine.PlaceExperts}),
+			engine.Resources{VRAMBytes: 4000*mib + fixed, Known: true, Source: "estimate"}},
+		{"layers", spec(dense, engine.Placement{Kind: engine.PlaceLayers, Layers: 8}),
+			engine.Resources{VRAMBytes: 1000*mib + fixed, RAMBytes: 3000 * mib, Known: true, Source: "estimate"}},
+		{"layers above the model's are clamped", spec(dense, engine.Placement{Kind: engine.PlaceLayers, Layers: 99}),
+			engine.Resources{VRAMBytes: 4000*mib + fixed, Known: true, Source: "estimate"}},
+		{"layers 0 puts the weights in RAM", spec(dense, engine.Placement{Kind: engine.PlaceLayers}),
+			engine.Resources{VRAMBytes: fixed, RAMBytes: 4000 * mib, Known: true, Source: "estimate"}},
+		{"cpu", spec(dense, engine.Placement{Kind: engine.PlaceCPU}),
+			engine.Resources{RAMBytes: 4000*mib + fixed, Known: true, Source: "estimate"}},
+		{"embedding", engine.Spec{Shape: dense, Context: 8192, Embedding: true}, engine.Resources{}},
+		{"zero context", engine.Spec{Shape: dense}, engine.Resources{}},
+	}
+	for field, zero := range map[string]func(*engine.Shape){
+		"FileBytes":  func(s *engine.Shape) { s.FileBytes = 0 },
+		"Layers":     func(s *engine.Shape) { s.Layers = 0 },
+		"KVHeads":    func(s *engine.Shape) { s.KVHeads = 0 },
+		"KeyLen":     func(s *engine.Shape) { s.KeyLen = 0 },
+		"ValueLen":   func(s *engine.Shape) { s.ValueLen = 0 },
+		"MaxContext": func(s *engine.Shape) { s.MaxContext = 0 },
+	} {
+		s := dense
+		zero(&s)
+		tests = append(tests, struct {
+			name string
+			spec engine.Spec
+			want engine.Resources
+		}{"missing " + field, spec(s, engine.Placement{}), engine.Resources{}})
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := New(fakePath, nil).Needs(tt.spec); got != tt.want {
+				t.Fatalf("Needs = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }
