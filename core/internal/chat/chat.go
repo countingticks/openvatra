@@ -53,7 +53,7 @@ const (
 type Service struct {
 	Store *store.Store
 	Chat  provider.Chat
-	// Model readies a model and reports it; its Context is the size the prompt is fitted to (0 = unknown).
+	// Model looks a model up; its Context is the size the prompt is fitted to (0 = unknown). Complete loads it.
 	Model  func(ctx context.Context, id string) (provider.Model, error)
 	Logger *slog.Logger
 	// Now is the clock for the system prompt's date; nil means the real one.
@@ -260,7 +260,7 @@ func (s *Service) stream(ctx context.Context, c store.Chat, t *turn, emit func(E
 		case res.Stop == provider.StopCancelled || ctx.Err() != nil:
 			return store.StatusStopped, "", "", s.finishStats(t, stats)
 		case errors.Is(err, provider.ErrUnknownModel), errors.As(err, &loadErr):
-			// The model went away between Model and Complete.
+			// Complete loads the model: it failed to load, or went away after Model looked it up.
 			code, msg := loadFailure(err)
 			return store.StatusError, code, msg, s.finishStats(t, stats)
 		default:

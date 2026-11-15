@@ -16,7 +16,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
-// upstream is a fake llama-server: /props plus a scripted /v1/chat/completions.
+// upstream is a fake llama-server: a scripted /v1/chat/completions.
 type upstream struct {
 	mu       sync.Mutex
 	requests []string                                            // completion request bodies, in order
@@ -25,10 +25,6 @@ type upstream struct {
 
 func (u *upstream) start(t *testing.T) string {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/props" {
-			fmt.Fprint(w, `{"default_generation_settings":{"n_ctx":8192}}`)
-			return
-		}
 		body, _ := io.ReadAll(r.Body)
 		u.mu.Lock()
 		n := len(u.requests)

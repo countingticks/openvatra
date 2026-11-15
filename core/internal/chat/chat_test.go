@@ -270,15 +270,31 @@ func TestModelLoadFailureIsReportedAndSaved(t *testing.T) {
 }
 
 func TestCompleteOutcomes(t *testing.T) {
-	t.Run("LoadError from Complete is model_load_failed", func(t *testing.T) {
-		svc, c, _ := newService(t, call{err: &provider.LoadError{Model: "qwen", Err: errors.New("exited")}})
-		var rec recorder
-		_ = svc.Send(context.Background(), c.ID, Input{Text: "hi"}, rec.emit)
-		last := rec.events[len(rec.events)-1]
-		if last.Name != EventError || last.Data.(map[string]string)["code"] != CodeModelLoad {
-			t.Fatalf("last event %+v", last)
-		}
-	})
+	// Model loads nothing now, so a load fails inside Complete: the turn must end as it did when Model failed.
+	for _, err := range []error{&provider.LoadError{Model: "qwen", Err: errors.New("exited")}, provider.ErrUnknownModel} {
+		t.Run("a load failure from Complete ends like one from Model: "+err.Error(), func(t *testing.T) {
+			lastError := func(svc *Service, id string) map[string]string {
+				var rec recorder
+				_ = svc.Send(context.Background(), id, Input{Text: "hi"}, rec.emit)
+				last := rec.events[len(rec.events)-1]
+				if last.Name != EventError {
+					t.Fatalf("last event %+v", last)
+				}
+				return last.Data.(map[string]string)
+			}
+			before, c, fp := newService(t, call{})
+			fp.modelErr = err
+			want := lastError(before, c.ID)
+
+			svc, c, _ := newService(t, call{err: err})
+			if got := lastError(svc, c.ID); got["code"] != want["code"] || got["message"] != want["message"] {
+				t.Fatalf("error = %v, want %v", got, want)
+			}
+			if m := lastAnswer(t, svc, c.ID); m.Status != store.StatusError {
+				t.Fatalf("saved %+v", m)
+			}
+		})
+	}
 	t.Run("StopLength is saved as done", func(t *testing.T) {
 		svc, c, _ := newService(t, call{deltas: []provider.Delta{text("cut")}, res: provider.Result{Stop: provider.StopLength}})
 		var rec recorder

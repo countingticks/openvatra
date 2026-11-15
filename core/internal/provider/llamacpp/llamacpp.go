@@ -9,7 +9,6 @@ import (
 	"context"
 	"net/http"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/engine"
@@ -55,9 +54,6 @@ type loaded struct {
 	ready chan struct{}   // closed when loading has finished, either way
 	err   error           // set before ready is closed
 	users sync.WaitGroup
-	// nCtx is the context size read from the ready server, 0 until read. Not under the slot mutex: reading it is an
-	// HTTP call.
-	nCtx atomic.Int64
 
 	// Guarded by the slot's mutex.
 	active    int         // requests currently holding this model
@@ -107,65 +103,27 @@ func (r *Provider) Describe() seam.Descriptor {
 	return seam.Descriptor{ID: ID, Title: "llama.cpp", Description: "Runs GGUF models on this PC with llama-server."}
 }
 
-// Models lists what Plan can start, as List reports it. Context is set for a model that is ready in a slot; the
-// others are 0, since llama.cpp only knows the size after loading.
-func (r *Provider) Models(ctx context.Context) ([]provider.Model, error) {
+// Models lists what Plan can start, as List reports it, each chat model with the context size it loads with.
+func (r *Provider) Models(context.Context) ([]provider.Model, error) {
 	if r.cfg.List == nil {
 		return []provider.Model{}, nil
 	}
-	models, err := r.cfg.List()
-	if err != nil {
-		return nil, err
-	}
-	ready := map[string]*loaded{}
-	for i := range r.slots {
-		s := &r.slots[i]
-		s.mu.Lock()
-		if l := s.cur; l != nil && isReady(l) {
-			ready[l.id] = l
-		}
-		s.mu.Unlock()
-	}
-	for i := range models {
-		if l, ok := ready[models[i].ID]; ok {
-			models[i].Context = r.contextSize(ctx, l)
-		}
-	}
-	return models, nil
+	return r.cfg.List()
 }
 
-// Prepare makes model id ready for Complete: it loads it in the chat slot if needed, reads its context size and
-// releases it. chat.Service gets it as its Model func.
-func (r *Provider) Prepare(ctx context.Context, id string) (provider.Model, error) {
-	l, release, err := r.acquire(ctx, provider.KindChat, id)
+// Model looks model id up in List, with the context size it loads with; it starts nothing. chat.Service gets it as
+// its Model func, and Complete loads the model.
+func (r *Provider) Model(ctx context.Context, id string) (provider.Model, error) {
+	models, err := r.Models(ctx)
 	if err != nil {
 		return provider.Model{}, err
 	}
-	n := r.contextSize(ctx, l)
-	release()
-	var models []provider.Model
-	if r.cfg.List != nil {
-		if models, err = r.cfg.List(); err != nil {
-			return provider.Model{}, err
-		}
-	}
 	for _, m := range models {
 		if m.ID == id {
-			m.Context = n
 			return m, nil
 		}
 	}
 	return provider.Model{}, provider.ErrUnknownModel
-}
-
-// isReady reports whether l finished loading and has a server.
-func isReady(l *loaded) bool {
-	select {
-	case <-l.ready:
-		return l.err == nil
-	default:
-		return false
-	}
 }
 
 // Acquire returns the base URL of a ready server for the request and a release

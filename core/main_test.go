@@ -26,7 +26,9 @@ import (
 	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/engine/llamaserver"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/host"
+	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/provider/llamacpp"
@@ -402,22 +404,30 @@ func resolved(qwenArgs string) llamacpp.Resolved {
 }
 
 func TestSpecFor(t *testing.T) {
-	m := models.Model{ID: "qwen", Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`}
+	m := models.Model{ID: "qwen", Kind: models.KindChat, Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`,
+		Shape: engine.Shape{FileBytes: 100, ProjectorBytes: 10, Layers: 4}}
+	noProj := m.Shape
+	noProj.ProjectorBytes = 0
+	choice := &fit.Choice{Context: 32768, Placement: fit.PlaceLayers, Layers: 3}
+	layers := engine.Placement{Kind: engine.PlaceLayers, Layers: 3}
 	cases := map[string]struct {
 		c         llamacpp.Resolved
 		m         models.Model
 		embedding bool
 		want      engine.Spec
 	}{
-		"projector on by default": {resolved(""), m, false, engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 16384}},
-		"no-mmproj in args":       {resolved("--no-mmproj"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Context: 16384, Args: []string{"--no-mmproj"}}},
-		"none found":              {resolved(""), models.Model{ID: "qwen", Path: m.Path}, false, engine.Spec{Model: "qwen", Path: m.Path, Context: 16384}},
-		"embedding":               {resolved(""), m, true, engine.Spec{Model: "qwen", Path: m.Path, Embedding: true}},
-		"user's own args":         {resolved("--temp 0.7"), m, false, engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 16384, Args: []string{"--temp", "0.7"}}},
+		"projector on by default": {resolved(""), m, false,
+			engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 32768, Placement: layers, Shape: m.Shape}},
+		"no-mmproj in args": {resolved("--no-mmproj"), m, false,
+			engine.Spec{Model: "qwen", Path: m.Path, Context: 32768, Placement: layers, Shape: noProj, Args: []string{"--no-mmproj"}}},
+		"user's own args": {resolved("--temp 0.7"), m, false,
+			engine.Spec{Model: "qwen", Path: m.Path, Projector: m.MMProj, Context: 32768, Placement: layers, Shape: m.Shape, Args: []string{"--temp", "0.7"}}},
+		"embedding has no context and no placement": {resolved(""), m, true,
+			engine.Spec{Model: "qwen", Path: m.Path, Embedding: true}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			got := specFor(tc.c, tc.m, tc.embedding)
+			got := specFor(tc.c, tc.m, tc.embedding, choice)
 			if len(got.Args) == 0 {
 				got.Args = nil // no user args: empty and nil mean the same
 			}
@@ -426,6 +436,55 @@ func TestSpecFor(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestChoiceFor(t *testing.T) {
+	shape := engine.Shape{FileBytes: 1 << 30, ProjectorBytes: 1 << 20, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 128,
+		MaxContext: 131072}
+	chat := models.Model{ID: "qwen", Kind: models.KindChat, MMProj: "mmproj.gguf", Shape: shape}
+	report := hw.Report{GPU: &hw.GPU{TotalBytes: 24 << 30}, RAMBytes: 64 << 30}
+	// recording is a needs func that keeps every shape it is asked about and says everything is small.
+	recording := func(shapes *[]engine.Shape) fit.Needs {
+		return func(s engine.Spec) engine.Resources {
+			*shapes = append(*shapes, s.Shape)
+			return engine.Resources{VRAMBytes: 1 << 30, Known: true, Source: "estimate"}
+		}
+	}
+	options := func(o llamacpp.ModelOptions) llamacpp.Resolved {
+		return llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": o}}.Resolve("")
+	}
+
+	t.Run("an embedding model has none", func(t *testing.T) {
+		var shapes []engine.Shape
+		embed := models.Model{ID: "qwen", Kind: models.KindEmbedding, Shape: shape}
+		if got := choiceFor(options(llamacpp.ModelOptions{}), embed, report, recording(&shapes)); got != nil {
+			t.Fatalf("choice = %+v, want nil", got)
+		}
+	})
+	t.Run("a projector that is off does not count", func(t *testing.T) {
+		var shapes []engine.Shape
+		if got := choiceFor(options(llamacpp.ModelOptions{Args: "--no-mmproj"}), chat, report, recording(&shapes)); got == nil {
+			t.Fatal("choice = nil")
+		}
+		for _, s := range shapes {
+			if s.ProjectorBytes != 0 {
+				t.Fatalf("needs saw ProjectorBytes %d, want 0", s.ProjectorBytes)
+			}
+		}
+		shapes = nil
+		choiceFor(options(llamacpp.ModelOptions{}), chat, report, recording(&shapes))
+		if len(shapes) == 0 || shapes[0].ProjectorBytes != 1<<20 {
+			t.Fatalf("with the projector on, needs saw %+v", shapes)
+		}
+	})
+	t.Run("the stored context and placement reach the choice", func(t *testing.T) {
+		var shapes []engine.Shape
+		c := options(llamacpp.ModelOptions{Context: new(4096), Placement: "cpu"})
+		got := choiceFor(c, chat, report, recording(&shapes))
+		if got == nil || got.Context != 4096 || got.Placement != fit.PlaceCPU {
+			t.Fatalf("choice = %+v, want 4096 on the CPU", got)
+		}
+	})
 }
 
 func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
@@ -823,6 +882,9 @@ func TestOriginFlag(t *testing.T) {
 	}
 }
 
+// unknownNeeds knows nothing about any model.
+func unknownNeeds(engine.Spec) engine.Resources { return engine.Resources{} }
+
 func TestToProviderModels(t *testing.T) {
 	found := []models.Model{
 		{ID: "qwen", Kind: models.KindChat, MMProj: "mmproj.gguf"},
@@ -832,19 +894,20 @@ func TestToProviderModels(t *testing.T) {
 	resolve := func(m llamacpp.LlamaCppSettings) llamacpp.Resolved { return m.Resolve("") }
 
 	t.Run("a chat model with a projector has Vision", func(t *testing.T) {
-		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found)
-		if len(got) != 2 || got[0] != (provider.Model{ID: "qwen", Kind: provider.ModelChat, Vision: true}) {
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found, hw.Report{}, unknownNeeds)
+		// Nothing is known about the hardware, so the chat model loads at fit's default.
+		if len(got) != 2 || got[0] != (provider.Model{ID: "qwen", Kind: provider.ModelChat, Vision: true, Context: fit.DefaultContext}) {
 			t.Fatalf("models = %+v", got)
 		}
 	})
 	t.Run("--no-mmproj takes Vision away", func(t *testing.T) {
-		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found, hw.Report{}, unknownNeeds)
 		if got[0].Vision {
 			t.Fatalf("models = %+v", got)
 		}
 	})
 	t.Run("unreadable models are left out and embedding models have no Vision", func(t *testing.T) {
-		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found, hw.Report{}, unknownNeeds)
 		if len(got) != 2 || got[1] != (provider.Model{ID: "embed", Kind: provider.ModelEmbedding}) {
 			t.Fatalf("models = %+v", got)
 		}
