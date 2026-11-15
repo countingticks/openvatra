@@ -53,12 +53,32 @@ const injectedRtkApi = api
         query: () => ({ url: `/api/config` }),
         providesTags: ['config']
       }),
-      getConfigModels: build.query<GetConfigModelsApiResponse, GetConfigModelsApiArg>({
-        query: () => ({ url: `/api/config/models` }),
+      getConfigEngineLlamaserver: build.query<
+        GetConfigEngineLlamaserverApiResponse,
+        GetConfigEngineLlamaserverApiArg
+      >({
+        query: () => ({ url: `/api/config/engine.llamaserver` }),
         providesTags: ['config']
       }),
-      putConfigModels: build.mutation<PutConfigModelsApiResponse, PutConfigModelsApiArg>({
-        query: (queryArg) => ({ url: `/api/config/models`, method: 'PUT', body: queryArg.body }),
+      putConfigEngineLlamaserver: build.mutation<
+        PutConfigEngineLlamaserverApiResponse,
+        PutConfigEngineLlamaserverApiArg
+      >({
+        query: (queryArg) => ({ url: `/api/config/engine.llamaserver`, method: 'PUT', body: queryArg.body }),
+        invalidatesTags: ['config']
+      }),
+      getConfigProviderLlamacpp: build.query<
+        GetConfigProviderLlamacppApiResponse,
+        GetConfigProviderLlamacppApiArg
+      >({
+        query: () => ({ url: `/api/config/provider.llamacpp` }),
+        providesTags: ['config']
+      }),
+      putConfigProviderLlamacpp: build.mutation<
+        PutConfigProviderLlamacppApiResponse,
+        PutConfigProviderLlamacppApiArg
+      >({
+        query: (queryArg) => ({ url: `/api/config/provider.llamacpp`, method: 'PUT', body: queryArg.body }),
         invalidatesTags: ['config']
       }),
       listDownloads: build.query<ListDownloadsApiResponse, ListDownloadsApiArg>({
@@ -163,21 +183,38 @@ export type ExportChatApiArg = {
 }
 export type GetConfigApiResponse = /** status 200 OK */ ConfigAll
 export type GetConfigApiArg = void
-export type GetConfigModelsApiResponse = /** status 200 OK */ {
-  effective?: ModelsEffective
+export type GetConfigEngineLlamaserverApiResponse = /** status 200 OK */ {
+  effective?: LlamaServerEffective
   rev: number
-  value: Models
+  value: LlamaServerSettings
 }
-export type GetConfigModelsApiArg = void
-export type PutConfigModelsApiResponse = /** status 200 OK */ {
-  effective?: ModelsEffective
+export type GetConfigEngineLlamaserverApiArg = void
+export type PutConfigEngineLlamaserverApiResponse = /** status 200 OK */ {
+  effective?: LlamaServerEffective
   rev: number
-  value: Models
+  value: LlamaServerSettings
 }
-export type PutConfigModelsApiArg = {
+export type PutConfigEngineLlamaserverApiArg = {
   body: {
     rev: number
-    value: Models
+    value: LlamaServerSettings
+  }
+}
+export type GetConfigProviderLlamacppApiResponse = /** status 200 OK */ {
+  effective?: LlamaCppEffective
+  rev: number
+  value: LlamaCppSettings
+}
+export type GetConfigProviderLlamacppApiArg = void
+export type PutConfigProviderLlamacppApiResponse = /** status 200 OK */ {
+  effective?: LlamaCppEffective
+  rev: number
+  value: LlamaCppSettings
+}
+export type PutConfigProviderLlamacppApiArg = {
+  body: {
+    rev: number
+    value: LlamaCppSettings
   }
 }
 export type ListDownloadsApiResponse = /** status 200 OK */ DownloadsBody
@@ -294,18 +331,22 @@ export type ConfigAll = {
     [key: string]: SectionEntry
   }
 }
-export type ModelsEffective = {
-  llamaServerPath: string
+export type LlamaServerEffective = {
+  path: string
+}
+export type LlamaServerSettings = {
+  build: 'bundled' | 'cuda'
+  path: string | null
+}
+export type LlamaCppEffective = {
   modelsDir: string
 }
 export type ModelOptions = {
   args?: string
 }
-export type Models = {
+export type LlamaCppSettings = {
   embeddingModel: string | null
-  engine: 'bundled' | 'cuda'
   idleUnloadMinutes: number | null
-  llamaServerPath: string | null
   modelsDir: string | null
   options: {
     [key: string]: ModelOptions
@@ -412,8 +453,10 @@ export const {
   useUpdateChatMutation,
   useExportChatQuery,
   useGetConfigQuery,
-  useGetConfigModelsQuery,
-  usePutConfigModelsMutation,
+  useGetConfigEngineLlamaserverQuery,
+  usePutConfigEngineLlamaserverMutation,
+  useGetConfigProviderLlamacppQuery,
+  usePutConfigProviderLlamacppMutation,
   useListDownloadsQuery,
   useStartDownloadMutation,
   useCancelDownloadMutation,

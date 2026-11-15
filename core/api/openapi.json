@@ -420,6 +420,85 @@
         ],
         "type": "object"
       },
+      "LlamaCppEffective": {
+        "properties": {
+          "modelsDir": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelsDir"
+        ],
+        "type": "object"
+      },
+      "LlamaCppSettings": {
+        "properties": {
+          "embeddingModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "idleUnloadMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "modelsDir": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "options": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ModelOptions"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "modelsDir",
+          "embeddingModel",
+          "idleUnloadMinutes",
+          "options"
+        ],
+        "type": "object"
+      },
+      "LlamaServerEffective": {
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "type": "object"
+      },
+      "LlamaServerSettings": {
+        "properties": {
+          "build": {
+            "enum": [
+              "bundled",
+              "cuda"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "build"
+        ],
+        "type": "object"
+      },
       "Message": {
         "properties": {
           "chatId": {
@@ -548,71 +627,6 @@
           "type",
           "v",
           "data"
-        ],
-        "type": "object"
-      },
-      "Models": {
-        "properties": {
-          "embeddingModel": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "engine": {
-            "enum": [
-              "bundled",
-              "cuda"
-            ],
-            "type": "string"
-          },
-          "idleUnloadMinutes": {
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "llamaServerPath": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "modelsDir": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "options": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ModelOptions"
-            },
-            "type": "object"
-          }
-        },
-        "required": [
-          "llamaServerPath",
-          "modelsDir",
-          "embeddingModel",
-          "idleUnloadMinutes",
-          "options",
-          "engine"
-        ],
-        "type": "object"
-      },
-      "ModelsEffective": {
-        "properties": {
-          "llamaServerPath": {
-            "type": "string"
-          },
-          "modelsDir": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "llamaServerPath",
-          "modelsDir"
         ],
         "type": "object"
       },
@@ -1203,9 +1217,9 @@
         "x-scope": "ui"
       }
     },
-    "/api/config/models": {
+    "/api/config/engine.llamaserver": {
       "get": {
-        "operationId": "getConfigModels",
+        "operationId": "getConfigEngineLlamaserver",
         "responses": {
           "200": {
             "content": {
@@ -1213,13 +1227,13 @@
                 "schema": {
                   "properties": {
                     "effective": {
-                      "$ref": "#/components/schemas/ModelsEffective"
+                      "$ref": "#/components/schemas/LlamaServerEffective"
                     },
                     "rev": {
                       "type": "integer"
                     },
                     "value": {
-                      "$ref": "#/components/schemas/Models"
+                      "$ref": "#/components/schemas/LlamaServerSettings"
                     }
                   },
                   "required": [
@@ -1243,14 +1257,14 @@
             "description": "Error. Codes: internal."
           }
         },
-        "summary": "The models config section",
+        "summary": "The engine.llamaserver config section",
         "tags": [
           "config"
         ],
         "x-scope": "ui"
       },
       "put": {
-        "operationId": "putConfigModels",
+        "operationId": "putConfigEngineLlamaserver",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1260,7 +1274,7 @@
                     "type": "integer"
                   },
                   "value": {
-                    "$ref": "#/components/schemas/Models"
+                    "$ref": "#/components/schemas/LlamaServerSettings"
                   }
                 },
                 "required": [
@@ -1280,13 +1294,13 @@
                 "schema": {
                   "properties": {
                     "effective": {
-                      "$ref": "#/components/schemas/ModelsEffective"
+                      "$ref": "#/components/schemas/LlamaServerEffective"
                     },
                     "rev": {
                       "type": "integer"
                     },
                     "value": {
-                      "$ref": "#/components/schemas/Models"
+                      "$ref": "#/components/schemas/LlamaServerSettings"
                     }
                   },
                   "required": [
@@ -1310,7 +1324,121 @@
             "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, shell_only_field, internal."
           }
         },
-        "summary": "Replace the models config section if rev is still current",
+        "summary": "Replace the engine.llamaserver config section if rev is still current",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/config/provider.llamacpp": {
+      "get": {
+        "operationId": "getConfigProviderLlamacpp",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "effective": {
+                      "$ref": "#/components/schemas/LlamaCppEffective"
+                    },
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/LlamaCppSettings"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: internal."
+          }
+        },
+        "summary": "The provider.llamacpp config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      },
+      "put": {
+        "operationId": "putConfigProviderLlamacpp",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rev": {
+                    "type": "integer"
+                  },
+                  "value": {
+                    "$ref": "#/components/schemas/LlamaCppSettings"
+                  }
+                },
+                "required": [
+                  "rev",
+                  "value"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "effective": {
+                      "$ref": "#/components/schemas/LlamaCppEffective"
+                    },
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/LlamaCppSettings"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, shell_only_field, internal."
+          }
+        },
+        "summary": "Replace the provider.llamacpp config section if rev is still current",
         "tags": [
           "config"
         ],

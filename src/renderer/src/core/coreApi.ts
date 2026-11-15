@@ -7,7 +7,8 @@ export const coreApi = generatedApi.enhanceEndpoints({
     listModels: { keepUnusedDataFor: Infinity },
     listDownloads: { keepUnusedDataFor: Infinity },
     // The answer already is the new entry, and the write queue puts it in the cache.
-    putConfigModels: { invalidatesTags: [] }
+    putConfigEngineLlamaserver: { invalidatesTags: [] },
+    putConfigProviderLlamacpp: { invalidatesTags: [] }
   }
 })
 

@@ -2,8 +2,13 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { coreApi } from '@renderer/core/coreApi'
-import type { Models } from '@renderer/core/generated'
-import { defaultCoreModels } from '@renderer/core/modelSettings'
+import type { LlamaCppSettings, LlamaServerSettings } from '@renderer/core/generated'
+import {
+  defaultCoreModels,
+  defaultEngineSettings,
+  defaultLlamacppSettings,
+  type ModelsView
+} from '@renderer/core/modelSettings'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState } from '../../../src/shared/core'
 import type { ModelInfo } from '@renderer/core/types'
@@ -12,7 +17,7 @@ import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
 /** The two window flags that sit beside core's models section in a test's arguments. */
-type Preferences = Partial<Models> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
+type Preferences = Partial<ModelsView> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
 
 const chosen: Preferences = {
   ...defaultCoreModels,
@@ -37,13 +42,19 @@ const nomic: ModelInfo = {
 
 type Rendered = ReturnType<typeof renderWithStore>
 
-/** The value each PUT of the models section carried, in order. */
-const putValues = (http: FakeCoreHttp): Models[] =>
+/** The value each PUT of the provider section carried, in order. */
+const putValues = (http: FakeCoreHttp): LlamaCppSettings[] =>
   coreWrites(http)
-    .filter((write) => write.method === 'PUT' && write.path === '/api/config/models')
-    .map((write) => (write.body as { value: Models }).value)
+    .filter((write) => write.method === 'PUT' && write.path === '/api/config/provider.llamacpp')
+    .map((write) => (write.body as { value: LlamaCppSettings }).value)
 
-/** Plays core's config.changed for the models section at this rev. */
+/** The value each PUT of the engine section carried, in order. */
+const enginePutValues = (http: FakeCoreHttp): LlamaServerSettings[] =>
+  coreWrites(http)
+    .filter((write) => write.method === 'PUT' && write.path === '/api/config/engine.llamaserver')
+    .map((write) => (write.body as { value: LlamaServerSettings }).value)
+
+/** Plays core's config.changed for the provider section at this rev. */
 const configChanged = (http: FakeCoreHttp, rev: number): void =>
   act(() => {
     http.push({
@@ -53,7 +64,7 @@ const configChanged = (http: FakeCoreHttp, rev: number): void =>
         stream: 'system',
         type: 'config.changed',
         v: 1,
-        data: { section: 'models', rev }
+        data: { section: 'provider.llamacpp', rev }
       }
     })
   })
@@ -130,7 +141,8 @@ describe('Settings → Models', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Use bundled' }))
 
       expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
-      expect(putValues(coreHttp)).toEqual([{ ...defaultCoreModels, llamaServerPath: null }])
+      expect(enginePutValues(coreHttp)).toEqual([{ ...defaultEngineSettings, path: null }])
+      expect(putValues(coreHttp)).toEqual([])
       expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
     })
 
@@ -139,14 +151,14 @@ describe('Settings → Models', () => {
         { llamaServerPath: 'C:\\llama\\llama-server.exe' },
         { coreState: ready }
       )
-      coreHttp.respond('PUT', '/api/config/models', () => ({
+      coreHttp.respond('PUT', '/api/config/engine.llamaserver', () => ({
         status: 400,
-        body: { error: 'invalid_config', message: 'llamaServerPath must be absolute' }
+        body: { error: 'invalid_config', message: 'path must be absolute' }
       }))
 
       fireEvent.click(await screen.findByRole('button', { name: 'Use bundled' }))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('llamaServerPath must be absolute')
+      expect(await screen.findByRole('alert')).toHaveTextContent('path must be absolute')
       expect(screen.getByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
     })
 
@@ -157,7 +169,10 @@ describe('Settings → Models', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for Models folder' }))
       expect(pick).toHaveBeenCalledWith('modelsDir')
-      coreHttp.setConfigModels({ rev: 2, value: { ...defaultCoreModels, modelsDir: 'E:\\gguf' } })
+      coreHttp.setConfig('provider.llamacpp', {
+        rev: 2,
+        value: { ...defaultLlamacppSettings, modelsDir: 'E:\\gguf' }
+      })
       configChanged(coreHttp, 2)
 
       expect(await screen.findByText('E:\\gguf')).toBeInTheDocument()
@@ -412,7 +427,9 @@ describe('Settings → Models', () => {
   })
 
   describe('per-model options', () => {
-    async function openOptions(options: Models['options'] = {}): Promise<Rendered & { group: HTMLElement }> {
+    async function openOptions(
+      options: ModelsView['options'] = {}
+    ): Promise<Rendered & { group: HTMLElement }> {
       const rendered = await openModels({ ...chosen, options }, { coreState: ready, models: [qwen, nomic] })
       // The arguments box starts from what core has, so wait for core's answer (its folder shows) first.
       await screen.findByText('D:\\models')

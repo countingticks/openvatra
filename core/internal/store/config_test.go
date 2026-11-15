@@ -179,3 +179,149 @@ func TestProjectorErrorRollsTheConfigPutBack(t *testing.T) {
 		t.Fatalf("config = %d, %q", rev, v)
 	}
 }
+
+func readOnlyConfigStore(t *testing.T, seed func(*Store)) *Store {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := open(dir, event.NewBus(16), migrations(configTable, "CREATE TABLE b(y)"), "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed(s)
+	s.Close()
+	s, err = open(dir, event.NewBus(16), migrations(configTable), "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+const configTable = "CREATE TABLE config (section TEXT PRIMARY KEY, rev INTEGER NOT NULL, value TEXT NOT NULL)"
+
+func moveTargets() map[string][]byte {
+	return map[string][]byte{"provider.b": []byte(`{"b":2}`), "engine.a": []byte(`{"a":1}`)}
+}
+
+func TestConfigMoveWritesTheNewSectionsAndRemovesTheOld(t *testing.T) {
+	s, _ := newEventStore(t)
+	must(s.ConfigPut(ctx, "old", 0, []byte(`{"x":1}`)))
+	if moved, err := s.ConfigMove(ctx, "old", moveTargets()); err != nil || !moved {
+		t.Fatalf("moved = %v, %v", moved, err)
+	}
+	for name, want := range moveTargets() {
+		if rev, v, _ := s.ConfigGet(ctx, name); rev != 1 || string(v) != string(want) {
+			t.Fatalf("%s = %d, %q", name, rev, v)
+		}
+	}
+	if rev, _, _ := s.ConfigGet(ctx, "old"); rev != 0 {
+		t.Fatalf("old rev = %d", rev)
+	}
+}
+
+func TestConfigMoveAppendsConfigChangedPerSectionInNameOrder(t *testing.T) {
+	s, bus := newEventStore(t)
+	must(s.ConfigPut(ctx, "old", 0, []byte(`1`)))
+	_, ch, cancel := bus.Subscribe(event.Filter{})
+	defer cancel()
+	must(s.ConfigMove(ctx, "old", moveTargets()))
+
+	want := []string{`{"section":"engine.a","rev":1}`, `{"section":"provider.b","rev":1}`}
+	got := must(s.Log().Read(ctx, 1, event.Filter{Streams: []string{"system"}}, 10))
+	if len(got) != 2 || got[0].Type != "config.changed" || got[1].Type != "config.changed" {
+		t.Fatalf("events = %+v", got)
+	}
+	for i, w := range want {
+		if string(got[i].Data) != w {
+			t.Fatalf("event %d = %s", i, got[i].Data)
+		}
+		if e := <-ch; string(e.Data) != w || e.Stream != "system" {
+			t.Fatalf("published %+v (data %s)", e, e.Data)
+		}
+	}
+}
+
+func TestConfigMoveWithoutTheOldSectionWritesNothing(t *testing.T) {
+	s, _ := newEventStore(t)
+	if moved, err := s.ConfigMove(ctx, "old", moveTargets()); err != nil || moved {
+		t.Fatalf("moved = %v, %v", moved, err)
+	}
+	for name := range moveTargets() {
+		if rev, _, _ := s.ConfigGet(ctx, name); rev != 0 {
+			t.Fatalf("%s written", name)
+		}
+	}
+	if got := must(s.Log().Read(ctx, 0, event.Filter{}, 10)); len(got) != 0 {
+		t.Fatalf("events = %+v", got)
+	}
+}
+
+func TestConfigMoveKeepsAnExistingNewSection(t *testing.T) {
+	s, bus := newEventStore(t)
+	must(s.ConfigPut(ctx, "old", 0, []byte(`1`)))
+	must(s.ConfigPut(ctx, "engine.a", 0, []byte(`"kept"`)))
+	must(s.ConfigPut(ctx, "engine.a", 1, []byte(`"kept2"`)))
+	_, ch, cancel := bus.Subscribe(event.Filter{})
+	defer cancel()
+	if moved, err := s.ConfigMove(ctx, "old", moveTargets()); err != nil || moved {
+		t.Fatalf("moved = %v, %v", moved, err)
+	}
+	if rev, v, _ := s.ConfigGet(ctx, "engine.a"); rev != 2 || string(v) != `"kept2"` {
+		t.Fatalf("engine.a = %d, %q", rev, v)
+	}
+	if rev, _, _ := s.ConfigGet(ctx, "provider.b"); rev != 0 {
+		t.Fatal("provider.b written")
+	}
+	if rev, _, _ := s.ConfigGet(ctx, "old"); rev != 0 {
+		t.Fatal("old kept")
+	}
+	if len(ch) != 0 {
+		t.Fatal("event published")
+	}
+}
+
+func TestConfigMoveToNothingDeletesTheOldSection(t *testing.T) {
+	s, _ := newEventStore(t)
+	must(s.ConfigPut(ctx, "old", 0, []byte(`1`)))
+	if moved, err := s.ConfigMove(ctx, "old", nil); err != nil || moved {
+		t.Fatalf("moved = %v, %v", moved, err)
+	}
+	if rev, _, _ := s.ConfigGet(ctx, "old"); rev != 0 {
+		t.Fatal("old kept")
+	}
+	if got := must(s.Log().Read(ctx, 0, event.Filter{}, 10)); len(got) != 1 {
+		t.Fatalf("events = %+v", got)
+	}
+}
+
+func TestConfigMoveOnReadOnlyStoreIsRefused(t *testing.T) {
+	s := readOnlyConfigStore(t, func(s *Store) {
+		if _, err := s.writer().Exec("INSERT INTO config (section, rev, value) VALUES ('old', 1, '1')"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if moved, err := s.ConfigMove(ctx, "old", moveTargets()); !errors.Is(err, ErrReadOnly) || moved {
+		t.Fatalf("moved = %v, %v", moved, err)
+	}
+	if rev, v, _ := s.ConfigGet(ctx, "old"); rev != 1 || string(v) != `1` {
+		t.Fatalf("old = %d, %q", rev, v)
+	}
+}
+
+func TestProjectorErrorRollsTheConfigMoveBack(t *testing.T) {
+	s, _ := newEventStore(t)
+	must(s.ConfigPut(ctx, "old", 0, []byte(`1`)))
+	boom := errors.New("boom")
+	s.AddProjector(fakeProjector(func(*sql.Tx, event.Event) error { return boom }))
+	if _, err := s.ConfigMove(ctx, "old", moveTargets()); !errors.Is(err, boom) {
+		t.Fatalf("err = %v", err)
+	}
+	if rev, v, _ := s.ConfigGet(ctx, "old"); rev != 1 || string(v) != `1` {
+		t.Fatalf("old = %d, %q", rev, v)
+	}
+	for name := range moveTargets() {
+		if rev, _, _ := s.ConfigGet(ctx, name); rev != 0 {
+			t.Fatalf("%s written", name)
+		}
+	}
+}

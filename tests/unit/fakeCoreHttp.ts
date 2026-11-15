@@ -1,9 +1,8 @@
 // Plays core's HTTP side for the window's data layer: JSON answers per path, the write routes the window calls,
-// the models config section with its rev, and /api/events streams the test pushes frames into. Stubbed in as fetch,
+// the two model config sections with their revs, and /api/events streams the test pushes frames into. Stubbed in as fetch,
 // so the real base query and event stream run against it.
 
-import type { Models, ModelsEffective } from '../../src/renderer/src/core/generated'
-import { defaultCoreModels } from '../../src/renderer/src/core/modelSettings'
+import { defaultEngineSettings, defaultLlamacppSettings } from '../../src/renderer/src/core/modelSettings'
 import type { ModelInfo } from '@renderer/core/types'
 import type { DownloadItem } from '@renderer/core/types'
 
@@ -17,10 +16,12 @@ export interface CoreRequest {
 
 type Handler = (request: CoreRequest) => { status?: number; body?: unknown }
 
-export interface ModelsEntry {
+export type ConfigSection = 'engine.llamaserver' | 'provider.llamacpp'
+
+export interface ConfigEntry {
   rev: number
-  value: Models
-  effective?: ModelsEffective
+  value: unknown
+  effective?: unknown
 }
 
 export interface FakeCoreHttp {
@@ -29,8 +30,8 @@ export interface FakeCoreHttp {
   answer(path: string, body: unknown, options?: { method?: string; status?: number }): void
   /** Answers method + path with whatever handler returns; replaces the default and any earlier answer. */
   respond(method: string, path: string, handler: Handler): void
-  /** Sets the entry GET /api/config/models answers and PUT compares with. */
-  setConfigModels(entry: ModelsEntry): void
+  /** Sets the entry GET /api/config/<section> answers and PUT compares with. */
+  setConfig(section: ConfigSection, entry: ConfigEntry): void
   /** Sends one frame to every open /api/events stream. */
   push(frame: { event?: 'hello'; data: unknown }): void
   /** Sets GET /api/models and sends model.state (retained, no seq) to open streams; new streams get it after hello. */
@@ -106,7 +107,11 @@ const defaultWrites: { method: string; path: RegExp; status: number; body?: unkn
 export function createFakeCoreHttp(): FakeCoreHttp {
   let models: ModelInfo[] = []
   let downloads: DownloadItem[] = []
-  let configModels: ModelsEntry = { rev: 1, value: { ...defaultCoreModels } }
+  // core's defaults at rev 1 until a test sets something else.
+  const config = new Map<string, ConfigEntry>([
+    ['engine.llamaserver', { rev: 1, value: { ...defaultEngineSettings } }],
+    ['provider.llamacpp', { rev: 1, value: { ...defaultLlamacppSettings } }]
+  ])
   const handlers = new Map<string, Handler>()
   const streams = new Set<ReadableStreamDefaultController<Uint8Array>>()
 
@@ -131,17 +136,18 @@ export function createFakeCoreHttp(): FakeCoreHttp {
     return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
   }
 
-  function putConfigModels(request: CoreRequest): Response {
-    const { rev, value } = (request.body ?? {}) as { rev?: number; value?: Models }
-    if (rev !== configModels.rev || value === undefined) {
+  function putConfig(section: string, current: ConfigEntry, request: CoreRequest): Response {
+    const { rev, value } = (request.body ?? {}) as { rev?: number; value?: unknown }
+    if (rev !== current.rev || value === undefined) {
       return reply(409, {
         error: 'config_conflict',
         message: 'the section changed since it was read',
-        current: configModels
+        current
       })
     }
-    configModels = { ...configModels, rev: configModels.rev + 1, value }
-    return reply(200, configModels)
+    const next = { ...current, rev: current.rev + 1, value }
+    config.set(section, next)
+    return reply(200, next)
   }
 
   const fake: FakeCoreHttp = {
@@ -164,8 +170,10 @@ export function createFakeCoreHttp(): FakeCoreHttp {
         return reply(answer.status ?? 200, answer.body)
       }
       if (call.method === 'GET' && path === '/api/events') return openStream(signal)
-      if (call.method === 'GET' && path === '/api/config/models') return reply(200, configModels)
-      if (call.method === 'PUT' && path === '/api/config/models') return putConfigModels(call)
+      const section = path.startsWith('/api/config/') ? path.slice('/api/config/'.length) : ''
+      const entry = config.get(section)
+      if (entry && call.method === 'GET') return reply(200, entry)
+      if (entry && call.method === 'PUT') return putConfig(section, entry, call)
       const write = defaultWrites.find((route) => route.method === call.method && route.path.test(path))
       if (write) return reply(write.status, write.body)
       return reply(404, { error: 'not_found', message: `no route for ${call.method} ${path}` })
@@ -177,8 +185,8 @@ export function createFakeCoreHttp(): FakeCoreHttp {
     respond: (method, path, handler) => {
       handlers.set(`${method.toUpperCase()} ${path}`, handler)
     },
-    setConfigModels: (entry) => {
-      configModels = entry
+    setConfig: (section, entry) => {
+      config.set(section, entry)
     },
     setModels: (list) => {
       models = list

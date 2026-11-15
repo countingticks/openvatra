@@ -89,7 +89,7 @@ test.describe('a version-6 settings file with model settings', () => {
         const state = await (window as WithApi).api.core.getState()
         if (state.status !== 'ready') return null
         const { baseUrl, token } = state.connection
-        const response = await fetch(baseUrl + '/api/config/models', {
+        const response = await fetch(baseUrl + '/api/config/provider.llamacpp', {
           headers: { Authorization: 'Bearer ' + token }
         })
         return response.ok ? ((await response.json()) as { value: unknown }).value : null

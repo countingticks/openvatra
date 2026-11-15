@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import { defaultCoreModels } from '@renderer/core/modelSettings'
+import { defaultEngineSettings } from '@renderer/core/modelSettings'
 import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 import type { ModelInfo } from '@renderer/core/types'
@@ -195,8 +195,8 @@ describe('model button', () => {
       expect(coreWrites(coreHttp)).toEqual([
         {
           method: 'PUT',
-          path: '/api/config/models',
-          body: { rev: 1, value: { ...defaultCoreModels, engine: 'bundled' } }
+          path: '/api/config/engine.llamaserver',
+          body: { rev: 1, value: { ...defaultEngineSettings, build: 'bundled' } }
         }
       ])
     )

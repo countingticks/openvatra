@@ -8,14 +8,7 @@ import { createAppStore, type AppStore } from '@renderer/store/store'
 import { defaultSettings } from '../../../src/shared/settings'
 import { createFakeCoreHttp, type FakeCoreHttp } from '../fakeCoreHttp'
 
-const models = {
-  embeddingModel: null,
-  engine: 'vulkan',
-  idleUnloadMinutes: null,
-  llamaServerPath: null,
-  modelsDir: null,
-  options: {}
-}
+const llamacpp = { embeddingModel: null, idleUnloadMinutes: null, modelsDir: null, options: {} }
 
 const configChanged = (section: string, rev: number): Event => ({
   seq: 5,
@@ -26,18 +19,18 @@ const configChanged = (section: string, rev: number): Event => ({
   data: { section, rev }
 })
 
-/** A store connected to a fake core, with getConfigModels (rev 3) cached and subscribed. */
+/** A store connected to a fake core, with getConfigProviderLlamacpp (rev 3) cached and subscribed. */
 async function storeWithConfig(): Promise<{ store: AppStore; http: FakeCoreHttp; configFetches(): number }> {
   const http = createFakeCoreHttp()
   vi.stubGlobal('fetch', http.fetch)
-  http.answer('/api/config/models', { rev: 3, value: models })
+  http.answer('/api/config/provider.llamacpp', { rev: 3, value: llamacpp })
   const store = createAppStore({
     settings: { update: vi.fn().mockResolvedValue(defaultSettings), onChange: () => () => {} }
   })
   store.dispatch(connectionChanged({ baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }))
-  await store.dispatch(coreApi.endpoints.getConfigModels.initiate())
+  await store.dispatch(coreApi.endpoints.getConfigProviderLlamacpp.initiate())
   const configFetches = (): number =>
-    http.requests.filter((request) => request.url.endsWith('/api/config/models')).length
+    http.requests.filter((request) => request.url.endsWith('/api/config/provider.llamacpp')).length
   return { store, http, configFetches }
 }
 
@@ -71,20 +64,20 @@ const fetchingEngines = (store: AppStore): boolean =>
   coreApi.endpoints.getEngines.select()(store.getState()).status === QueryStatus.pending
 
 const fetchingConfig = (store: AppStore): boolean =>
-  coreApi.endpoints.getConfigModels.select()(store.getState()).status === QueryStatus.pending
+  coreApi.endpoints.getConfigProviderLlamacpp.select()(store.getState()).status === QueryStatus.pending
 
 afterEach(() => {
   vi.restoreAllMocks()
 })
 
 describe('applyEvent', () => {
-  it('refetches getConfigModels for a rev above the cached one, not for the same rev', async () => {
+  it('does not refetch provider.llamacpp at the cached rev, and does at a newer one', async () => {
     const { store, configFetches } = await storeWithConfig()
 
-    applyEvent(configChanged('models', 3), store.dispatch, store.getState)
+    applyEvent(configChanged('provider.llamacpp', 3), store.dispatch, store.getState)
     expect(fetchingConfig(store)).toBe(false)
 
-    applyEvent(configChanged('models', 4), store.dispatch, store.getState)
+    applyEvent(configChanged('provider.llamacpp', 4), store.dispatch, store.getState)
     expect(fetchingConfig(store)).toBe(true)
     await vi.waitFor(() => expect(configFetches()).toBe(2))
   })

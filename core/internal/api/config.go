@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -52,8 +53,7 @@ func configRoutes(cfg Config) []Route {
 
 func sectionRoutes(cfg Config, sec config.SectionType) []Route {
 	name := sec.Name
-	r, size := utf8.DecodeRuneInString(name)
-	title := string(unicode.ToUpper(r)) + name[size:]
+	title := operationTitle(name)
 	path := "/api/config/" + name
 
 	revField := reflect.StructField{Name: "Rev", Type: reflect.TypeFor[int](), Tag: `json:"rev"`}
@@ -106,6 +106,17 @@ func sectionRoutes(cfg Config, sec config.SectionType) []Route {
 			WithErrors("invalid_request", "invalid_config", "config_conflict", "config_unavailable", "shell_only_field",
 				"internal"),
 	}
+}
+
+// operationTitle is the section name as an operationId suffix: each dot-separated part with its first rune
+// upper-cased, joined ("engine.llamaserver" -> "EngineLlamaserver"). streamSync.ts builds the same name.
+func operationTitle(name string) string {
+	parts := strings.Split(name, ".")
+	for i, p := range parts {
+		r, size := utf8.DecodeRuneInString(p)
+		parts[i] = string(unicode.ToUpper(r)) + p[size:]
+	}
+	return strings.Join(parts, "")
 }
 
 // checkShellOnly refuses a ui caller's value that sets a shell-only field to anything but null or what is stored.

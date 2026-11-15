@@ -314,13 +314,18 @@ func TestSectionsListsRegistrationOrderAndTypes(t *testing.T) {
 	}
 }
 
+// shellOnlySection is testSection with s as a shell-only field.
+type shellOnlySection struct{ testSection }
+
+func (shellOnlySection) ShellOnly() []string { return []string{"s"} }
+
 func TestSectionsListsTheModelsSectionsShellOnlyFields(t *testing.T) {
 	s := New(nil, nil)
-	Register[Models, struct{}](s, ModelsSection, DefaultModels(), nil)
+	Register[shellOnlySection, struct{}](s, "shell", shellOnlySection{testDefaults}, nil)
 	Register[testSection, struct{}](s, testName, testDefaults, nil)
 	got := s.Sections()
-	if want := []string{"llamaServerPath", "modelsDir"}; !reflect.DeepEqual(got[0].ShellOnly, want) {
-		t.Fatalf("models ShellOnly = %v, want %v", got[0].ShellOnly, want)
+	if want := []string{"s"}; !reflect.DeepEqual(got[0].ShellOnly, want) {
+		t.Fatalf("shell ShellOnly = %v, want %v", got[0].ShellOnly, want)
 	}
 	if got[1].ShellOnly != nil {
 		t.Fatalf("%s ShellOnly = %v, want nil", testName, got[1].ShellOnly)

@@ -20,9 +20,9 @@ import type {
 } from '../../src/shared/ipc'
 import type { DownloadItem, HardwareReport } from '@renderer/core/types'
 import type { CatalogView } from '@renderer/core/catalogView'
-import type { Item as CoreCatalogItem, Models, View as CoreCatalogView } from '@renderer/core/generated'
+import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
-import { defaultCoreModels } from '@renderer/core/modelSettings'
+import { defaultCoreModels, type ModelsView } from '@renderer/core/modelSettings'
 import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
@@ -132,8 +132,8 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
-  /** The models section's value core answers (rev 1), over core's defaults. */
-  modelSettings?: Partial<Models>
+  /** The model sections' values core answers (rev 1), over core's defaults; each key goes to its section. */
+  modelSettings?: Partial<ModelsView>
   /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
@@ -205,13 +205,21 @@ export function renderWithStore(
     '/api/catalog',
     toCoreCatalog(options.setup?.catalog ?? { entries: [], diskFreeBytes: null, recommended: null })
   )
-  coreHttp.setConfigModels({
+  const view = { ...defaultCoreModels, ...options.modelSettings }
+  coreHttp.setConfig('engine.llamaserver', {
     rev: 1,
-    value: { ...defaultCoreModels, ...options.modelSettings },
-    effective: {
-      llamaServerPath: 'C:\\OpenVatra\\resources\\llama\\llama-server.exe',
-      modelsDir: 'C:\\Users\\me\\OpenVatra\\Models'
-    }
+    value: { path: view.llamaServerPath, build: view.engine },
+    effective: { path: 'C:\\OpenVatra\\resources\\llama\\llama-server.exe' }
+  })
+  coreHttp.setConfig('provider.llamacpp', {
+    rev: 1,
+    value: {
+      modelsDir: view.modelsDir,
+      embeddingModel: view.embeddingModel,
+      idleUnloadMinutes: view.idleUnloadMinutes,
+      options: view.options
+    },
+    effective: { modelsDir: 'C:\\Users\\me\\OpenVatra\\Models' }
   })
   coreHttp.answer('/api/engines', {
     bundled: { tag: options.engines?.tag === undefined ? 'b12078' : options.engines.tag },

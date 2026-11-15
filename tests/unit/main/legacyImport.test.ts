@@ -1,22 +1,19 @@
 // @vitest-environment node
 import { describe, expect, it, type Mock, vi } from 'vitest'
-import { createConfigClient, type CoreModels, type ModelsEntry } from '../../../src/main/core/configClient'
-import { importLegacyModels, type ImportLog } from '../../../src/main/core/legacyImport'
+import {
+  ConfigConflictError,
+  ConfigInvalidError,
+  ConfigUnavailableError,
+  type ConfigClient,
+  type EngineEntry,
+  type EngineSection,
+  type LlamacppEntry,
+  type LlamacppSection
+} from '../../../src/main/core/configClient'
+import { importLegacyModels, splitLegacy, type ImportLog } from '../../../src/main/core/legacyImport'
+import type { LegacyModels } from '../../../src/shared/settings'
 
-type Request = (path: string, init?: RequestInit) => Promise<Response>
-
-const json = (body: unknown, status = 200): Response =>
-  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
-
-const defaults: CoreModels = {
-  llamaServerPath: null,
-  modelsDir: null,
-  embeddingModel: null,
-  idleUnloadMinutes: 15,
-  options: {},
-  engine: 'bundled'
-}
-const legacy: CoreModels = {
+const legacy: LegacyModels = {
   llamaServerPath: 'D:\\llama\\llama-server.exe',
   modelsDir: 'D:\\Models',
   embeddingModel: 'nomic',
@@ -24,123 +21,188 @@ const legacy: CoreModels = {
   options: { qwen: { args: '-c 8192 --jinja' }, gemma: { args: '-ngl 99' } },
   engine: 'cuda'
 }
-const entry = (rev: number, value: CoreModels = defaults): ModelsEntry => ({
-  rev,
-  value,
-  effective: { llamaServerPath: 'C:\\app\\llama-server.exe', modelsDir: 'C:\\Users\\me\\OpenVatra\\Models' }
-})
-const invalid = (message: string): Response => json({ error: 'invalid_config', message }, 400)
-
-/** core answers the requests in order; the PUT bodies are kept. */
-function setUp(...answers: (Response | Error)[]): {
-  run: () => ReturnType<typeof importLegacyModels>
-  puts: () => { rev: number; value: CoreModels }[]
-  log: { [K in keyof ImportLog]: Mock }
-} {
-  const request = vi.fn<Request>(async () => {
-    const answer = answers.shift()
-    if (answer instanceof Error) throw answer
-    if (!answer) throw new Error('no answer left')
-    return answer
-  })
-  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
-  return {
-    run: () => importLegacyModels(createConfigClient(request), legacy, log),
-    puts: () =>
-      request.mock.calls
-        .filter(([, init]) => init?.method === 'PUT')
-        .map(([, init]) => JSON.parse(init?.body as string) as { rev: number; value: CoreModels }),
-    log
-  }
+const engine: EngineSection = { path: 'D:\\llama\\llama-server.exe', build: 'cuda' }
+const llamacpp: LlamacppSection = {
+  modelsDir: 'D:\\Models',
+  embeddingModel: 'nomic',
+  idleUnloadMinutes: 30,
+  options: { qwen: { args: '-c 8192 --jinja' }, gemma: { args: '-ngl 99' } }
 }
 
+const engineEntry = (rev: number, value: EngineSection = { path: null, build: 'bundled' }): EngineEntry => ({
+  rev,
+  value,
+  effective: { path: 'C:\\app\\llama-server.exe' }
+})
+const llamacppEntry = (
+  rev: number,
+  value: LlamacppSection = { modelsDir: null, embeddingModel: null, idleUnloadMinutes: 15, options: {} }
+): LlamacppEntry => ({ rev, value, effective: { modelsDir: 'C:\\Users\\me\\OpenVatra\\Models' } })
+
+type Answer<E> = E | Error
+
+/** A ConfigClient whose GETs and PUTs answer from per-section lists, in order; the PUT values are kept. */
+function fakeClient(answers: {
+  engineGet?: Answer<EngineEntry>
+  enginePuts?: Answer<EngineEntry>[]
+  llamacppGet?: Answer<LlamacppEntry>
+  llamacppPuts?: Answer<LlamacppEntry>[]
+}): { client: ConfigClient; enginePut: EngineSection[]; llamacppPut: LlamacppSection[] } {
+  const enginePut: EngineSection[] = []
+  const llamacppPut: LlamacppSection[] = []
+  const settle = async <E>(answer: Answer<E> | undefined): Promise<E> => {
+    if (answer === undefined) throw new Error('no answer left')
+    if (answer instanceof Error) throw answer
+    return answer
+  }
+  const enginePuts = [...(answers.enginePuts ?? [])]
+  const llamacppPuts = [...(answers.llamacppPuts ?? [])]
+  const client: ConfigClient = {
+    getEngine: vi.fn(() => settle(answers.engineGet ?? engineEntry(0))),
+    putEngine: vi.fn((_rev: number, value: EngineSection) => {
+      enginePut.push(value)
+      return settle(enginePuts.shift() ?? engineEntry(1, value))
+    }),
+    getLlamacpp: vi.fn(() => settle(answers.llamacppGet ?? llamacppEntry(0))),
+    putLlamacpp: vi.fn((_rev: number, value: LlamacppSection) => {
+      llamacppPut.push(value)
+      return settle(llamacppPuts.shift() ?? llamacppEntry(1, value))
+    }),
+    setModelPath: vi.fn()
+  }
+  return { client, enginePut, llamacppPut }
+}
+
+const newLog = (): { [K in keyof ImportLog]: Mock<ImportLog[K]> } => ({
+  info: vi.fn<ImportLog['info']>(),
+  warn: vi.fn<ImportLog['warn']>(),
+  error: vi.fn<ImportLog['error']>()
+})
+
+describe('splitLegacy', () => {
+  it('turns a v6 value into the two sections, renaming llamaServerPath and engine', () => {
+    expect(splitLegacy(legacy)).toEqual({ engine, llamacpp })
+  })
+})
+
 describe('importLegacyModels', () => {
-  it('imports when core has never been written', async () => {
-    const { run, puts, log } = setUp(json(entry(0)), json(entry(1, legacy)))
+  it('imports both sections when core has never written them', async () => {
+    const { client, enginePut, llamacppPut } = fakeClient({})
+    const log = newLog()
 
-    await expect(run()).resolves.toBe('imported')
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('imported')
 
-    expect(puts()).toEqual([{ rev: 0, value: legacy }])
+    expect(enginePut).toEqual([engine])
+    expect(llamacppPut).toEqual([llamacpp])
+    expect(client.putEngine).toHaveBeenCalledWith(0, engine)
+    expect(client.putLlamacpp).toHaveBeenCalledWith(0, llamacpp)
+    expect(log.info).toHaveBeenCalledTimes(1)
     expect(log.info).toHaveBeenCalledWith('Model settings imported into core')
   })
 
-  it('drops the old copy when core already has a config', async () => {
-    const { run, puts, log } = setUp(json(entry(3)))
+  it('drops the old copy when core already has both sections', async () => {
+    const { client, enginePut, llamacppPut } = fakeClient({
+      engineGet: engineEntry(3),
+      llamacppGet: llamacppEntry(2)
+    })
+    const log = newLog()
 
-    await expect(run()).resolves.toBe('core-had-config')
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('core-had-config')
 
-    expect(puts()).toEqual([])
+    expect(enginePut).toEqual([])
+    expect(llamacppPut).toEqual([])
     expect(log.info).toHaveBeenCalledWith(
       'Model settings: core already has them; dropped the old copy in settings.json'
     )
   })
 
-  it('core wins a conflict', async () => {
-    const { run, puts } = setUp(
-      json(entry(0)),
-      json(
-        { error: 'config_conflict', message: 'the section changed since it was read', current: entry(1) },
-        409
-      )
-    )
+  it('imports the provider section when only the engine section was written', async () => {
+    const { client, enginePut, llamacppPut } = fakeClient({ engineGet: engineEntry(2) })
+    const log = newLog()
 
-    await expect(run()).resolves.toBe('conflict')
-    expect(puts()).toHaveLength(1)
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('imported')
+
+    expect(enginePut).toEqual([])
+    expect(llamacppPut).toEqual([llamacpp])
+  })
+
+  it('core wins a conflict on both sections', async () => {
+    const conflict = (current: unknown): Error => new ConfigConflictError('changed', current)
+    const { client } = fakeClient({
+      enginePuts: [conflict(engineEntry(1))],
+      llamacppPuts: [conflict(llamacppEntry(1))]
+    })
+
+    await expect(importLegacyModels(client, legacy, newLog())).resolves.toBe('conflict')
+  })
+
+  it('retries later when the provider GET fails, while the engine section is still imported', async () => {
+    const { client, enginePut, llamacppPut } = fakeClient({ llamacppGet: new Error('core is not running') })
+    const log = newLog()
+
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('retry-later')
+
+    expect(enginePut).toEqual([engine])
+    expect(llamacppPut).toEqual([])
+    expect(log.info).toHaveBeenCalledWith('Model settings imported into core')
+    expect(log.warn).toHaveBeenCalledWith('Model settings import postponed', expect.any(Error))
+  })
+
+  it('retries later when the database is unavailable', async () => {
+    const unavailable = new ConfigUnavailableError('config storage is not available')
+    const { client } = fakeClient({ enginePuts: [unavailable], llamacppPuts: [unavailable] })
+    const log = newLog()
+
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('retry-later')
+    expect(log.warn).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets an invalid build to bundled and tries once more', async () => {
+    const message = 'build must be "bundled" or "cuda"'
+    const { client, enginePut } = fakeClient({ enginePuts: [new ConfigInvalidError(message)] })
+    const log = newLog()
+
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('imported')
+
+    expect(enginePut).toEqual([engine, { ...engine, build: 'bundled' }])
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining(message))
   })
 
   it.each([
-    ['modelsDir', 'modelsDir must be an absolute path', { ...legacy, modelsDir: null }],
     [
-      'options for "qwen"',
-      'options for "qwen": unclosed quote',
-      { ...legacy, options: { gemma: { args: '-ngl 99' } } }
+      'an option id',
+      'options for "qwen": A quote " is not closed.',
+      { ...llamacpp, options: { gemma: { args: '-ngl 99' } } }
+    ],
+    ['modelsDir', 'modelsDir must be an absolute path', { ...llamacpp, modelsDir: null }],
+    [
+      'idleUnloadMinutes',
+      'idleUnloadMinutes must be between 1 and 1440',
+      { ...llamacpp, idleUnloadMinutes: 15 }
     ]
-  ])(
-    'an invalid field is reset as core names it and the retry imports the rest (%s)',
-    async (_case, message, retried) => {
-      const { run, puts, log } = setUp(json(entry(0)), invalid(message), json(entry(1, retried)))
+  ])('drops or resets what core names (%s) and tries once more', async (_case, message, retried) => {
+    const { client, llamacppPut } = fakeClient({ llamacppPuts: [new ConfigInvalidError(message)] })
 
-      await expect(run()).resolves.toBe('imported')
+    await expect(importLegacyModels(client, legacy, newLog())).resolves.toBe('imported')
 
-      expect(puts()).toEqual([
-        { rev: 0, value: legacy },
-        { rev: 0, value: retried }
-      ])
-      expect(log.warn).toHaveBeenCalledWith(expect.stringContaining(message))
-    }
-  )
+    expect(llamacppPut).toEqual([llamacpp, retried])
+  })
 
-  it('gives up after one failed retry', async () => {
-    const { run, puts, log } = setUp(
-      json(entry(0)),
-      invalid('engine must be "bundled" or "cuda"'),
-      invalid('engine must be "bundled" or "cuda"')
-    )
+  it('gives up after a second refusal', async () => {
+    const refused = (): Error => new ConfigInvalidError('build must be "bundled" or "cuda"')
+    const { client, enginePut } = fakeClient({
+      engineGet: engineEntry(0),
+      llamacppGet: llamacppEntry(4),
+      enginePuts: [refused(), refused()]
+    })
+    const log = newLog()
 
-    await expect(run()).resolves.toBe('gave-up')
+    await expect(importLegacyModels(client, legacy, log)).resolves.toBe('gave-up')
 
-    expect(puts()).toHaveLength(2)
-    expect(puts()[1].value.engine).toBe('bundled')
+    expect(enginePut).toHaveLength(2)
     expect(log.error).toHaveBeenCalledWith(
       "Model settings could not be imported; using core's defaults",
       expect.any(Error)
     )
-  })
-
-  it('keeps the old copy when the database is unavailable', async () => {
-    const { run, log } = setUp(
-      json(entry(0)),
-      json({ error: 'config_unavailable', message: 'config storage is not available' }, 503)
-    )
-
-    await expect(run()).resolves.toBe('retry-later')
-    expect(log.warn).toHaveBeenCalledWith('Model settings import postponed', expect.any(Error))
-  })
-
-  it('keeps the old copy when core is not reachable', async () => {
-    const { run, log } = setUp(new Error('core is not running'))
-
-    await expect(run()).resolves.toBe('retry-later')
-    expect(log.warn).toHaveBeenCalledWith('Model settings import postponed', expect.any(Error))
   })
 })

@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"unicode/utf16"
@@ -71,4 +72,12 @@ func SplitArgs(text string) ([]string, error) {
 		}
 	}
 	return args, nil
+}
+
+// ValidatePath accepts nil (not chosen) or a non-empty absolute path without a NUL; the message names field.
+func ValidatePath(field string, p *string) error {
+	if p != nil && (*p == "" || !filepath.IsAbs(*p) || strings.ContainsRune(*p, 0)) {
+		return fmt.Errorf("%s must be an absolute path", field)
+	}
+	return nil
 }

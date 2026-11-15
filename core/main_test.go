@@ -24,10 +24,12 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/engine"
+	"github.com/countingticks/openvatra/core/internal/engine/llamaserver"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/provider/llamacpp"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -375,7 +377,7 @@ func TestRunStopsOnShutdownRequest(t *testing.T) {
 }
 
 func TestModelArgs(t *testing.T) {
-	c := config.Models{Options: map[string]config.ModelOptions{"qwen": {Args: "-c 131072"}}}.Resolve(config.Env{})
+	c := llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "-c 131072"}}}.Resolve("")
 	got := modelArgs(c, "qwen")
 	if want := []string{"-c", "131072"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("args = %v, want %v", got, want)
@@ -391,18 +393,18 @@ func TestModelArgs(t *testing.T) {
 }
 
 // resolved builds the effective config for a test from the qwen model's argument text ("" = no options).
-func resolved(qwenArgs string) config.Resolved {
-	m := config.Models{Options: map[string]config.ModelOptions{}}
+func resolved(qwenArgs string) llamacpp.Resolved {
+	m := llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{}}
 	if qwenArgs != "" {
-		m.Options["qwen"] = config.ModelOptions{Args: qwenArgs}
+		m.Options["qwen"] = llamacpp.ModelOptions{Args: qwenArgs}
 	}
-	return m.Resolve(config.Env{})
+	return m.Resolve("")
 }
 
 func TestSpecFor(t *testing.T) {
 	m := models.Model{ID: "qwen", Path: `D:\m\qwen.gguf`, MMProj: `D:\m\mmproj-qwen.gguf`}
 	cases := map[string]struct {
-		c         config.Resolved
+		c         llamacpp.Resolved
 		m         models.Model
 		embedding bool
 		want      engine.Spec
@@ -476,17 +478,17 @@ func TestPlainRunWritesNothingToStdout(t *testing.T) {
 	}
 }
 
-func modelsEngine(t *testing.T, s sectionWriter) (string, int) {
+func engineBuild(t *testing.T, s sectionWriter) (string, int) {
 	t.Helper()
-	entry, err := s.Section(config.ModelsSection)
+	entry, err := s.Section(llamaserver.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var m config.Models
+	var m llamaserver.LlamaServerSettings
 	if err := json.Unmarshal(entry.Value, &m); err != nil {
 		t.Fatal(err)
 	}
-	return m.Engine, entry.Rev
+	return m.Build, entry.Rev
 }
 
 func registeredStore(t *testing.T, withDB bool, logger *slog.Logger) *config.Store {
@@ -501,7 +503,7 @@ func registeredStore(t *testing.T, withDB bool, logger *slog.Logger) *config.Sto
 		db = st
 	}
 	cfg := config.New(db, logger)
-	config.Register(cfg, config.ModelsSection, config.DefaultModels(), effectiveModels(config.Env{LlamaDir: t.TempDir(), Home: t.TempDir()}))
+	registerSections(cfg, llamaserver.Env{LlamaDir: t.TempDir()}, t.TempDir())
 	return cfg
 }
 
@@ -509,11 +511,11 @@ func TestSwitchToCUDAStoresTheEngine(t *testing.T) {
 	cfg := registeredStore(t, true, nil)
 	var log bytes.Buffer
 	switchToCUDA(cfg, slog.New(slog.NewTextHandler(&log, nil)))
-	if engine, rev := modelsEngine(t, cfg); engine != "cuda" || rev != 1 {
-		t.Fatalf("engine %q rev %d, want cuda and 1", engine, rev)
+	if build, rev := engineBuild(t, cfg); build != "cuda" || rev != 1 {
+		t.Fatalf("build %q rev %d, want cuda and 1", build, rev)
 	}
 	switchToCUDA(cfg, slog.New(slog.NewTextHandler(&log, nil)))
-	if _, rev := modelsEngine(t, cfg); rev != 1 {
+	if _, rev := engineBuild(t, cfg); rev != 1 {
 		t.Fatalf("rev after a second switch = %d, want 1 (already cuda)", rev)
 	}
 	if log.Len() != 0 {
@@ -526,6 +528,55 @@ func TestSwitchToCUDAWithoutADatabaseWarns(t *testing.T) {
 	switchToCUDA(registeredStore(t, false, nil), slog.New(slog.NewTextHandler(&log, nil)))
 	if !strings.Contains(log.String(), "level=WARN") || !strings.Contains(log.String(), "config storage is not available") {
 		t.Fatalf("log = %q", log.String())
+	}
+}
+
+// A models row split by config.SplitModels must decode strictly into the owners' types: Register logs and falls back
+// to the defaults otherwise, so this proves the section names and the JSON config writes match theirs.
+func TestSplitModelsRowsRegisterIntact(t *testing.T) {
+	cases := map[string]struct{ old, engine, provider string }{
+		"default row": {
+			`{"llamaServerPath":null,"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{},"engine":"bundled"}`,
+			`{"path":null,"build":"bundled"}`,
+			`{"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{}}`,
+		},
+		"full row": {
+			`{"llamaServerPath":"C:\\llama\\llama-server.exe","modelsDir":"D:\\Models","embeddingModel":"nomic",` +
+				`"idleUnloadMinutes":30,"options":{"a":{"args":"-c 4096"},"b":{}},"engine":"cuda"}`,
+			`{"path":"C:\\llama\\llama-server.exe","build":"cuda"}`,
+			`{"modelsDir":"D:\\Models","embeddingModel":"nomic","idleUnloadMinutes":30,"options":{"a":{"args":"-c 4096"},"b":{}}}`,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			st, err := store.Open(t.TempDir(), event.NewBus(16))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer st.Close()
+			if _, err := st.ConfigPut(context.Background(), "models", 0, []byte(tc.old)); err != nil {
+				t.Fatal(err)
+			}
+			var log bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&log, nil))
+			if err := config.SplitModels(context.Background(), st, logger); err != nil {
+				t.Fatal(err)
+			}
+			cfg := config.New(st, logger)
+			registerSections(cfg, llamaserver.Env{}, "")
+			for section, want := range map[string]string{llamaserver.ID: tc.engine, llamacpp.ID: tc.provider} {
+				e, err := cfg.Section(section)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if e.Rev != 1 || string(e.Value) != want {
+					t.Errorf("%s = rev %d, %s; want rev 1, %s", section, e.Rev, e.Value, want)
+				}
+			}
+			if strings.Contains(log.String(), "level=ERROR") {
+				t.Fatalf("log = %s", log.String())
+			}
+		})
 	}
 }
 
@@ -554,7 +605,7 @@ func (c *conflictingWriter) Put(_ string, rev int, value json.RawMessage) (confi
 }
 
 func TestSwitchToCUDARetriesOnceOnConflict(t *testing.T) {
-	value, _ := json.Marshal(config.DefaultModels())
+	value, _ := json.Marshal(llamaserver.DefaultSettings())
 	tests := []struct {
 		name      string
 		conflicts int
@@ -573,8 +624,8 @@ func TestSwitchToCUDARetriesOnceOnConflict(t *testing.T) {
 			if !slices.Equal(w.putRevs, tt.wantPuts) {
 				t.Errorf("Put revs = %v, want %v", w.putRevs, tt.wantPuts)
 			}
-			if engine, _ := modelsEngine(t, w); (engine == "cuda") != tt.wantCUDA {
-				t.Errorf("engine = %q, cuda wanted: %v", engine, tt.wantCUDA)
+			if build, _ := engineBuild(t, w); (build == "cuda") != tt.wantCUDA {
+				t.Errorf("build = %q, cuda wanted: %v", build, tt.wantCUDA)
 			}
 			if got := strings.Count(log.String(), "level=ERROR"); (got == 1) != tt.wantError || got > 1 {
 				t.Errorf("error lines = %d, want error: %v\n%s", got, tt.wantError, log.String())
@@ -767,22 +818,22 @@ func TestToProviderModels(t *testing.T) {
 		{ID: "broken", Kind: models.KindUnreadable},
 		{ID: "embed", Kind: models.KindEmbedding, MMProj: "mmproj.gguf"},
 	}
-	resolve := func(m config.Models) config.Resolved { return m.Resolve(config.Env{}) }
+	resolve := func(m llamacpp.LlamaCppSettings) llamacpp.Resolved { return m.Resolve("") }
 
 	t.Run("a chat model with a projector has Vision", func(t *testing.T) {
-		got := toProviderModels(resolve(config.Models{}), found)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found)
 		if len(got) != 2 || got[0] != (provider.Model{ID: "qwen", Kind: provider.ModelChat, Vision: true}) {
 			t.Fatalf("models = %+v", got)
 		}
 	})
 	t.Run("--no-mmproj takes Vision away", func(t *testing.T) {
-		got := toProviderModels(resolve(config.Models{Options: map[string]config.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found)
 		if got[0].Vision {
 			t.Fatalf("models = %+v", got)
 		}
 	})
 	t.Run("unreadable models are left out and embedding models have no Vision", func(t *testing.T) {
-		got := toProviderModels(resolve(config.Models{}), found)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found)
 		if len(got) != 2 || got[1] != (provider.Model{ID: "embed", Kind: provider.ModelEmbedding}) {
 			t.Fatalf("models = %+v", got)
 		}

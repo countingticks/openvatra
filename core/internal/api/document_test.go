@@ -111,19 +111,22 @@ func anyStrings(v any) []string {
 	return out
 }
 
+type testModelsEffective struct {
+	Path string `json:"path"`
+}
+
 func TestDocumentConfigSection(t *testing.T) {
 	cfg := config.New(nil, nil)
-	config.Register(cfg, config.ModelsSection, config.DefaultModels(),
-		func(config.Models) config.ModelsEffective { return config.ModelsEffective{} })
+	config.Register(cfg, testSection, testModels{N: 15}, func(testModels) testModelsEffective { return testModelsEffective{} })
 	doc := decodeDoc(t, Document(Deps{Config: cfg}))
-	ok := at(t, doc, "paths", "/api/config/models", "get", "responses", "200", "content", "application/json", "schema", "properties")
-	if got := at(t, ok, "value", "$ref"); got != "#/components/schemas/Models" {
+	ok := at(t, doc, "paths", "/api/config/engine.test", "get", "responses", "200", "content", "application/json", "schema", "properties")
+	if got := at(t, ok, "value", "$ref"); got != "#/components/schemas/testModels" {
 		t.Errorf("value = %v", got)
 	}
-	if got := at(t, ok, "effective", "$ref"); got != "#/components/schemas/ModelsEffective" {
+	if got := at(t, ok, "effective", "$ref"); got != "#/components/schemas/testModelsEffective" {
 		t.Errorf("effective = %v", got)
 	}
-	body := at(t, doc, "paths", "/api/config/models", "put", "requestBody", "content", "application/json", "schema", "properties")
+	body := at(t, doc, "paths", "/api/config/engine.test", "put", "requestBody", "content", "application/json", "schema", "properties")
 	at(t, body, "rev")
 	at(t, body, "value")
 }

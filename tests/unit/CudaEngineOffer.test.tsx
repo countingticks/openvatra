@@ -1,8 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import { defaultCoreModels } from '@renderer/core/modelSettings'
-import type { Models } from '@renderer/core/generated'
+import type { ModelsView } from '@renderer/core/modelSettings'
+import type { LlamaServerSettings } from '@renderer/core/generated'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { ModelInfo } from '@renderer/core/types'
 import { coreWrites, type FakeCoreHttp } from './fakeCoreHttp'
@@ -13,7 +13,7 @@ const stopped: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, size
 const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 
 /** The two window flags that sit beside core's models section in a test's arguments. */
-type Preferences = Partial<Models> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
+type Preferences = Partial<ModelsView> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
 
 /** The window's preferences go to the saved settings, the rest is core's models section. */
 function show(
@@ -29,11 +29,11 @@ function show(
   )
 }
 
-/** The engine each PUT of the models section asked for, in order. */
-const enginesPut = (http: FakeCoreHttp): Models['engine'][] =>
+/** The build each PUT of the engine section asked for, in order. */
+const enginesPut = (http: FakeCoreHttp): LlamaServerSettings['build'][] =>
   coreWrites(http)
-    .filter((write) => write.method === 'PUT')
-    .map((write) => (write.body as { value: Models }).value.engine)
+    .filter((write) => write.method === 'PUT' && write.path === '/api/config/engine.llamaserver')
+    .map((write) => (write.body as { value: LlamaServerSettings }).value.build)
 
 const openPopover = async (): Promise<void> => {
   fireEvent.click(await screen.findByRole('button', { name: /^Model:/ }))
@@ -131,7 +131,7 @@ describe('faster engine for NVIDIA', () => {
     })
     expect(await screen.findByRole('button', { name: 'Use the faster engine' })).toBeInTheDocument()
 
-    coreHttp.setConfigModels({ rev: 2, value: { ...defaultCoreModels, engine: 'cuda' } })
+    coreHttp.setConfig('engine.llamaserver', { rev: 2, value: { path: null, build: 'cuda' } })
     act(() => {
       coreHttp.push({
         data: {
@@ -140,7 +140,7 @@ describe('faster engine for NVIDIA', () => {
           stream: 'system',
           type: 'config.changed',
           v: 1,
-          data: { section: 'models', rev: 2 }
+          data: { section: 'engine.llamaserver', rev: 2 }
         }
       })
     })
