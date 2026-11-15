@@ -165,3 +165,73 @@ func TestDiscoverSizes(t *testing.T) {
 		t.Fatalf("sizes = %v, want %v (a split model counts all its parts)", sizes, want)
 	}
 }
+
+func TestDiscoverShapeSizes(t *testing.T) {
+	root := t.TempDir()
+	put := func(name string, data []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	data := buildFile(3, denseKeys(), nil, 100)
+	put("v.gguf", data)
+	put("v-mmproj.gguf", make([]byte, 77))
+
+	got, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Shape.FileBytes != int64(len(data)) || got[0].Shape.FileBytes != got[0].SizeBytes ||
+		got[0].Shape.ProjectorBytes != 77 {
+		t.Fatalf("got %+v, want FileBytes = SizeBytes = %d and ProjectorBytes 77", got, len(data))
+	}
+}
+
+func TestDiscoverSplitMoE(t *testing.T) {
+	keys := denseKeys(u32KV("llama.expert_count", 8))
+	// Later parts carry no keys at all, not even the architecture.
+	part := func(n int, tensors []tensor, data int) []byte {
+		if n == 1 {
+			return buildFile(3, keys, tensors, data)
+		}
+		return buildFile(3, nil, tensors, data)
+	}
+	exps := func(name string) []tensor { return []tensor{{name, []uint64{1}, 0}} }
+
+	tests := []struct {
+		name        string
+		skipPart2   bool
+		wantExperts int64
+		wantLayers  int
+	}{
+		{"all parts present", false, 100 + 200 + 300, 32},
+		{"part 2 missing", true, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			put := func(name string, data []byte) {
+				if err := os.WriteFile(filepath.Join(root, name), data, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			put("big-00001-of-00003.gguf", part(1, exps("blk.0.ffn_up_exps.weight"), 100))
+			if !tt.skipPart2 {
+				put("big-00002-of-00003.gguf", part(2, exps("blk.1.ffn_up_exps.weight"), 200))
+			}
+			put("big-00003-of-00003.gguf", part(3, exps("blk.2.ffn_up_exps.weight"), 300))
+
+			got, err := Discover(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 {
+				t.Fatalf("got %d models, want 1", len(got))
+			}
+			if s := got[0].Shape; s.ExpertBytes != tt.wantExperts || s.Layers != tt.wantLayers {
+				t.Fatalf("shape = %+v, want ExpertBytes %d and Layers %d", s, tt.wantExperts, tt.wantLayers)
+			}
+		})
+	}
+}
