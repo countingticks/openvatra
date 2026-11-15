@@ -155,3 +155,63 @@ func TestSettingsOptionWithoutArgs(t *testing.T) {
 		t.Errorf(`{"args": ""} reads as arguments %v`, args)
 	}
 }
+
+func TestSettingsValidateContextAndPlacement(t *testing.T) {
+	cases := []struct {
+		name string
+		opt  ModelOptions
+		want string // "" = valid
+	}{
+		{"context 2047", ModelOptions{Context: settingsPtr(2047)}, `options for "m": context must be between 2048 and 1048576`},
+		{"context 1048577", ModelOptions{Context: settingsPtr(1048577)}, `options for "m": context must be between 2048 and 1048576`},
+		{"context 2048", ModelOptions{Context: settingsPtr(2048)}, ""},
+		{"context 1048576", ModelOptions{Context: settingsPtr(1048576)}, ""},
+		{"placement middle", ModelOptions{Placement: "middle"}, `options for "m": placement must be auto, gpu, experts, layers or cpu`},
+		{"placement auto", ModelOptions{Placement: "auto"}, ""},
+		{"placement gpu", ModelOptions{Placement: "gpu"}, ""},
+		{"placement experts", ModelOptions{Placement: "experts"}, ""},
+		{"placement layers", ModelOptions{Placement: "layers"}, ""},
+		{"placement cpu", ModelOptions{Placement: "cpu"}, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := DefaultSettings()
+			s.Options["m"] = tc.opt
+			err := s.Validate()
+			if tc.want == "" && err != nil {
+				t.Fatalf("valid value rejected: %v", err)
+			}
+			if tc.want != "" && (err == nil || err.Error() != tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+func TestSettingsSize(t *testing.T) {
+	s := DefaultSettings()
+	s.Options["plain"] = ModelOptions{Args: "--jinja"}
+	s.Options["set"] = ModelOptions{Context: settingsPtr(4096), Placement: "cpu"}
+	r := s.Resolve("")
+	for id, want := range map[string]struct {
+		context   int
+		placement string
+	}{"plain": {0, "auto"}, "unknown": {0, "auto"}, "set": {4096, "cpu"}} {
+		if c, p := r.Size(id); c != want.context || p != want.placement {
+			t.Errorf("Size(%q) = %d %q, want %d %q", id, c, p, want.context, want.placement)
+		}
+	}
+}
+
+func TestSettingsNullContextIsAuto(t *testing.T) {
+	var s LlamaCppSettings
+	if err := json.Unmarshal([]byte(`{"options":{"m":{"context":null}}}`), &s); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Validate(); err != nil {
+		t.Fatalf("null context rejected: %v", err)
+	}
+	if c, p := s.Resolve("").Size("m"); c != 0 || p != "auto" {
+		t.Errorf("Size = %d %q, want 0 auto", c, p)
+	}
+}

@@ -5,7 +5,7 @@ import { Button } from '@renderer/components/ui/button'
 import { formatSize } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import type { ModelInfo } from '@renderer/core/types'
-import type { ModelOptions } from '../../../../shared/settings'
+import type { ModelOptions } from '@renderer/core/generated'
 
 interface ModelRowProps {
   model: ModelInfo

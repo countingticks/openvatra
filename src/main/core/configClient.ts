@@ -14,12 +14,19 @@ export interface EngineSection {
   build: Engine
 }
 
+/** One model's own settings in provider.llamacpp; context null or absent = auto. */
+export type ModelOptions = {
+  args?: string
+  context?: number | null
+  placement?: 'auto' | 'gpu' | 'experts' | 'layers' | 'cpu'
+}
+
 /** The provider.llamacpp section: where the models are and how they run. */
 export interface LlamacppSection {
   modelsDir: string | null
   embeddingModel: string | null
   idleUnloadMinutes: number | null
-  options: Record<string, { args?: string }>
+  options: Record<string, ModelOptions>
 }
 
 export interface SectionEntry<V, E> {
@@ -45,7 +52,14 @@ const llamacppSchema = z.object({
     modelsDir: z.string().nullable(),
     embeddingModel: z.string().nullable(),
     idleUnloadMinutes: z.number().int().min(1).max(1440).nullable(),
-    options: z.record(z.string(), z.object({ args: z.string().optional() }))
+    options: z.record(
+      z.string(),
+      z.object({
+        args: z.string().optional(),
+        context: z.number().int().min(2048).max(1048576).nullable().optional(),
+        placement: z.enum(['auto', 'gpu', 'experts', 'layers', 'cpu']).optional()
+      })
+    )
   }),
   effective: z.object({ modelsDir: z.string() })
 })

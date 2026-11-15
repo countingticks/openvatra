@@ -7,7 +7,7 @@ import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { useModels } from '@renderer/hooks/useModels'
 import type { ModelInfo } from '@renderer/core/types'
 import type { LlamacppChange } from '@renderer/core/modelSettings'
-import type { ModelOptions } from '../../../../shared/settings'
+import type { ModelOptions } from '@renderer/core/generated'
 
 /** A failed action has nothing useful to show here; log it (main copies page errors into main.log). */
 function run(action: () => Promise<void>): void {

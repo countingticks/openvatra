@@ -592,6 +592,22 @@
         "properties": {
           "args": {
             "type": "string"
+          },
+          "context": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "placement": {
+            "enum": [
+              "auto",
+              "gpu",
+              "experts",
+              "layers",
+              "cpu"
+            ],
+            "type": "string"
           }
         },
         "type": "object"

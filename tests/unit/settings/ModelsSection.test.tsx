@@ -467,6 +467,21 @@ describe('Settings → Models', () => {
       })
     })
 
+    it('keeps the stored context and placement when the arguments change', async () => {
+      const { coreHttp, group } = await openOptions({
+        [qwen.id]: { args: '--jinja', context: 8192, placement: 'cpu' }
+      })
+      const args = within(group).getByLabelText('Arguments')
+
+      fireEvent.change(args, { target: { value: '--temp 0.7' } })
+      fireEvent.blur(args)
+
+      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+      expect(putValues(coreHttp)[0]?.options).toEqual({
+        [qwen.id]: { args: '--temp 0.7', context: 8192, placement: 'cpu' }
+      })
+    })
+
     it('refuses a flag OpenVatra sets itself, and saves nothing', async () => {
       const { coreHttp, group } = await openOptions()
       const args = within(group).getByLabelText('Arguments')
