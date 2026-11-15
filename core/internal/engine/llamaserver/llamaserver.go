@@ -65,8 +65,35 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Instance, 
 	return e.runner.Start(ctx, e.Command(spec), logs.Prefixed(out, spec.Model))
 }
 
-// Needs is unknown until slice 4.
-func (e *Engine) Needs(engine.Spec) engine.Resources { return engine.Resources{} }
+// computeAllowance is what llama-server's compute buffers take on top of weights and KV cache.
+const computeAllowance int64 = 512 << 20
+
+// Needs estimates the memory spec takes: the weights and projector, an f16 KV cache for the context size and a
+// fixed compute allowance, split by the placement. Unknown (zero Resources) when the shape or context is missing.
+// The KV size overestimates hybrid and sliding-window models; measurements correct it later.
+func (e *Engine) Needs(spec engine.Spec) engine.Resources {
+	s := spec.Shape
+	if spec.Embedding || spec.Context <= 0 || s.FileBytes == 0 || s.Layers == 0 || s.KVHeads == 0 ||
+		s.KeyLen == 0 || s.ValueLen == 0 || s.MaxContext == 0 {
+		return engine.Resources{}
+	}
+	kv := int64(spec.Context) * int64(s.Layers) * int64(s.KVHeads) * int64(s.KeyLen+s.ValueLen) * 2
+	fixed := s.ProjectorBytes + kv + computeAllowance
+	r := engine.Resources{Known: true, Source: "estimate"}
+	switch spec.Placement.Kind {
+	case engine.PlaceExperts:
+		r.VRAMBytes, r.RAMBytes = s.FileBytes-s.ExpertBytes+fixed, s.ExpertBytes
+	case engine.PlaceLayers:
+		n := int64(min(max(spec.Placement.Layers, 0), s.Layers))
+		onGPU := s.FileBytes * n / int64(s.Layers)
+		r.VRAMBytes, r.RAMBytes = onGPU+fixed, s.FileBytes-onGPU
+	case engine.PlaceCPU:
+		r.RAMBytes = s.FileBytes + fixed
+	default:
+		r.VRAMBytes = s.FileBytes + fixed
+	}
+	return r
+}
 
 func (e *Engine) Check(context.Context) seam.Health {
 	p := e.path()
