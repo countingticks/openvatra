@@ -1,5 +1,5 @@
 import { useGetEnginesQuery, type EnginesBody } from '@renderer/core/generated'
-import { useModelSettings } from '@renderer/hooks/useModelSettings'
+import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
 import { useSetup } from '@renderer/hooks/useSetup'
 import type { DownloadItem } from '@renderer/core/types'
 
@@ -19,16 +19,16 @@ export interface CudaEngine {
  */
 export function useCudaEngine(): CudaEngine {
   const { hardware, downloads } = useSetup()
-  const { engine, llamaServerPath } = useModelSettings().value
+  const { build, path } = useEngineSettings().value
   // The card is optional; without an answer it just stays hidden.
   const status = useGetEnginesQuery().data?.cuda ?? 'none'
 
   const item = downloads.find((candidate) => candidate.id === 'engine-cuda' && candidate.state !== 'done')
-  const custom = llamaServerPath !== null
+  const custom = path !== null
   return {
     offered: hardware?.gpu?.vendor === 'nvidia' && !custom,
     status,
-    inUse: !custom && engine === 'cuda' && status === 'ready',
+    inUse: !custom && build === 'cuda' && status === 'ready',
     item
   }
 }

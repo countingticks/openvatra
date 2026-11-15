@@ -17,11 +17,15 @@ import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
 /** The two window flags that sit beside core's models section in a test's arguments. */
-type Preferences = Partial<ModelsView> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
+type Preferences = Partial<Omit<ModelsView, 'llamaServerPath' | 'engine'>> & {
+  engineSettings?: Partial<LlamaServerSettings>
+  showAdvanced?: boolean
+  cudaOfferDismissed?: boolean
+}
 
 const chosen: Preferences = {
   ...defaultCoreModels,
-  llamaServerPath: 'C:\\llama\\llama-server.exe',
+  engineSettings: { path: 'C:\\llama\\llama-server.exe' },
   modelsDir: 'D:\\models',
   showAdvanced: true
 }
@@ -78,11 +82,11 @@ async function openModels(
   options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
 ): Promise<Rendered & { section: HTMLElement }> {
   // Most tests are about the advanced view, so it is on unless a test says otherwise.
-  const { showAdvanced = true, cudaOfferDismissed = false, ...core } = models
+  const { showAdvanced = true, cudaOfferDismissed = false, engineSettings, ...core } = models
   const rendered = renderWithStore(
     <App />,
     { showAdvancedModels: showAdvanced, cudaOfferDismissed },
-    { modelSettings: core, ...options }
+    { modelSettings: core, engineSettings, ...options }
   )
   act(() => {
     rendered.store.dispatch(settingsOpened('models'))
@@ -97,7 +101,7 @@ async function openModels(
 describe('Settings → Models', () => {
   describe('paths', () => {
     it("shows both of core's paths, or the default folder when none is chosen", async () => {
-      await openModels({ llamaServerPath: 'C:\\llama\\llama-server.exe' }, { coreState: ready })
+      await openModels({ engineSettings: { path: 'C:\\llama\\llama-server.exe' } }, { coreState: ready })
 
       expect(await screen.findByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
       expect(screen.getByText('The OpenVatra\\Models folder in your user folder')).toBeInTheDocument()
@@ -110,7 +114,7 @@ describe('Settings → Models', () => {
     })
 
     it('shows the bundled build when no llama-server is chosen, with no "Use bundled" button', async () => {
-      await openModels({ llamaServerPath: null })
+      await openModels({ engineSettings: { path: null } })
 
       expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toHaveTextContent(
@@ -121,7 +125,7 @@ describe('Settings → Models', () => {
 
     it('leaves the tag out of the bundled label when core has none', async () => {
       const { store } = await openModels(
-        { llamaServerPath: null },
+        { engineSettings: { path: null } },
         { coreState: ready, engines: { tag: null } }
       )
 
@@ -134,7 +138,7 @@ describe('Settings → Models', () => {
 
     it('"Use bundled" asks core to forget the custom path, and shows the bundled build again', async () => {
       const { coreHttp } = await openModels(
-        { llamaServerPath: 'C:\\llama\\llama-server.exe' },
+        { engineSettings: { path: 'C:\\llama\\llama-server.exe' } },
         { coreState: ready }
       )
 
@@ -148,7 +152,7 @@ describe('Settings → Models', () => {
 
     it("shows core's message when it refuses a change", async () => {
       const { coreHttp } = await openModels(
-        { llamaServerPath: 'C:\\llama\\llama-server.exe' },
+        { engineSettings: { path: 'C:\\llama\\llama-server.exe' } },
         { coreState: ready }
       )
       coreHttp.respond('PUT', '/api/config/engine.llamaserver', () => ({

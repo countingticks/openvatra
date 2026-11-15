@@ -8,6 +8,7 @@ import { SegmentedControl } from '@renderer/components/settings/SegmentedControl
 import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
 import { useGetEnginesQuery } from '@renderer/core/generated'
+import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
 import { useModelSettings } from '@renderer/hooks/useModelSettings'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
@@ -20,6 +21,7 @@ import type { PickTarget } from '../../../../shared/ipc'
 export function ModelsSection(): React.JSX.Element {
   const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
   const { value: models, update } = useModelSettings()
+  const { value: engine, update: updateEngine } = useEngineSettings()
   const dispatch = useAppDispatch()
   const idleId = useId()
   const advancedId = useId()
@@ -41,6 +43,11 @@ export function ModelsSection(): React.JSX.Element {
   function change(next: ModelsChange): void {
     setProblem(undefined)
     update(next).catch((error: Error) => setProblem(error.message))
+  }
+
+  function fail(write: Promise<void>): void {
+    setProblem(undefined)
+    write.catch((error: Error) => setProblem(error.message))
   }
 
   const idle = idleOptions.find((option) => option.minutes === models.idleUnloadMinutes) ?? idleOptions[1]
@@ -108,13 +115,13 @@ export function ModelsSection(): React.JSX.Element {
           <PathRow
             label="llama-server.exe"
             hint="The program that runs the models. The bundled one works on any GPU; use your own for CUDA."
-            path={models.llamaServerPath}
+            path={engine.path}
             defaultText={bundledText}
             browseText="Use my own…"
             onBrowse={() => void pick('llamaServer')}
           >
-            {models.llamaServerPath && (
-              <Button variant="outline" size="sm" onClick={() => change({ llamaServerPath: null })}>
+            {engine.path && (
+              <Button variant="outline" size="sm" onClick={() => fail(updateEngine({ path: null }))}>
                 Use bundled
               </Button>
             )}

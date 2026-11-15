@@ -23,6 +23,7 @@ import type { CatalogView } from '@renderer/core/catalogView'
 import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
 import { defaultCoreModels, type ModelsView } from '@renderer/core/modelSettings'
+import type { LlamaServerSettings } from '@renderer/core/generated'
 import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
@@ -134,6 +135,8 @@ interface Options {
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
   /** The model sections' values core answers (rev 1), over core's defaults; each key goes to its section. */
   modelSettings?: Partial<ModelsView>
+  /** engine.llamaserver's value core answers (rev 1); wins over the same fields in modelSettings. */
+  engineSettings?: Partial<LlamaServerSettings>
   /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
@@ -208,7 +211,11 @@ export function renderWithStore(
   const view = { ...defaultCoreModels, ...options.modelSettings }
   coreHttp.setConfig('engine.llamaserver', {
     rev: 1,
-    value: { path: view.llamaServerPath, build: view.engine },
+    value: {
+      path: view.llamaServerPath,
+      build: view.engine,
+      ...options.engineSettings
+    },
     effective: { path: 'C:\\OpenVatra\\resources\\llama\\llama-server.exe' }
   })
   coreHttp.setConfig('provider.llamacpp', {
