@@ -8,18 +8,20 @@ import { SegmentedControl } from '@renderer/components/settings/SegmentedControl
 import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
 import { useGetEnginesQuery } from '@renderer/core/generated'
-import { useModelSettings } from '@renderer/hooks/useModelSettings'
+import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
+import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { idleOptions } from '@renderer/lib/idleOptions'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
 import { modelsDialogOpened, settingsClosed } from '@renderer/store/uiSlice'
-import type { ModelsChange } from '@renderer/core/modelSettings'
+import type { LlamacppChange } from '@renderer/core/modelSettings'
 import type { PickTarget } from '../../../../shared/ipc'
 
 /** Settings → Models: the simple view (folder, installed models, get more, unload timer) and, behind *Show advanced*, the engine, embedding model and per-model options. */
 export function ModelsSection(): React.JSX.Element {
   const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
-  const { value: models, update } = useModelSettings()
+  const { value: llamacpp, update } = useLlamacppSettings()
+  const { value: engine, update: updateEngine } = useEngineSettings()
   const dispatch = useAppDispatch()
   const idleId = useId()
   const advancedId = useId()
@@ -38,19 +40,24 @@ export function ModelsSection(): React.JSX.Element {
     }
   }
 
-  function change(next: ModelsChange): void {
+  function change(next: LlamacppChange): void {
     setProblem(undefined)
     update(next).catch((error: Error) => setProblem(error.message))
   }
 
-  const idle = idleOptions.find((option) => option.minutes === models.idleUnloadMinutes) ?? idleOptions[1]
+  function fail(write: Promise<void>): void {
+    setProblem(undefined)
+    write.catch((error: Error) => setProblem(error.message))
+  }
+
+  const idle = idleOptions.find((option) => option.minutes === llamacpp.idleUnloadMinutes) ?? idleOptions[1]
 
   return (
     <div className="flex flex-col">
       <PathRow
         label="Models folder"
         hint="Where your downloaded models are kept."
-        path={models.modelsDir}
+        path={llamacpp.modelsDir}
         defaultText="The OpenVatra\Models folder in your user folder"
         browseText="Change…"
         onBrowse={() => void pick('modelsDir')}
@@ -108,13 +115,13 @@ export function ModelsSection(): React.JSX.Element {
           <PathRow
             label="llama-server.exe"
             hint="The program that runs the models. The bundled one works on any GPU; use your own for CUDA."
-            path={models.llamaServerPath}
+            path={engine.path}
             defaultText={bundledText}
             browseText="Use my own…"
             onBrowse={() => void pick('llamaServer')}
           >
-            {models.llamaServerPath && (
-              <Button variant="outline" size="sm" onClick={() => change({ llamaServerPath: null })}>
+            {engine.path && (
+              <Button variant="outline" size="sm" onClick={() => fail(updateEngine({ path: null }))}>
                 Use bundled
               </Button>
             )}

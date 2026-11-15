@@ -183,7 +183,7 @@ describe('model button', () => {
       {
         coreState: ready,
         engines: { cuda: 'ready' },
-        modelSettings: { engine: 'cuda' },
+        engineSettings: { build: 'cuda' },
         models: [{ ...qwen, state: 'error', error: 'The model did not start.' }]
       }
     )

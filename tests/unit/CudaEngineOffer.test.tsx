@@ -1,7 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import type { ModelsView } from '@renderer/core/modelSettings'
 import type { LlamaServerSettings } from '@renderer/core/generated'
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { ModelInfo } from '@renderer/core/types'
@@ -12,8 +11,12 @@ const ready = { status: 'ready', port: 1234, version: '1', connection: exampleCo
 const stopped: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, sizeBytes: 1, kind: 'chat' }
 const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 
-/** The two window flags that sit beside core's models section in a test's arguments. */
-type Preferences = Partial<ModelsView> & { showAdvanced?: boolean; cudaOfferDismissed?: boolean }
+/** The two window flags that sit beside core's engine section in a test's arguments. */
+interface Preferences {
+  engineSettings?: Partial<LlamaServerSettings>
+  showAdvanced?: boolean
+  cudaOfferDismissed?: boolean
+}
 
 /** The window's preferences go to the saved settings, the rest is core's models section. */
 function show(
@@ -21,11 +24,11 @@ function show(
   models: Preferences = {},
   list: ModelInfo[] = [stopped]
 ): ReturnType<typeof renderWithStore> {
-  const { showAdvanced, cudaOfferDismissed, ...core } = models
+  const { showAdvanced, cudaOfferDismissed, engineSettings } = models
   return renderWithStore(
     <App />,
     { showAdvancedModels: showAdvanced ?? false, cudaOfferDismissed: cudaOfferDismissed ?? false },
-    { coreState: ready, engines: { cuda }, models: list, modelSettings: core }
+    { coreState: ready, engines: { cuda }, models: list, engineSettings }
   )
 }
 
@@ -105,14 +108,14 @@ describe('faster engine for NVIDIA', () => {
   })
 
   it('stays out of the way with a custom llama-server, and once dismissed', async () => {
-    show('none', { llamaServerPath: 'C:\\llama\\llama-server.exe', cudaOfferDismissed: true })
+    show('none', { engineSettings: { path: 'C:\\llama\\llama-server.exe' }, cudaOfferDismissed: true })
     await openPopover()
     await screen.findByRole('button', { name: 'Restart' })
     expect(screen.queryByText(/faster engine/i)).toBeNull()
   })
 
   it('lets Settings switch between the engines, whatever was dismissed', async () => {
-    const { coreHttp, store } = show('ready', { engine: 'cuda', cudaOfferDismissed: true })
+    const { coreHttp, store } = show('ready', { engineSettings: { build: 'cuda' }, cudaOfferDismissed: true })
     act(() => {
       store.dispatch(settingsOpened('models'))
     })
@@ -124,8 +127,26 @@ describe('faster engine for NVIDIA', () => {
     expect(enginesPut(coreHttp)).toEqual(['bundled', 'cuda'])
   })
 
+  it('accepting the offer writes build cuda to the engine section and nothing to the provider section', async () => {
+    const { coreHttp, store } = show('ready', { engineSettings: { build: 'bundled' }, showAdvanced: true })
+    act(() => {
+      store.dispatch(settingsOpened('models'))
+    })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Use the faster engine' }))
+
+    expect(await screen.findByRole('button', { name: 'Use the standard engine' })).toBeInTheDocument()
+    expect(coreWrites(coreHttp)).toEqual([
+      {
+        method: 'PUT',
+        path: '/api/config/engine.llamaserver',
+        body: { rev: 1, value: { path: null, build: 'cuda' } }
+      }
+    ])
+  })
+
   it('the Settings line follows core when the CUDA download switches the engine', async () => {
-    const { coreHttp, store } = show('ready', { engine: 'bundled', showAdvanced: true })
+    const { coreHttp, store } = show('ready', { engineSettings: { build: 'bundled' }, showAdvanced: true })
     act(() => {
       store.dispatch(settingsOpened('models'))
     })
@@ -150,7 +171,7 @@ describe('faster engine for NVIDIA', () => {
   })
 
   it('offers "Use the standard engine" next to a model that failed to start, while CUDA is in use', async () => {
-    const { coreHttp } = show('ready', { engine: 'cuda' }, [broken])
+    const { coreHttp } = show('ready', { engineSettings: { build: 'cuda' } }, [broken])
     await openPopover()
     expect(await screen.findByText('The model did not start.')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: 'Use the standard engine' }))

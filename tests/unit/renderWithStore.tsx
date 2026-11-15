@@ -22,7 +22,8 @@ import type { DownloadItem, HardwareReport } from '@renderer/core/types'
 import type { CatalogView } from '@renderer/core/catalogView'
 import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
-import { defaultCoreModels, type ModelsView } from '@renderer/core/modelSettings'
+import { defaultEngineSettings, defaultLlamacppSettings } from '@renderer/core/modelSettings'
+import type { LlamaCppSettings, LlamaServerSettings } from '@renderer/core/generated'
 import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
@@ -132,8 +133,10 @@ interface Options {
   models?: ModelInfo[]
   /** The setup answers when the UI first asks; default: example hardware, an empty catalog, no downloads. */
   setup?: { hardware?: HardwareReport; catalog?: CatalogView | CoreCatalogView; downloads?: DownloadItem[] }
-  /** The model sections' values core answers (rev 1), over core's defaults; each key goes to its section. */
-  modelSettings?: Partial<ModelsView>
+  /** provider.llamacpp's value core answers (rev 1), over core's defaults. */
+  llamacppSettings?: Partial<LlamaCppSettings>
+  /** engine.llamaserver's value core answers (rev 1), over core's defaults. */
+  engineSettings?: Partial<LlamaServerSettings>
   /** What GET /api/engines answers; default: tag b12078, CUDA not installed. */
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
@@ -205,20 +208,14 @@ export function renderWithStore(
     '/api/catalog',
     toCoreCatalog(options.setup?.catalog ?? { entries: [], diskFreeBytes: null, recommended: null })
   )
-  const view = { ...defaultCoreModels, ...options.modelSettings }
   coreHttp.setConfig('engine.llamaserver', {
     rev: 1,
-    value: { path: view.llamaServerPath, build: view.engine },
+    value: { ...defaultEngineSettings, ...options.engineSettings },
     effective: { path: 'C:\\OpenVatra\\resources\\llama\\llama-server.exe' }
   })
   coreHttp.setConfig('provider.llamacpp', {
     rev: 1,
-    value: {
-      modelsDir: view.modelsDir,
-      embeddingModel: view.embeddingModel,
-      idleUnloadMinutes: view.idleUnloadMinutes,
-      options: view.options
-    },
+    value: { ...defaultLlamacppSettings, ...options.llamacppSettings },
     effective: { modelsDir: 'C:\\Users\\me\\OpenVatra\\Models' }
   })
   coreHttp.answer('/api/engines', {

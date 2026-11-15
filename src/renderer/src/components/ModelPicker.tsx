@@ -3,7 +3,7 @@ import { Check, LoaderCircle } from 'lucide-react'
 import { Button } from '@renderer/components/ui/button'
 import { useLoadModelMutation, useUnloadModelMutation } from '@renderer/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
-import { useModelSettings } from '@renderer/hooks/useModelSettings'
+import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
 import { failureReason } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import type { ModelInfo } from '@renderer/core/types'
@@ -97,8 +97,8 @@ function PickerRow({
 /** The models core found, shown in the model button's popover while core is ready. */
 export function ModelPicker({ models }: { models: ModelInfo[] }): React.JSX.Element {
   const { inUse } = useCudaEngine()
-  const { update } = useModelSettings()
-  const useStandard = inUse ? (): Promise<void> => update({ engine: 'bundled' }) : undefined
+  const { update } = useEngineSettings()
+  const useStandard = inUse ? (): Promise<void> => update({ build: 'bundled' }) : undefined
   if (models.length === 0)
     return (
       <p className="text-xs text-muted-foreground">No models found. Choose a folder in Model settings.</p>

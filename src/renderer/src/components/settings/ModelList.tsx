@@ -3,10 +3,10 @@ import { ModelRow } from '@renderer/components/settings/ModelRow'
 import { Button } from '@renderer/components/ui/button'
 import { Label } from '@renderer/components/ui/label'
 import { useCoreState } from '@renderer/hooks/useCoreState'
-import { useModelSettings } from '@renderer/hooks/useModelSettings'
+import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { useModels } from '@renderer/hooks/useModels'
 import type { ModelInfo } from '@renderer/core/types'
-import type { ModelsChange } from '@renderer/core/modelSettings'
+import type { LlamacppChange } from '@renderer/core/modelSettings'
 import type { ModelOptions } from '../../../../shared/settings'
 
 /** A failed action has nothing useful to show here; log it (main copies page errors into main.log). */
@@ -59,7 +59,7 @@ function ModelGroup({
  * it says why and what to do: the service has a problem, the paths aren't chosen, it's starting, or the folder is empty.
  */
 export function ModelList(): React.JSX.Element {
-  const { value: settings, update } = useModelSettings()
+  const { value: settings, update } = useLlamacppSettings()
   const [saveProblem, setSaveProblem] = useState<string>()
   const core = useCoreState()
   const models = useModels()
@@ -77,7 +77,7 @@ export function ModelList(): React.JSX.Element {
   const chosenProblem = settings.embeddingModel && !chosenIsEmbedding ? settings.embeddingModel : null
   const chosenKind = models.find((model) => model.id === chosenProblem)?.kind
 
-  function change(next: ModelsChange): void {
+  function change(next: LlamacppChange): void {
     setSaveProblem(undefined)
     update(next).catch((error: Error) => setSaveProblem(error.message))
   }

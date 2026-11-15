@@ -7,7 +7,7 @@ import {
   useResumeDownloadMutation,
   useStartDownloadMutation
 } from '@renderer/core/generated'
-import { useModelSettings } from '@renderer/hooks/useModelSettings'
+import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText, hardwareLine } from '@renderer/lib/setupText'
@@ -20,7 +20,7 @@ interface WelcomeCardProps {
 /** Shown in the Chat tab while there are no chat models: one recommendation, one button. */
 export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.Element | null {
   const { hardware, catalog, downloads } = useSetup()
-  const { modelsDir } = useModelSettings().value
+  const { modelsDir } = useLlamacppSettings().value
   const [problem, setProblem] = useState<string | null>(null)
   const [startDownload] = useStartDownloadMutation()
   const [cancelDownload] = useCancelDownloadMutation()
