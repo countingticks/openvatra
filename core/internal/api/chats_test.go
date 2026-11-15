@@ -22,13 +22,7 @@ import (
 // chatServer serves the real handler (token and Host checks included) over a real socket, with a fake llama-server.
 func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.Store) {
 	t.Helper()
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/props" {
-			fmt.Fprint(w, `{"default_generation_settings":{"n_ctx":8192}}`)
-			return
-		}
-		model(w, r)
-	}))
+	backend := httptest.NewServer(model)
 	t.Cleanup(backend.Close)
 	st, err := store.Open(t.TempDir(), event.NewBus(16))
 	if err != nil {
@@ -41,9 +35,11 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 			return backendInstance(backend.URL), nil
 		},
 		EmbeddingModel: func() string { return "" },
-		List:           func() ([]provider.Model, error) { return []provider.Model{{ID: "qwen", Kind: provider.ModelChat}}, nil },
+		List: func() ([]provider.Model, error) {
+			return []provider.Model{{ID: "qwen", Kind: provider.ModelChat, Context: 8192}}, nil
+		},
 	})
-	svc := &chat.Service{Store: st, Chat: lc, Model: lc.Prepare}
+	svc := &chat.Service{Store: st, Chat: lc, Model: lc.Model}
 
 	// The Host check wants the port core listens on, which is only known once the listener exists.
 	srv := httptest.NewUnstartedServer(nil)

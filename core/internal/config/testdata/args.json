@@ -11,8 +11,13 @@
   },
   {
     "name": "tabs and newlines between args",
-    "text": "-c 131072\n  --jinja\t-ngl 99",
-    "args": ["-c", "131072", "--jinja", "-ngl", "99"]
+    "text": "--jinja\t--temp 1\n  --alias x",
+    "args": ["--jinja", "--temp", "1", "--alias", "x"]
+  },
+  {
+    "name": "the old whitespace case fails on the size flag",
+    "text": "-c 131072\n --jinja",
+    "error": "-c is set by OpenVatra and can't be changed."
   },
   {
     "name": "quoted path with spaces",
@@ -66,7 +71,67 @@
   },
   {
     "name": "valid flags",
-    "text": "-c 4096 --jinja",
-    "args": ["-c", "4096", "--jinja"]
+    "text": "--temp 0.7 --jinja",
+    "args": ["--temp", "0.7", "--jinja"]
+  },
+  {
+    "name": "reserved size flag with =",
+    "text": "--ctx-size=4096",
+    "error": "--ctx-size is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved -c",
+    "text": "--jinja -c 1",
+    "error": "-c is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved --ctx-size",
+    "text": "--jinja --ctx-size 1",
+    "error": "--ctx-size is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved -ngl",
+    "text": "--jinja -ngl 1",
+    "error": "-ngl is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved --gpu-layers",
+    "text": "--jinja --gpu-layers 1",
+    "error": "--gpu-layers is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved --n-gpu-layers",
+    "text": "--jinja --n-gpu-layers 1",
+    "error": "--n-gpu-layers is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved -cmoe",
+    "text": "--jinja -cmoe 1",
+    "error": "-cmoe is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved --cpu-moe",
+    "text": "--jinja --cpu-moe 1",
+    "error": "--cpu-moe is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved -ncmoe",
+    "text": "--jinja -ncmoe 1",
+    "error": "-ncmoe is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved --n-cpu-moe",
+    "text": "--jinja --n-cpu-moe 1",
+    "error": "--n-cpu-moe is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved -fit",
+    "text": "--jinja -fit 1",
+    "error": "-fit is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved --fit",
+    "text": "--jinja --fit 1",
+    "error": "--fit is set by OpenVatra and can't be changed."
   }
 ]

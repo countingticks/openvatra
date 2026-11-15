@@ -31,6 +31,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/engine/llamaserver"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/feed"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
@@ -50,10 +51,6 @@ const logDirEnv = "OPENVATRA_LOG_DIR"
 
 // shutdownGrace is how long in-flight requests get to finish before we give up.
 const shutdownGrace = 5 * time.Second
-
-// defaultContext is the chat context size in tokens: llama-server's own default is the model's full context, which
-// can need more memory than the model itself.
-const defaultContext = 16384
 
 func main() {
 	err := run(os.Args[1:], os.Stdout, os.Stderr)
@@ -249,6 +246,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err := config.SplitModels(ctx, cfgDB, logger); err != nil {
 		logger.Error("split models config section", "err", err) // the old row stays; both sections use defaults
 	}
+	if err := llamacpp.UpgradeOptions(ctx, cfgDB, logger); err != nil {
+		logger.Error("upgrade provider.llamacpp options", "err", err) // Register validates the row as it is
+	}
 	registerSections(cfg, env, home)
 	enginePath := func() string {
 		return config.Get[llamaserver.LlamaServerSettings](cfg, llamaserver.ID).Resolve(env)
@@ -260,9 +260,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	engineSeam := seam.NewRegistry[engine.Engine]()
 	llama := llamaserver.New(enginePath, logOut)
 	engineSeam.Register(llama)
+	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use. Each model's size
+	// and placement are chosen for this report.
+	hardware := hw.NewChecker(enginePath, logger)
 	providerSeam := seam.NewRegistry[provider.Provider]()
 	lc := llamacpp.New(llamacpp.Config{
-		Plan:           planFunc(resolve, logger),
+		Plan:           planFunc(resolve, hardware.Get, llama.Needs, logger),
 		Start:          startFunc(llama, logger),
 		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
 		IdleTimeout: func(id string) time.Duration {
@@ -278,7 +281,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 			if err != nil {
 				return nil, err
 			}
-			return toProviderModels(c, found), nil
+			return toProviderModels(c, found, hardware.Get(), llama.Needs), nil
 		},
 	})
 	providerSeam.Register(lc)
@@ -289,10 +292,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	})
 	var chats *chat.Service
 	if chatStore != nil {
-		chats = &chat.Service{Store: chatStore, Chat: lc, Model: lc.Prepare, Logger: logger}
+		chats = &chat.Service{Store: chatStore, Chat: lc, Model: lc.Model, Logger: logger}
 	}
-	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use.
-	hardware := hw.NewChecker(enginePath, logger)
 	entries, err := catalog.Builtin()
 	if err != nil {
 		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
@@ -384,12 +385,16 @@ func resolveEmbedding(c llamacpp.Resolved) string {
 }
 
 // toProviderModels is the models folder as the provider seam shows it: readable chat and embedding models, in order.
-func toProviderModels(c llamacpp.Resolved, found []models.Model) []provider.Model {
+// A chat model's Context is the size it loads with under r.
+func toProviderModels(c llamacpp.Resolved, found []models.Model, r hw.Report, needs fit.Needs) []provider.Model {
 	out := make([]provider.Model, 0, len(found))
 	for _, m := range found {
 		switch m.Kind {
 		case models.KindChat:
-			out = append(out, provider.Model{ID: m.ID, Kind: provider.ModelChat, Vision: m.MMProj != "" && c.UseMMProj(m.ID)})
+			out = append(out, provider.Model{
+				ID: m.ID, Kind: provider.ModelChat, Vision: m.MMProj != "" && c.UseMMProj(m.ID),
+				Context: choiceFor(c, m, r, needs).Context,
+			})
 		case models.KindEmbedding:
 			out = append(out, provider.Model{ID: m.ID, Kind: provider.ModelEmbedding})
 		}
@@ -397,8 +402,11 @@ func toProviderModels(c llamacpp.Resolved, found []models.Model) []provider.Mode
 	return out
 }
 
-// planFunc builds the provider's planner: look the model up on disk and say what to start for it.
-func planFunc(resolve func() llamacpp.Resolved, logger *slog.Logger) func(id string, embedding bool) (engine.Spec, error) {
+// planFunc builds the provider's planner: look the model up on disk and say what to start for it, at the size and
+// placement fit chooses for the hardware (the cached report).
+func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs fit.Needs,
+	logger *slog.Logger,
+) func(id string, embedding bool) (engine.Spec, error) {
 	return func(id string, embedding bool) (engine.Spec, error) {
 		c := resolve() // one snapshot, so a config change mid-call can't mix old and new values
 		found, err := models.Discover(c.ModelsDir)
@@ -407,7 +415,11 @@ func planFunc(resolve func() llamacpp.Resolved, logger *slog.Logger) func(id str
 		}
 		for _, m := range found {
 			if m.ID == id {
-				return specFor(c, m, embedding), nil
+				var choice *fit.Choice
+				if !embedding {
+					choice = choiceFor(c, m, hardware(), needs)
+				}
+				return specFor(c, m, embedding, choice), nil
 			}
 		}
 		logger.Warn("unknown model requested", "model", id)
@@ -415,12 +427,35 @@ func planFunc(resolve func() llamacpp.Resolved, logger *slog.Logger) func(id str
 	}
 }
 
-// specFor is what to start for one model: core's choices, then the user's own arguments.
-func specFor(c llamacpp.Resolved, m models.Model, embedding bool) engine.Spec {
+// loadShape is m's shape as it loads under c: the projector counts only when it will be passed.
+func loadShape(c llamacpp.Resolved, m models.Model) engine.Shape {
+	shape := m.Shape
+	if m.MMProj == "" || !c.UseMMProj(m.ID) {
+		shape.ProjectorBytes = 0
+	}
+	return shape
+}
+
+// choiceFor is the context size and placement chat model m loads with: the user's own (options.context and
+// options.placement), with fit filling in what is auto. nil for a model that is not a chat model.
+func choiceFor(c llamacpp.Resolved, m models.Model, r hw.Report, needs fit.Needs) *fit.Choice {
+	if m.Kind != models.KindChat {
+		return nil
+	}
+	size, placement := c.Size(m.ID)
+	choice := fit.Check(loadShape(c, m), r, needs, size, placement)
+	return &choice
+}
+
+// specFor is what to start for one model: core's choices, then the user's own arguments. choice is the chat model's
+// size and placement (choiceFor); embedding servers keep llama-server's own.
+func specFor(c llamacpp.Resolved, m models.Model, embedding bool, choice *fit.Choice) engine.Spec {
 	spec := engine.Spec{Model: m.ID, Path: m.Path, Embedding: embedding, Args: modelArgs(c, m.ID)}
 	if !embedding {
-		// The catalog's memory estimates assume this context; the user's own -c comes later and wins.
-		spec.Context = defaultContext
+		spec.Shape = loadShape(c, m)
+		if choice != nil {
+			spec.Context, spec.Placement = choice.Context, choice.Spec()
+		}
 		// Embedding servers never take images, so a projector would only cost memory there.
 		if c.UseMMProj(m.ID) {
 			spec.Projector = m.MMProj

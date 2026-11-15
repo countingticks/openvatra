@@ -31,7 +31,19 @@ type ModelOptions struct {
 	// Flags core decides itself (config.ReservedFlags) are refused, so the user can't override them through
 	// arguments. An option with no arguments is written as {}, which is what the UI sends.
 	Args string `json:"args,omitempty"`
+	// Context is the size in tokens the model loads with; nil (or null) = auto, chosen by fit for the hardware.
+	Context *int `json:"context,omitempty"`
+	// Placement is where the weights go; "" = auto, chosen with the context size.
+	Placement string `json:"placement,omitempty" enum:"auto,gpu,experts,layers,cpu"`
 }
+
+// The context sizes a user may set.
+const (
+	MinContext = 2048
+	MaxContext = 1048576
+)
+
+var placements = []string{"", "auto", "gpu", "experts", "layers", "cpu"}
 
 // LlamaCppEffective is the section's read-only view: the models folder core really uses when none is chosen.
 type LlamaCppEffective struct {
@@ -82,6 +94,15 @@ func (s LlamaCppSettings) Validate() error {
 			return fmt.Errorf("options for %q: %s", id, err.Error())
 		}
 	}
+	for _, id := range ids {
+		o := s.Options[id]
+		if o.Context != nil && (*o.Context < MinContext || *o.Context > MaxContext) {
+			return fmt.Errorf("options for %q: context must be between %d and %d", id, MinContext, MaxContext)
+		}
+		if !slices.Contains(placements, o.Placement) {
+			return fmt.Errorf("options for %q: placement must be auto, gpu, experts, layers or cpu", id)
+		}
+	}
 	return nil
 }
 
@@ -90,11 +111,17 @@ type Resolved struct {
 	ModelsDir, EmbeddingModel string
 	IdleUnloadMinutes         int // 0 = never
 	args                      map[string][]string
+	sizes                     map[string]size
+}
+
+type size struct {
+	context   int
+	placement string
 }
 
 // Resolve fills in the defaults; home is os.UserHomeDir(), "" = no default models folder.
 func (s LlamaCppSettings) Resolve(home string) Resolved {
-	r := Resolved{args: make(map[string][]string, len(s.Options))}
+	r := Resolved{args: make(map[string][]string, len(s.Options)), sizes: make(map[string]size, len(s.Options))}
 	switch {
 	case s.ModelsDir != nil:
 		r.ModelsDir = *s.ModelsDir
@@ -111,6 +138,16 @@ func (s LlamaCppSettings) Resolve(home string) Resolved {
 		// Text that does not split only gets here by skipping Validate; such a model runs with no arguments.
 		if args, err := config.SplitArgs(o.Args); err == nil && len(args) > 0 {
 			r.args[id] = args
+		}
+		var z size
+		if o.Context != nil {
+			z.context = *o.Context
+		}
+		if o.Placement != "auto" {
+			z.placement = o.Placement
+		}
+		if z != (size{}) {
+			r.sizes[id] = z
 		}
 	}
 	return r
@@ -134,6 +171,15 @@ func (r Resolved) IdleTimeout() time.Duration {
 // model has none.
 func (r Resolved) Args(id string) []string {
 	return slices.Clone(r.args[id])
+}
+
+// Size is model id's context size (0 = auto) and placement ("auto" unless the user chose one).
+func (r Resolved) Size(id string) (context int, placement string) {
+	z := r.sizes[id]
+	if z.placement == "" {
+		z.placement = "auto"
+	}
+	return z.context, z.placement
 }
 
 // UseMMProj reports whether model id gets its vision projector (when one was found): always, unless its own

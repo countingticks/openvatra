@@ -2,7 +2,7 @@
 // zod checks data at runtime (a file on disk or an IPC message can hold anything), and `z.infer` derives the
 // TypeScript type from the same schema, so the check and the type can never disagree.
 import { z } from 'zod'
-import { splitArgs } from './args'
+import { legacyReservedFlags, splitArgs } from './args'
 
 // Settings is a dialog, not a tab (since schema version 2).
 export const tabIds = ['chat', 'code', 'automations'] as const
@@ -44,7 +44,8 @@ export const idleUnloadMinutesChoices = [5, 15, 30, 60] as const
  */
 const argsText = z
   .string()
-  .refine((text) => splitArgs(text).ok, { message: 'invalid llama-server arguments' })
+  // v6's own list: a v6 file with -c still loads, and the import moves the size flags into core's fields.
+  .refine((text) => splitArgs(text, legacyReservedFlags).ok, { message: 'invalid llama-server arguments' })
 
 // Bare field schemas, shared by the file schema (with defaults) and the UI patch (without).
 const modelId = z.string().min(1)

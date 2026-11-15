@@ -343,6 +343,8 @@ export type LlamaCppEffective = {
 }
 export type ModelOptions = {
   args?: string
+  context?: number | null
+  placement?: 'auto' | 'gpu' | 'experts' | 'layers' | 'cpu'
 }
 export type LlamaCppSettings = {
   embeddingModel: string | null

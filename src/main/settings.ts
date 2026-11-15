@@ -3,7 +3,7 @@
 // point it at a temporary folder.
 import { randomUUID } from 'crypto'
 import { open, readFile, rename, rm } from 'fs/promises'
-import { joinArgs, splitArgs } from '../shared/args'
+import { joinArgs, legacyReservedFlags, splitArgs } from '../shared/args'
 import {
   defaultSettingsFile,
   legacyModelsSchema,
@@ -82,7 +82,7 @@ function argsFromV3(options: Record<string, unknown>): Record<string, unknown> {
   if (Array.isArray(extraArgs)) args.push(...extraArgs.filter((arg) => typeof arg === 'string'))
   const text = joinArgs(args)
   // v3 never checked for flags core sets itself; drop such a model's arguments rather than set the whole file aside.
-  return text && splitArgs(text).ok ? { args: text } : {}
+  return text && splitArgs(text, legacyReservedFlags).ok ? { args: text } : {}
 }
 
 /** What happened while loading, so the caller can log it. */

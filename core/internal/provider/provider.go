@@ -25,7 +25,7 @@ const (
 type Model struct {
 	ID        string
 	Kind      string // ModelChat or ModelEmbedding
-	Context   int    // tokens the model loads with; 0 when not known before loading
+	Context   int    // tokens the model loads with; 0 for embedding models
 	Vision    bool
 	ToolCalls bool // false for llama.cpp until Step 6
 }

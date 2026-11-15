@@ -97,7 +97,7 @@ test.describe('a version-6 settings file with model settings', () => {
     const imported = {
       modelsDir,
       idleUnloadMinutes: 30,
-      options: { qwen: { args: '-c 8192' } }
+      options: { qwen: { context: 8192 } }
     }
 
     await expect.poll(models).toMatchObject(imported)
