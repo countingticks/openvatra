@@ -1,0 +1,90 @@
+[
+  {
+    "name": "size flag becomes the context",
+    "text": "-c 8192 --jinja",
+    "args": "--jinja",
+    "context": 8192,
+    "dropped": []
+  },
+  {
+    "name": "long size flag with =",
+    "text": "--ctx-size=32768",
+    "args": "",
+    "context": 32768,
+    "dropped": []
+  },
+  { "name": "size below the minimum is dropped", "text": "-c 1024", "args": "", "dropped": ["-c 1024"] },
+  {
+    "name": "size that is no number is dropped",
+    "text": "-c abc --jinja",
+    "args": "--jinja",
+    "dropped": ["-c abc"]
+  },
+  { "name": "size flag at the end is dropped", "text": "--jinja -c", "args": "--jinja", "dropped": ["-c"] },
+  { "name": "the last size wins", "text": "-c 4096 -c 8192", "args": "", "context": 8192, "dropped": [] },
+  {
+    "name": "experts win over gpu layers",
+    "text": "--cpu-moe -ngl 20",
+    "args": "",
+    "placement": "experts",
+    "dropped": []
+  },
+  { "name": "short experts flag", "text": "-cmoe", "args": "", "placement": "experts", "dropped": [] },
+  {
+    "name": "99 layers is the whole model",
+    "text": "-ngl 99",
+    "args": "",
+    "placement": "gpu",
+    "dropped": []
+  },
+  {
+    "name": "all layers is the whole model",
+    "text": "-ngl all",
+    "args": "",
+    "placement": "gpu",
+    "dropped": []
+  },
+  { "name": "some layers", "text": "-ngl 20", "args": "", "placement": "layers", "dropped": [] },
+  {
+    "name": "long layers flag with =",
+    "text": "--n-gpu-layers=0",
+    "args": "",
+    "placement": "layers",
+    "dropped": []
+  },
+  { "name": "auto layers is auto", "text": "-ngl auto", "args": "", "dropped": [] },
+  {
+    "name": "the last layers flag wins",
+    "text": "--gpu-layers 10 -ngl 999",
+    "args": "",
+    "placement": "gpu",
+    "dropped": []
+  },
+  { "name": "layers that are no number are dropped", "text": "-ngl -1", "args": "", "dropped": ["-ngl -1"] },
+  {
+    "name": "cpu-moe count and fit are dropped",
+    "text": "--n-cpu-moe 4 --fit off --temp 0.7",
+    "args": "--temp 0.7",
+    "dropped": ["--n-cpu-moe 4", "--fit off"]
+  },
+  {
+    "name": "fit keeps a next word that is not on or off",
+    "text": "-fit --jinja",
+    "args": "--jinja",
+    "dropped": ["-fit"]
+  },
+  {
+    "name": "quotes kept by the join",
+    "text": "--alias \"my qwen\" -c 4096",
+    "args": "--alias \"my qwen\"",
+    "context": 4096,
+    "dropped": []
+  },
+  {
+    "name": "text without a size or placement flag stays as it was",
+    "text": "  --alias=\"my qwen\"\t--jinja ",
+    "args": "  --alias=\"my qwen\"\t--jinja ",
+    "dropped": []
+  },
+  { "name": "empty text", "text": "", "args": "", "dropped": [] }
+]

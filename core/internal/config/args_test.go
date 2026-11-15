@@ -70,3 +70,58 @@ func TestSplitArgsLengthCountsUTF16Units(t *testing.T) {
 		})
 	}
 }
+
+type upgradeCase struct {
+	Name      string   `json:"name"`
+	Text      string   `json:"text"`
+	Args      string   `json:"args"`
+	Context   int      `json:"context"`
+	Placement string   `json:"placement"`
+	Dropped   []string `json:"dropped"`
+}
+
+func TestUpgradeArgsFixture(t *testing.T) {
+	data, err := os.ReadFile("testdata/upgrade.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases []upgradeCase
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			got, err := UpgradeArgs(c.Text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Args != c.Args || got.Context != c.Context || got.Placement != c.Placement ||
+				!slices.Equal(got.Dropped, c.Dropped) {
+				t.Fatalf("UpgradeArgs = %+v, want %+v", got, c)
+			}
+		})
+	}
+}
+
+func TestUpgradeArgsFailsOnlyWhenTheTextDoesNotSplit(t *testing.T) {
+	if _, err := UpgradeArgs(`-c "8192`); err == nil || err.Error() != `A quote " is not closed.` {
+		t.Fatalf("err = %v", err)
+	}
+	if _, err := UpgradeArgs("--port 1 -c 8192"); err != nil {
+		t.Fatalf("a reserved flag failed the upgrade: %v", err)
+	}
+}
+
+func TestJoinArgsQuotesOnlyWhatNeedsIt(t *testing.T) {
+	args := []string{"-c", "4096", "--x", `D:\My Models\a.gguf`, ""}
+	text := JoinArgs(args)
+	if text != `-c 4096 --x "D:\My Models\a.gguf" ""` {
+		t.Fatalf("JoinArgs = %q", text)
+	}
+	if back, err := Words(text); err != nil || !slices.Equal(back, args) {
+		t.Fatalf("Words(JoinArgs) = %#v, %v", back, err)
+	}
+	if got := JoinArgs([]string{`say "hi"`}); got != `"say hi"` {
+		t.Fatalf("JoinArgs drops quotes = %q", got)
+	}
+}

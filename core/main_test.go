@@ -534,17 +534,22 @@ func TestSwitchToCUDAWithoutADatabaseWarns(t *testing.T) {
 // A models row split by config.SplitModels must decode strictly into the owners' types: Register logs and falls back
 // to the defaults otherwise, so this proves the section names and the JSON config writes match theirs.
 func TestSplitModelsRowsRegisterIntact(t *testing.T) {
-	cases := map[string]struct{ old, engine, provider string }{
+	cases := map[string]struct {
+		old, engine, provider string
+		providerRev           int // 2 when UpgradeOptions rewrote the split row
+	}{
 		"default row": {
 			`{"llamaServerPath":null,"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{},"engine":"bundled"}`,
 			`{"path":null,"build":"bundled"}`,
 			`{"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{}}`,
+			1,
 		},
 		"full row": {
 			`{"llamaServerPath":"C:\\llama\\llama-server.exe","modelsDir":"D:\\Models","embeddingModel":"nomic",` +
 				`"idleUnloadMinutes":30,"options":{"a":{"args":"-c 4096"},"b":{}},"engine":"cuda"}`,
 			`{"path":"C:\\llama\\llama-server.exe","build":"cuda"}`,
-			`{"modelsDir":"D:\\Models","embeddingModel":"nomic","idleUnloadMinutes":30,"options":{"a":{"args":"-c 4096"},"b":{}}}`,
+			`{"modelsDir":"D:\\Models","embeddingModel":"nomic","idleUnloadMinutes":30,"options":{"a":{"context":4096},"b":{}}}`,
+			2,
 		},
 	}
 	for name, tc := range cases {
@@ -562,15 +567,21 @@ func TestSplitModelsRowsRegisterIntact(t *testing.T) {
 			if err := config.SplitModels(context.Background(), st, logger); err != nil {
 				t.Fatal(err)
 			}
+			if err := llamacpp.UpgradeOptions(context.Background(), st, logger); err != nil {
+				t.Fatal(err)
+			}
 			cfg := config.New(st, logger)
 			registerSections(cfg, llamaserver.Env{}, "")
-			for section, want := range map[string]string{llamaserver.ID: tc.engine, llamacpp.ID: tc.provider} {
+			for section, want := range map[string]struct {
+				rev   int
+				value string
+			}{llamaserver.ID: {1, tc.engine}, llamacpp.ID: {tc.providerRev, tc.provider}} {
 				e, err := cfg.Section(section)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if e.Rev != 1 || string(e.Value) != want {
-					t.Errorf("%s = rev %d, %s; want rev 1, %s", section, e.Rev, e.Value, want)
+				if e.Rev != want.rev || string(e.Value) != want.value {
+					t.Errorf("%s = rev %d, %s; want rev %d, %s", section, e.Rev, e.Value, want.rev, want.value)
 				}
 			}
 			if strings.Contains(log.String(), "level=ERROR") {

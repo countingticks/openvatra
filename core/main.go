@@ -249,6 +249,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err := config.SplitModels(ctx, cfgDB, logger); err != nil {
 		logger.Error("split models config section", "err", err) // the old row stays; both sections use defaults
 	}
+	if err := llamacpp.UpgradeOptions(ctx, cfgDB, logger); err != nil {
+		logger.Error("upgrade provider.llamacpp options", "err", err) // Register validates the row as it is
+	}
 	registerSections(cfg, env, home)
 	enginePath := func() string {
 		return config.Get[llamaserver.LlamaServerSettings](cfg, llamaserver.ID).Resolve(env)

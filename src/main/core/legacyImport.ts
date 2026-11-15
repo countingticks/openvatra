@@ -2,13 +2,15 @@
 // core is the owner from then on, so whatever it already has wins, per section; the old copy is dropped once core has
 // given a final answer for both, and kept only when core could not be asked (no database, not running), to try again
 // on the next start.
+import { upgradeArgs } from '../../shared/args'
 import type { LegacyModels } from '../../shared/settings'
 import {
   ConfigConflictError,
   ConfigInvalidError,
   type ConfigClient,
   type EngineSection,
-  type LlamacppSection
+  type LlamacppSection,
+  type ModelOptions
 } from './configClient'
 
 /** `retry-later` keeps `legacyModels` for the next ready; every other outcome means drop it. */
@@ -22,15 +24,32 @@ export interface ImportLog {
 
 const coreWon = 'Model settings: core already has them; dropped the old copy in settings.json'
 
-/** A v6 value as the two sections core keeps: `llamaServerPath` → `path`, `engine` → `build`. */
-export function splitLegacy(legacy: LegacyModels): { engine: EngineSection; llamacpp: LlamacppSection } {
+/**
+ * A v6 value as the two sections core keeps: `llamaServerPath` → `path`, `engine` → `build`, and each model's size and
+ * placement flags (core's own now) moved out of its arguments into its fields (upgradeArgs).
+ */
+export function splitLegacy(
+  legacy: LegacyModels,
+  log: Pick<ImportLog, 'warn'>
+): { engine: EngineSection; llamacpp: LlamacppSection } {
+  const options: Record<string, ModelOptions> = {}
+  for (const [id, { args }] of Object.entries(legacy.options)) {
+    const up = upgradeArgs(args ?? '')
+    for (const flag of up.dropped)
+      log.warn(`Model settings import: dropped ${flag} from the arguments of ${id}`)
+    options[id] = {
+      ...(up.args && { args: up.args }),
+      ...(up.context !== undefined && { context: up.context }),
+      ...(up.placement !== undefined && { placement: up.placement })
+    }
+  }
   return {
     engine: { path: legacy.llamaServerPath, build: legacy.engine },
     llamacpp: {
       modelsDir: legacy.modelsDir,
       embeddingModel: legacy.embeddingModel,
       idleUnloadMinutes: legacy.idleUnloadMinutes,
-      options: legacy.options
+      options
     }
   }
 }
@@ -110,7 +129,7 @@ export async function importLegacyModels(
   legacy: LegacyModels,
   log: ImportLog
 ): Promise<ImportOutcome> {
-  const { engine, llamacpp } = splitLegacy(legacy)
+  const { engine, llamacpp } = splitLegacy(legacy, log)
   const results = [
     await importSection(
       () => client.getEngine(),

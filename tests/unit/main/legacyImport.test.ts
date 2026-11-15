@@ -26,7 +26,7 @@ const llamacpp: LlamacppSection = {
   modelsDir: 'D:\\Models',
   embeddingModel: 'nomic',
   idleUnloadMinutes: 30,
-  options: { qwen: { args: '-c 8192 --jinja' }, gemma: { args: '-ngl 99' } }
+  options: { qwen: { args: '--jinja', context: 8192 }, gemma: { placement: 'gpu' } }
 }
 
 const engineEntry = (rev: number, value: EngineSection = { path: null, build: 'bundled' }): EngineEntry => ({
@@ -80,8 +80,16 @@ const newLog = (): { [K in keyof ImportLog]: Mock<ImportLog[K]> } => ({
 })
 
 describe('splitLegacy', () => {
-  it('turns a v6 value into the two sections, renaming llamaServerPath and engine', () => {
-    expect(splitLegacy(legacy)).toEqual({ engine, llamacpp })
+  it('turns a v6 value into the two sections, renaming llamaServerPath and engine and moving size flags', () => {
+    expect(splitLegacy(legacy, newLog())).toEqual({ engine, llamacpp })
+  })
+
+  it('warns about each flag it drops and sends a model left with nothing as {}', () => {
+    const log = newLog()
+    const { llamacpp } = splitLegacy({ ...legacy, options: { qwen: { args: '--fit on' } } }, log)
+    expect(llamacpp.options).toEqual({ qwen: {} })
+    expect(log.warn).toHaveBeenCalledTimes(1)
+    expect(log.warn).toHaveBeenCalledWith(expect.stringContaining('--fit on'))
   })
 })
 
@@ -172,7 +180,7 @@ describe('importLegacyModels', () => {
     [
       'an option id',
       'options for "qwen": A quote " is not closed.',
-      { ...llamacpp, options: { gemma: { args: '-ngl 99' } } }
+      { ...llamacpp, options: { gemma: { placement: 'gpu' } } }
     ],
     ['modelsDir', 'modelsDir must be an absolute path', { ...llamacpp, modelsDir: null }],
     [
