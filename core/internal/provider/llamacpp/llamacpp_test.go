@@ -3,9 +3,11 @@ package llamacpp
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +22,39 @@ type fakeInstance struct {
 	events *eventLog
 	// measured is what the server reported while it loaded; the zero value reports nothing.
 	measured engine.Resources
+	asked    *atomic.Int32 // counts Measured calls; nil = not counted
+}
+
+// recorder collects what Config.Record is given.
+type recorder struct {
+	mu  sync.Mutex
+	got []Measurement
+}
+
+func (r *recorder) record(m Measurement) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.got = append(r.got, m)
+}
+
+func (r *recorder) all() []Measurement {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return slices.Clone(r.got)
+}
+
+// waitRecorded waits (with a deadline) until n measurements arrived, and returns them.
+func (r *recorder) waitRecorded(t *testing.T, n int) []Measurement {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := r.all(); len(got) >= n {
+			return got
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("recorded %v, want %d measurements", r.all(), n)
+	return nil
 }
 
 func (f *fakeInstance) Stop(time.Duration) { f.events.add("stop " + f.id) }
@@ -29,9 +64,14 @@ func (f *fakeInstance) BaseURL() string {
 	}
 	return "http://" + f.id
 }
-func (f *fakeInstance) State() engine.State                { return engine.StateReady }
-func (f *fakeInstance) Wait() <-chan struct{}              { return nil }
-func (f *fakeInstance) Measured() (engine.Resources, bool) { return f.measured, f.measured.Known }
+func (f *fakeInstance) State() engine.State   { return engine.StateReady }
+func (f *fakeInstance) Wait() <-chan struct{} { return nil }
+func (f *fakeInstance) Measured() (engine.Resources, bool) {
+	if f.asked != nil {
+		f.asked.Add(1)
+	}
+	return f.measured, f.measured.Known
+}
 
 // testStart records the start and runs startFn (nil: succeeds at once).
 func testStart(events *eventLog, startFn func(id string) func() error) func(context.Context, engine.Spec) (engine.Instance, error) {
@@ -48,11 +88,11 @@ func testStart(events *eventLog, startFn func(id string) func() error) func(cont
 	}
 }
 
-func testPlan(id string, _ bool) (engine.Spec, error) {
+func testPlan(id string, embedding bool) (engine.Spec, error) {
 	if id == "missing" {
 		return engine.Spec{}, provider.ErrUnknownModel
 	}
-	return engine.Spec{Model: id}, nil
+	return engine.Spec{Model: id, Embedding: embedding}, nil
 }
 
 type eventLog struct {
@@ -296,6 +336,87 @@ func TestEmbeddingUsesItsOwnSlotAndIgnoresBodyModel(t *testing.T) {
 	if got := ev.get(); !equal(got, []string{"start a", "start embed"}) {
 		t.Fatalf("events = %v; chat model must stay loaded", got)
 	}
+}
+
+// recordingProvider starts every model as a fakeInstance reporting measured (started: fails when it returns an error).
+func recordingProvider(rec *recorder, asked *atomic.Int32, measured engine.Resources, started error) *Provider {
+	return New(Config{
+		Plan: testPlan,
+		Start: func(_ context.Context, spec engine.Spec) (engine.Instance, error) {
+			if started != nil {
+				return nil, started
+			}
+			return &fakeInstance{id: spec.Model, events: &eventLog{}, measured: measured, asked: asked}, nil
+		},
+		EmbeddingModel: func() string { return "embed" },
+		LoadTimeout:    time.Second,
+		Record:         rec.record,
+	})
+}
+
+var measuredMemory = engine.Resources{VRAMBytes: 100, RAMBytes: 50, Known: true, Source: "measured"}
+
+func TestLoadRecordsWhatTheServerMeasured(t *testing.T) {
+	rec := &recorder{}
+	r := recordingProvider(rec, nil, measuredMemory, nil)
+	_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	got := rec.waitRecorded(t, 1)
+	if want := (Measurement{Spec: engine.Spec{Model: "a"}, Memory: measuredMemory}); len(got) != 1 || !reflect.DeepEqual(got[0], want) {
+		t.Fatalf("recorded %+v, want %+v", got, want)
+	}
+}
+
+func TestLoadRecordsNothingWhenNothingWasMeasured(t *testing.T) {
+	cases := map[string]struct {
+		kind     provider.Kind
+		measured engine.Resources
+		started  error
+	}{
+		"nothing measured":  {provider.KindChat, engine.Resources{}, nil},
+		"failed load":       {provider.KindChat, measuredMemory, errors.New("boom")},
+		"an embedding load": {provider.KindEmbedding, measuredMemory, nil},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			rec, asked := &recorder{}, &atomic.Int32{}
+			r := recordingProvider(rec, asked, tc.measured, tc.started)
+			_, release, err := r.Acquire(context.Background(), tc.kind, "a")
+			if (err != nil) != (tc.started != nil) {
+				t.Fatalf("Acquire: %v", err)
+			}
+			if err == nil {
+				release()
+				// Measured is asked just before Record would be called.
+				deadline := time.Now().Add(2 * time.Second)
+				for asked.Load() == 0 && time.Now().Before(deadline) {
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+			if got := rec.all(); len(got) != 0 {
+				t.Fatalf("recorded %+v, want nothing", got)
+			}
+		})
+	}
+}
+
+func TestLoadWithoutRecordLoadsNormally(t *testing.T) {
+	r := New(Config{
+		Plan: testPlan,
+		Start: func(_ context.Context, spec engine.Spec) (engine.Instance, error) {
+			return &fakeInstance{id: spec.Model, events: &eventLog{}, measured: measuredMemory}, nil
+		},
+		EmbeddingModel: func() string { return "embed" },
+		LoadTimeout:    time.Second,
+	})
+	_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
 }
 
 func TestNoEmbeddingModelChosen(t *testing.T) {

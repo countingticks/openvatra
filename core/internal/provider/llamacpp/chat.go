@@ -65,11 +65,12 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request, emit func
 	if err != nil {
 		return provider.Result{}, err
 	}
-	base, release, err := p.Acquire(ctx, provider.KindChat, req.Model)
+	l, release, err := p.acquire(ctx, provider.KindChat, req.Model)
 	if err != nil {
 		return provider.Result{}, err
 	}
 	defer release()
+	base := l.inst.BaseURL()
 
 	body := map[string]any{
 		"model": req.Model, "messages": msgs, "stream": true,
@@ -107,6 +108,9 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request, emit func
 		// Stop: what arrived so far is the answer. The request context closed the connection, so the server sees it.
 		res.Stop = provider.StopCancelled
 		return res, nil
+	}
+	if err == nil && res.Usage.TokensPerSecond > 0 {
+		p.recordSpeed(l, res.Usage.TokensPerSecond)
 	}
 	return res, err
 }

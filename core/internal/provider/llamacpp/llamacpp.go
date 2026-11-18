@@ -8,6 +8,7 @@ package llamacpp
 import (
 	"context"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -44,7 +45,20 @@ type Config struct {
 	List func() ([]provider.Model, error)
 	// Client talks to llama-server; nil = a client with no overall timeout (an answer can take minutes).
 	Client *http.Client
+	// Record keeps what a load or an answer measured; nil = nothing is recorded. Called on the load's or the
+	// answer's goroutine, never under a slot lock.
+	Record func(Measurement)
 }
+
+// Measurement is what one chat load or answer measured, for the spec the plan gave.
+type Measurement struct {
+	Spec            engine.Spec
+	Memory          engine.Resources // a load: the instance's Measured(); zero for an answer
+	TokensPerSecond float64          // an answer: the median of the load's last five; 0 for a load
+}
+
+// speedsKept is how many answers' speeds the median is taken over.
+const speedsKept = 5
 
 // loaded is one model's life in a slot: loading, then ready (or failed).
 type loaded struct {
@@ -54,6 +68,9 @@ type loaded struct {
 	ready chan struct{}   // closed when loading has finished, either way
 	err   error           // set before ready is closed
 	users sync.WaitGroup
+
+	speedMu sync.Mutex // its own, not the slot's: answers finish while the slot is busy
+	speeds  []float64  // the last answers' speeds on this load, oldest first
 
 	// Guarded by the slot's mutex.
 	active    int         // requests currently holding this model
@@ -301,6 +318,29 @@ func (r *Provider) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	r.armIdle(s, next)
 	s.mu.Unlock()
 	r.notify()
+	if res, ok := inst.Measured(); ok && r.cfg.Record != nil && !next.spec.Embedding {
+		r.cfg.Record(Measurement{Spec: next.spec, Memory: res})
+	}
+}
+
+// recordSpeed adds one answer's speed to l's list and records the median of the list.
+func (r *Provider) recordSpeed(l *loaded, tokensPerSecond float64) {
+	if r.cfg.Record == nil || l.spec.Embedding {
+		return
+	}
+	l.speedMu.Lock()
+	l.speeds = append(l.speeds, tokensPerSecond)
+	if len(l.speeds) > speedsKept {
+		l.speeds = l.speeds[1:]
+	}
+	sorted := slices.Clone(l.speeds)
+	l.speedMu.Unlock()
+	slices.Sort(sorted)
+	median := sorted[len(sorted)/2]
+	if len(sorted)%2 == 0 {
+		median = (sorted[len(sorted)/2-1] + median) / 2
+	}
+	r.cfg.Record(Measurement{Spec: l.spec, TokensPerSecond: median})
 }
 
 // Close stops every loaded server; call it when core shuts down.
