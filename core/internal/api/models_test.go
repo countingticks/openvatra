@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/countingticks/openvatra/core/internal/engine"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
@@ -27,8 +29,8 @@ func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 	rt := &stubRouter{snapshot: []provider.ModelState{{ID: "qwen", State: provider.StateReady, Busy: true}}}
 	rec := callModels(t, rt, http.MethodGet, "/api/models")
 	want := `{"models":[` +
-		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat"},` +
-		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat"}]}`
+		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat","context":null,"moe":false},` +
+		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat","context":null,"moe":false}]}`
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != want {
 		t.Fatalf("status = %d, body = %s\nwant %s", rec.Code, got, want)
 	}
@@ -104,4 +106,111 @@ func TestRefreshNotifiesOnce(t *testing.T) {
 	if rec.Code != http.StatusAccepted || rt.notified != 1 {
 		t.Fatalf("status %d, notified %d times; want 202 and once", rec.Code, rt.notified)
 	}
+}
+
+func TestListModelsCarriesContextChoiceAndMoE(t *testing.T) {
+	list := func() ([]models.Model, error) {
+		return []models.Model{
+			{ID: "a", Kind: models.KindChat, Shape: engine.Shape{ExpertBytes: 1}},
+			{ID: "b", Kind: models.KindEmbedding},
+		}, nil
+	}
+	choose := func(m models.Model) *fit.Choice {
+		if m.Kind != models.KindChat {
+			return nil
+		}
+		return &fit.Choice{Context: 8192, Placement: fit.PlaceExperts, Fit: "slower", Source: "estimate"}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
+	req.Host = "127.0.0.1:53121"
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	// checked fails the test on a fit, placement or source outside the document's enum.
+	testHandler(t, Deps{Resident: &stubRouter{}, ListModels: list, Choose: choose}).ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{`"context":{"context":8192,"placement":"experts"`, `"moe":true`, `"context":null,"moe":false`} {
+		if rec.Code != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("status = %d, body = %s; want %s", rec.Code, body, want)
+		}
+	}
+}
+
+// fitRecorder is a Deps.Fit that keeps what it was asked.
+type fitRecorder struct {
+	calls     int
+	id        string
+	context   int
+	placement string
+	err       error
+}
+
+func (f *fitRecorder) fit(id string, context int, placement string) (fit.Choice, error) {
+	f.calls++
+	f.id, f.context, f.placement = id, context, placement
+	if f.err != nil {
+		return fit.Choice{}, f.err
+	}
+	return fit.Choice{Context: context, Placement: fit.PlaceExperts, Fit: "fits", Source: "estimate"}, nil
+}
+
+func callFit(t *testing.T, f *fitRecorder, query, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/models/qwen/fit"+query, nil)
+	req.Host = "127.0.0.1:53121"
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	testHandler(t, Deps{Fit: f.fit}).ServeHTTP(rec, req)
+	return rec
+}
+
+func TestFitRoute(t *testing.T) {
+	t.Run("the query reaches Fit and the choice comes back as JSON", func(t *testing.T) {
+		f := &fitRecorder{}
+		rec := callFit(t, f, "?context=32768&placement=experts", testToken)
+		want := `"context":32768,"placement":"experts"`
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) ||
+			f.id != "qwen" || f.context != 32768 || f.placement != "experts" {
+			t.Fatalf("status = %d, body = %s, asked %+v", rec.Code, rec.Body.String(), f)
+		}
+	})
+	t.Run("no query means auto", func(t *testing.T) {
+		f := &fitRecorder{}
+		if rec := callFit(t, f, "", testToken); rec.Code != http.StatusOK || f.context != 0 || f.placement != "auto" {
+			t.Fatalf("status = %d, asked %+v", rec.Code, f)
+		}
+	})
+	t.Run("context=auto means auto", func(t *testing.T) {
+		f := &fitRecorder{}
+		if rec := callFit(t, f, "?context=auto", testToken); rec.Code != http.StatusOK || f.context != 0 {
+			t.Fatalf("status = %d, asked %+v", rec.Code, f)
+		}
+	})
+	for _, q := range []string{"?context=abc", "?context=1024", "?context=2000000", "?placement=middle"} {
+		t.Run("refuses "+q, func(t *testing.T) {
+			f := &fitRecorder{}
+			rec := callFit(t, f, q, testToken)
+			if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"error":"invalid_request"`) || f.calls != 0 {
+				t.Fatalf("status = %d, body = %s, calls = %d", rec.Code, rec.Body.String(), f.calls)
+			}
+		})
+	}
+	t.Run("an unknown model is 404", func(t *testing.T) {
+		rec := callFit(t, &fitRecorder{err: provider.ErrUnknownModel}, "", testToken)
+		if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), `"error":"model_not_found"`) {
+			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("an unreadable folder is 500", func(t *testing.T) {
+		rec := callFit(t, &fitRecorder{err: errors.New("boom")}, "", testToken)
+		if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), `"error":"models_unreadable"`) {
+			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("without a token is 401", func(t *testing.T) {
+		if rec := callFit(t, &fitRecorder{}, "", ""); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d", rec.Code)
+		}
+	})
 }

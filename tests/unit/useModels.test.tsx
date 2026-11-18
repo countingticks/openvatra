@@ -9,7 +9,9 @@ const model = (id: string): ModelInfo => ({
   state: 'stopped',
   busy: false,
   sizeBytes: 1024,
-  kind: 'chat'
+  kind: 'chat',
+  context: null,
+  moe: false
 })
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 

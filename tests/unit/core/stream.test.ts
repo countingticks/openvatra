@@ -16,7 +16,15 @@ const ready = (to: CoreConnection): CoreState => ({
   connection: to
 })
 
-const model: Model = { id: 'qwen3-8b', state: 'ready', busy: false, kind: 'chat', sizeBytes: 5_000_000_000 }
+const model: Model = {
+  id: 'qwen3-8b',
+  state: 'ready',
+  busy: false,
+  kind: 'chat',
+  sizeBytes: 5_000_000_000,
+  context: null,
+  moe: false
+}
 
 const modelState: Event = {
   time: 1,

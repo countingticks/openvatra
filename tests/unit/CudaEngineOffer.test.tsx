@@ -8,7 +8,15 @@ import { coreWrites, type FakeCoreHttp } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
-const stopped: ModelInfo = { id: 'Qwen3-8B', state: 'stopped', busy: false, sizeBytes: 1, kind: 'chat' }
+const stopped: ModelInfo = {
+  id: 'Qwen3-8B',
+  state: 'stopped',
+  busy: false,
+  sizeBytes: 1,
+  kind: 'chat',
+  context: null,
+  moe: false
+}
 const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 
 /** The two window flags that sit beside core's engine section in a test's arguments. */

@@ -328,13 +328,20 @@ func run(args []string, stdout, stderr io.Writer) error {
 	})
 	pinned := downloads.PinnedTag(*llamaManifest)
 	engines := func() downloads.EnginesBody { return downloads.Engines(*llamaDir, *enginesDir, pinned) }
-	feed.Start(ctx, eventLog, lc, listModels, dl)
+	// The list and the models event show the choice each model loads with, for the config and hardware of the moment.
+	choose := func(m models.Model) *fit.Choice {
+		c := resolve()
+		size, placement := c.Size(m.ID)
+		return choiceFor(c, m, hardware.Get(), llama.Needs, size, placement)
+	}
+	fitAt := fitFunc(resolve, hardware.Get, llama.Needs)
+	feed.Start(ctx, eventLog, lc, listModels, choose, dl)
 	defer lc.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
-			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Resident: lc, Upstream: lc,
+			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Fit: fitAt, Resident: lc, Upstream: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
 			Chats: chats, Log: eventLog, Logger: logger,
 		}),
@@ -393,7 +400,7 @@ func toProviderModels(c llamacpp.Resolved, found []models.Model, r hw.Report, ne
 		case models.KindChat:
 			out = append(out, provider.Model{
 				ID: m.ID, Kind: provider.ModelChat, Vision: m.MMProj != "" && c.UseMMProj(m.ID),
-				Context: choiceFor(c, m, r, needs).Context,
+				Context: chosen(c, m, r, needs).Context,
 			})
 		case models.KindEmbedding:
 			out = append(out, provider.Model{ID: m.ID, Kind: provider.ModelEmbedding})
@@ -417,7 +424,7 @@ func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs
 			if m.ID == id {
 				var choice *fit.Choice
 				if !embedding {
-					choice = choiceFor(c, m, hardware(), needs)
+					choice = chosen(c, m, hardware(), needs)
 				}
 				return specFor(c, m, embedding, choice), nil
 			}
@@ -425,6 +432,42 @@ func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs
 		logger.Warn("unknown model requested", "model", id)
 		return engine.Spec{}, provider.ErrUnknownModel
 	}
+}
+
+// chosen is choiceFor with the size and placement stored for m.
+func chosen(c llamacpp.Resolved, m models.Model, r hw.Report, needs fit.Needs) *fit.Choice {
+	size, placement := c.Size(m.ID)
+	return choiceFor(c, m, r, needs, size, placement)
+}
+
+// fitFunc answers what a context size (0 = auto) and placement would mean for chat model id, in place of the stored
+// ones. Nothing is loaded, written or published.
+func fitFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs fit.Needs,
+) func(id string, context int, placement string) (fit.Choice, error) {
+	return func(id string, context int, placement string) (fit.Choice, error) {
+		c := resolve()
+		found, err := models.Discover(c.ModelsDir)
+		if err != nil {
+			return fit.Choice{}, err
+		}
+		return fitModel(c, found, id, hardware(), needs, context, placement)
+	}
+}
+
+// fitModel is fitFunc over the models already found. An id that is not a chat model is an unknown model.
+func fitModel(c llamacpp.Resolved, found []models.Model, id string, r hw.Report, needs fit.Needs, context int,
+	placement string,
+) (fit.Choice, error) {
+	for _, m := range found {
+		if m.ID != id {
+			continue
+		}
+		if choice := choiceFor(c, m, r, needs, context, placement); choice != nil {
+			return *choice, nil
+		}
+		break
+	}
+	return fit.Choice{}, provider.ErrUnknownModel
 }
 
 // loadShape is m's shape as it loads under c: the projector counts only when it will be passed.
@@ -437,13 +480,13 @@ func loadShape(c llamacpp.Resolved, m models.Model) engine.Shape {
 }
 
 // choiceFor is the context size and placement chat model m loads with: the user's own (options.context and
-// options.placement), with fit filling in what is auto. nil for a model that is not a chat model.
-func choiceFor(c llamacpp.Resolved, m models.Model, r hw.Report, needs fit.Needs) *fit.Choice {
+// options.placement; callers pass c.Size), with fit filling in what is auto (context 0, placement "auto"). nil for a
+// model that is not a chat model.
+func choiceFor(c llamacpp.Resolved, m models.Model, r hw.Report, needs fit.Needs, context int, placement string) *fit.Choice {
 	if m.Kind != models.KindChat {
 		return nil
 	}
-	size, placement := c.Size(m.ID)
-	choice := fit.Check(loadShape(c, m), r, needs, size, placement)
+	choice := fit.Check(loadShape(c, m), r, needs, context, placement)
 	return &choice
 }
 

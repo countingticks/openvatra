@@ -169,7 +169,9 @@ describe('Models dialog', () => {
       {
         coreState: ready,
         setup: { catalog: catalog(qwen) },
-        models: [{ id: 'm', state: 'stopped', busy: false, sizeBytes: GB, kind: 'chat' }]
+        models: [
+          { id: 'm', state: 'stopped', busy: false, sizeBytes: GB, kind: 'chat', context: null, moe: false }
+        ]
       }
     )
     fireEvent.click(await screen.findByRole('button', { name: /^Model:/ }))
