@@ -12,6 +12,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
@@ -25,17 +26,19 @@ type Deps struct {
 	Shutdown func() // called once the reply is sent, when a client asks core to stop
 	// ListModels reports the models on disk now (a function: the folder changes at runtime).
 	ListModels func() ([]models.Model, error)
-	Resident   provider.Resident
-	Upstream   provider.Upstream
-	Config     Config // nil only in tests: the config routes answer 503
-	Hardware   Hardware
-	Catalog    Catalog
-	Removal    Removal // nil only in tests that do not call the route
-	Downloads  Downloads
-	Engines    func() downloads.EnginesBody // the llama.cpp builds on disk; nil = an unknown bundled build only
-	Chats      *chat.Service                // nil when the chat database could not be opened
-	Log        event.Log
-	Logger     *slog.Logger // nil = discard
+	// Choose is the context size and placement a listed model loads with; nil = none (every context null).
+	Choose    func(models.Model) *fit.Choice
+	Resident  provider.Resident
+	Upstream  provider.Upstream
+	Config    Config // nil only in tests: the config routes answer 503
+	Hardware  Hardware
+	Catalog   Catalog
+	Removal   Removal // nil only in tests that do not call the route
+	Downloads Downloads
+	Engines   func() downloads.EnginesBody // the llama.cpp builds on disk; nil = an unknown bundled build only
+	Chats     *chat.Service                // nil when the chat database could not be opened
+	Log       event.Log
+	Logger    *slog.Logger // nil = discard
 }
 
 // APILevel is the contract's major version; it changes only when a change breaks existing clients.

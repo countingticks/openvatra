@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/countingticks/openvatra/core/internal/engine"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
@@ -27,8 +29,8 @@ func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 	rt := &stubRouter{snapshot: []provider.ModelState{{ID: "qwen", State: provider.StateReady, Busy: true}}}
 	rec := callModels(t, rt, http.MethodGet, "/api/models")
 	want := `{"models":[` +
-		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat"},` +
-		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat"}]}`
+		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat","context":null,"moe":false},` +
+		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat","context":null,"moe":false}]}`
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != want {
 		t.Fatalf("status = %d, body = %s\nwant %s", rec.Code, got, want)
 	}
@@ -103,5 +105,32 @@ func TestRefreshNotifiesOnce(t *testing.T) {
 	rec := callModels(t, rt, http.MethodPost, "/api/models/refresh")
 	if rec.Code != http.StatusAccepted || rt.notified != 1 {
 		t.Fatalf("status %d, notified %d times; want 202 and once", rec.Code, rt.notified)
+	}
+}
+
+func TestListModelsCarriesContextChoiceAndMoE(t *testing.T) {
+	list := func() ([]models.Model, error) {
+		return []models.Model{
+			{ID: "a", Kind: models.KindChat, Shape: engine.Shape{ExpertBytes: 1}},
+			{ID: "b", Kind: models.KindEmbedding},
+		}, nil
+	}
+	choose := func(m models.Model) *fit.Choice {
+		if m.Kind != models.KindChat {
+			return nil
+		}
+		return &fit.Choice{Context: 8192, Placement: fit.PlaceExperts, Fit: "slower", Source: "estimate"}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/models", nil)
+	req.Host = "127.0.0.1:53121"
+	req.Header.Set("Authorization", "Bearer "+testToken)
+	rec := httptest.NewRecorder()
+	// checked fails the test on a fit, placement or source outside the document's enum.
+	testHandler(t, Deps{Resident: &stubRouter{}, ListModels: list, Choose: choose}).ServeHTTP(rec, req)
+	body := rec.Body.String()
+	for _, want := range []string{`"context":{"context":8192,"placement":"experts"`, `"moe":true`, `"context":null,"moe":false`} {
+		if rec.Code != http.StatusOK || !strings.Contains(body, want) {
+			t.Fatalf("status = %d, body = %s; want %s", rec.Code, body, want)
+		}
 	}
 }

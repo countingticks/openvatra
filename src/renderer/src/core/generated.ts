@@ -399,11 +399,23 @@ export type ConfigChangedEvent = {
   type: 'config.changed'
   v: number
 }
+export type Choice = {
+  capped: boolean
+  context: number
+  fit: 'fits' | 'slower' | 'tooBig' | 'unknown'
+  layers?: number
+  placement: 'gpu' | 'experts' | 'layers' | 'cpu'
+  ramBytes: number
+  source: 'estimate' | 'measured' | 'unknown'
+  vramBytes: number
+}
 export type Model = {
   busy: boolean
+  context: Choice | null
   error?: string
   id: string
   kind: 'chat' | 'embedding' | 'unreadable'
+  moe: boolean
   projector?: string
   sizeBytes: number
   state: 'stopped' | 'loading' | 'ready' | 'error'

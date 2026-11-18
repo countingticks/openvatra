@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
@@ -96,12 +98,12 @@ func modelsIn(t *testing.T, e event.Event) []map[string]any {
 
 func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
 	rt := &stubRouter{snapshot: []provider.ModelState{{ID: "b", State: provider.StateReady, Busy: true}}}
-	body, err := State(rt, twoModels)
+	body, err := State(rt, twoModels, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, _ := json.Marshal(body)
-	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding"},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat"},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file"}]}`
+	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding","context":null,"moe":false},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat","context":null,"moe":false},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file","context":null,"moe":false}]}`
 	if strings.TrimSpace(string(got)) != want {
 		t.Fatalf("body = %s\nwant   %s", got, want)
 	}
@@ -111,7 +113,7 @@ func TestStartPublishesModelStateRetained(t *testing.T) {
 	log := newLog()
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
 	ctx := t.Context()
-	Start(ctx, log, rt, twoModels, nil)
+	Start(ctx, log, rt, twoModels, nil, nil)
 
 	e := waitRetained(t, log, "model.state")
 	if e.Stream != "system" || e.V != 1 || len(modelsIn(t, e)) != 3 {
@@ -123,7 +125,7 @@ func TestRouterSignalPublishesNewModelState(t *testing.T) {
 	log := newLog()
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
 	_, live := subscribe(t, log)
-	Start(t.Context(), log, rt, twoModels, nil)
+	Start(t.Context(), log, rt, twoModels, nil, nil)
 	next(t, live) // the first scan
 
 	rt.set(provider.ModelState{ID: "a", State: provider.StateLoading})
@@ -149,7 +151,7 @@ func TestFailedScanPublishesNothing(t *testing.T) {
 		}
 		return twoModels()
 	}
-	Start(t.Context(), log, rt, list, nil)
+	Start(t.Context(), log, rt, list, nil, nil)
 	next(t, live)
 
 	rt.changes <- struct{}{}
@@ -168,7 +170,7 @@ func TestCancelStopsPublishing(t *testing.T) {
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
 	_, live := subscribe(t, log)
 	ctx, cancel := context.WithCancel(t.Context())
-	Start(ctx, log, rt, twoModels, nil)
+	Start(ctx, log, rt, twoModels, nil, nil)
 	next(t, live)
 
 	cancel()
@@ -203,7 +205,7 @@ func TestStartPublishesDownloadProgressRetained(t *testing.T) {
 	log := newLog()
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
 	dl := &stubDownloads{changes: make(chan struct{}, 1), items: []downloads.DownloadItem{{ID: "qwen", State: "downloading", Bytes: 5, Total: 10}}}
-	Start(t.Context(), log, rt, twoModels, dl)
+	Start(t.Context(), log, rt, twoModels, nil, dl)
 
 	e := waitRetained(t, log, "download.progress")
 	var d struct {
@@ -222,7 +224,7 @@ func TestDownloadBurstIsThrottled(t *testing.T) {
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
 	dl := &stubDownloads{changes: make(chan struct{}, 32)}
 	_, live := subscribe(t, log)
-	Start(t.Context(), log, rt, twoModels, dl)
+	Start(t.Context(), log, rt, twoModels, nil, dl)
 
 	var times []time.Time
 	var last event.Event
@@ -267,7 +269,7 @@ func TestNoDownloadsSourcePublishesNoProgress(t *testing.T) {
 	log := newLog()
 	rt := &stubRouter{changes: make(chan struct{}, 1)}
 	_, live := subscribe(t, log)
-	Start(t.Context(), log, rt, twoModels, nil)
+	Start(t.Context(), log, rt, twoModels, nil, nil)
 	next(t, live)
 	rt.changes <- struct{}{}
 	next(t, live)
@@ -289,3 +291,52 @@ func TestNoDownloadsSourcePublishesNoProgress(t *testing.T) {
 func (s *stubRouter) Load(context.Context, string) error { return nil }
 func (s *stubRouter) Unload(string) bool                 { return false }
 func (s *stubRouter) Notify()                            {}
+
+// moeModels is a chat model with experts, a plain chat model and an embedding model.
+func moeModels() ([]models.Model, error) {
+	return []models.Model{
+		{ID: "emb", Kind: models.KindEmbedding},
+		{ID: "dense", Kind: models.KindChat},
+		{ID: "moe", Kind: models.KindChat, Shape: engine.Shape{ExpertBytes: 1 << 30}},
+	}, nil
+}
+
+// chooseChat answers 8192 for chat models and nil for the rest, as main's choose does.
+func chooseChat(m models.Model) *fit.Choice {
+	if m.Kind != models.KindChat {
+		return nil
+	}
+	return &fit.Choice{Context: 8192, Placement: fit.PlaceGPU, Fit: "fits", Source: "estimate"}
+}
+
+func TestStateCarriesTheContextChoiceAndMoE(t *testing.T) {
+	body, err := State(&stubRouter{}, moeModels, chooseChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Models) != 3 {
+		t.Fatalf("models = %+v", body.Models)
+	}
+	emb, dense, moe := body.Models[0], body.Models[1], body.Models[2]
+	if emb.Context != nil || emb.MoE {
+		t.Errorf("embedding model: context %+v moe %v, want null and false", emb.Context, emb.MoE)
+	}
+	if dense.Context == nil || dense.Context.Context != 8192 || dense.MoE {
+		t.Errorf("dense chat model: context %+v moe %v", dense.Context, dense.MoE)
+	}
+	if moe.Context == nil || !moe.MoE {
+		t.Errorf("moe chat model: context %+v moe %v", moe.Context, moe.MoE)
+	}
+}
+
+func TestModelStateEventCarriesContextAndMoE(t *testing.T) {
+	log := newLog()
+	Start(t.Context(), log, &stubRouter{changes: make(chan struct{}, 1)}, moeModels, chooseChat, nil)
+	got := modelsIn(t, waitRetained(t, log, "model.state"))
+	if len(got) != 3 || got[0]["context"] != nil || got[2]["moe"] != true {
+		t.Fatalf("models = %+v", got)
+	}
+	if c, ok := got[1]["context"].(map[string]any); !ok || c["context"] != float64(8192) {
+		t.Fatalf("context = %+v", got[1]["context"])
+	}
+}

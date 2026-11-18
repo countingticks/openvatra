@@ -20,7 +20,7 @@ func modelRoutes(d Deps) []Route {
 	return []Route{
 		JSON(http.MethodGet, "/api/models", UI, "listModels", "List the models on disk with their state",
 			func(context.Context, struct{}) (feed.StateBody, error) {
-				body, err := feed.State(d.Resident, d.ListModels)
+				body, err := feed.State(d.Resident, d.ListModels, d.Choose)
 				if err != nil {
 					return feed.StateBody{}, errModelsUnreadable
 				}

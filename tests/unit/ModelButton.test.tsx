@@ -11,7 +11,9 @@ const qwen: ModelInfo = {
   state: 'stopped',
   busy: false,
   sizeBytes: 5 * 1024 ** 3,
-  kind: 'chat'
+  kind: 'chat',
+  context: null,
+  moe: false
 }
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 

@@ -71,6 +71,61 @@
         ],
         "type": "object"
       },
+      "Choice": {
+        "properties": {
+          "capped": {
+            "type": "boolean"
+          },
+          "context": {
+            "type": "integer"
+          },
+          "fit": {
+            "enum": [
+              "fits",
+              "slower",
+              "tooBig",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "layers": {
+            "type": "integer"
+          },
+          "placement": {
+            "enum": [
+              "gpu",
+              "experts",
+              "layers",
+              "cpu"
+            ],
+            "type": "string"
+          },
+          "ramBytes": {
+            "type": "integer"
+          },
+          "source": {
+            "enum": [
+              "estimate",
+              "measured",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "vramBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "context",
+          "placement",
+          "fit",
+          "vramBytes",
+          "ramBytes",
+          "source",
+          "capped"
+        ],
+        "type": "object"
+      },
       "ConfigAll": {
         "properties": {
           "sections": {
@@ -549,6 +604,16 @@
           "busy": {
             "type": "boolean"
           },
+          "context": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Choice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "type": "string"
           },
@@ -562,6 +627,9 @@
               "unreadable"
             ],
             "type": "string"
+          },
+          "moe": {
+            "type": "boolean"
           },
           "projector": {
             "type": "string"
@@ -584,7 +652,9 @@
           "state",
           "busy",
           "sizeBytes",
-          "kind"
+          "kind",
+          "context",
+          "moe"
         ],
         "type": "object"
       },

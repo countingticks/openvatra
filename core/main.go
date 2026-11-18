@@ -328,13 +328,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 	})
 	pinned := downloads.PinnedTag(*llamaManifest)
 	engines := func() downloads.EnginesBody { return downloads.Engines(*llamaDir, *enginesDir, pinned) }
-	feed.Start(ctx, eventLog, lc, listModels, dl)
+	// The list and the models event show the choice each model loads with, for the config and hardware of the moment.
+	choose := func(m models.Model) *fit.Choice { return choiceFor(resolve(), m, hardware.Get(), llama.Needs) }
+	feed.Start(ctx, eventLog, lc, listModels, choose, dl)
 	defer lc.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
-			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Resident: lc, Upstream: lc,
+			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Resident: lc, Upstream: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
 			Chats: chats, Log: eventLog, Logger: logger,
 		}),

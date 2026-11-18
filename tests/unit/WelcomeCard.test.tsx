@@ -39,7 +39,9 @@ const chatModel: ModelInfo = {
   state: 'stopped',
   busy: false,
   sizeBytes: 5 * GB,
-  kind: 'chat'
+  kind: 'chat',
+  context: null,
+  moe: false
 }
 
 describe('welcome card', () => {

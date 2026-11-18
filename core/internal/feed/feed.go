@@ -10,6 +10,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
@@ -32,6 +33,11 @@ type Model struct {
 	// Kind is chat, embedding or unreadable, read from the GGUF header; Error says why a file is unreadable.
 	Kind  models.Kind `json:"kind" enum:"chat,embedding,unreadable"`
 	Error string      `json:"error,omitempty"`
+	// Context is the size and placement the model loads with (fit's choice or the user's own); null for a model that
+	// is not a chat model.
+	Context *fit.Choice `json:"context"`
+	// MoE is true for a chat model with expert tensors: only those can place experts on the CPU.
+	MoE bool `json:"moe"`
 }
 
 // DownloadsBody is the JSON of GET /api/downloads and the data of the downloads event.
@@ -46,7 +52,7 @@ type StateBody struct {
 
 // State lists every model on disk: what the provider knows about it, or
 // "stopped" when it has never been touched or has been unloaded.
-func State(res provider.Resident, list func() ([]models.Model, error)) (StateBody, error) {
+func State(res provider.Resident, list func() ([]models.Model, error), choose func(models.Model) *fit.Choice) (StateBody, error) {
 	found, err := list()
 	if err != nil {
 		return StateBody{}, err
@@ -70,7 +76,12 @@ func State(res provider.Resident, list func() ([]models.Model, error)) (StateBod
 		if errText == "" {
 			errText = m.Error
 		}
-		out = append(out, Model{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector, Kind: m.Kind, Error: errText})
+		var choice *fit.Choice
+		if choose != nil {
+			choice = choose(m)
+		}
+		out = append(out, Model{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector, Kind: m.Kind, Error: errText,
+			Context: choice, MoE: m.Kind == models.KindChat && fit.MoE(m.Shape)})
 	}
 	return StateBody{Models: out}, nil
 }
@@ -81,7 +92,7 @@ const downloadsInterval = 250 * time.Millisecond
 // Start publishes the model state, and the download progress when dl is not nil, now and after every signal until
 // ctx ends. It returns at once. A failing scan publishes nothing: the bus keeps the last value, and GET /api/models
 // shows the error.
-func Start(ctx context.Context, log event.Log, res provider.Resident, list func() ([]models.Model, error), dl Downloads) {
+func Start(ctx context.Context, log event.Log, res provider.Resident, list func() ([]models.Model, error), choose func(models.Model) *fit.Choice, dl Downloads) {
 	// Subscribe before the first scan, so a change in between is not lost.
 	changed, cancel := res.Subscribe()
 	// A nil channel never fires, so without a downloads source its cases below simply never run.
@@ -94,7 +105,7 @@ func Start(ctx context.Context, log event.Log, res provider.Resident, list func(
 		defer cancel()
 		defer cancelDL()
 		publish := func() {
-			body, err := State(res, list)
+			body, err := State(res, list, choose)
 			if err != nil {
 				return
 			}
