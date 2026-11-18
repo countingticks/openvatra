@@ -79,6 +79,30 @@ describe('fitHint', () => {
     ],
     ['unknown', { fit: 'unknown' }, 8 * GB, "32K tokens · memory use can't be estimated for this model"],
     [
+      'measured, with its speed',
+      { source: 'measured', tokensPerSecond: 23.6 },
+      8 * GB,
+      '32K tokens · fits on your GPU (6.0 GB of 8.0 GB) · measured · about 24 tokens per second'
+    ],
+    [
+      'measured, with no speed',
+      { source: 'measured' },
+      8 * GB,
+      '32K tokens · fits on your GPU (6.0 GB of 8.0 GB) · measured'
+    ],
+    [
+      'an estimate with a speed under one',
+      { fit: 'slower', placement: 'cpu', tokensPerSecond: 0.4 },
+      8 * GB,
+      '32K tokens · CPU only: slower · 2.0 GB RAM · about 1 token per second'
+    ],
+    [
+      'unknown, measured and fast',
+      { fit: 'unknown', source: 'measured', tokensPerSecond: 12 },
+      8 * GB,
+      "32K tokens · memory use can't be estimated for this model"
+    ],
+    [
       'the model maximum',
       { capped: true },
       8 * GB,
