@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { App } from '@renderer/App'
 import { coreApi } from '@renderer/core/coreApi'
 import type { LlamaCppSettings, LlamaServerSettings } from '@renderer/core/generated'
@@ -7,7 +7,7 @@ import { defaultEngineSettings, defaultLlamacppSettings } from '@renderer/core/m
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState } from '../../../src/shared/core'
 import type { ModelInfo } from '@renderer/core/types'
-import { coreWrites, type FakeCoreHttp } from '../fakeCoreHttp'
+import { coreWrites, fitQueries, type FakeCoreHttp } from '../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
@@ -431,6 +431,28 @@ describe('Settings → Models', () => {
     })
   })
 
+  describe('the context size on a row', () => {
+    it('shows the size a chat model loads with, and nothing for an embedding model', async () => {
+      const sized: ModelInfo = {
+        ...qwen,
+        context: {
+          context: 32768,
+          capped: false,
+          fit: 'fits',
+          placement: 'gpu',
+          ramBytes: 0,
+          vramBytes: 1,
+          source: 'estimate'
+        }
+      }
+      await openModels(chosen, { coreState: ready, models: [sized, nomic] })
+
+      const size = await screen.findByTitle('Loads with 32,768 tokens of context')
+      expect(size).toHaveTextContent('32K')
+      expect(screen.getAllByTitle(/^Loads with/)).toHaveLength(1)
+    })
+  })
+
   describe('per-model options', () => {
     async function openOptions(
       options: LlamaCppSettings['options'] = {}
@@ -485,6 +507,188 @@ describe('Settings → Models', () => {
       await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
       expect(putValues(coreHttp)[0]?.options).toEqual({
         [qwen.id]: { args: '--temp 0.7', context: 8192, placement: 'cpu' }
+      })
+    })
+
+    describe('context size and placement', () => {
+      const choice = (context: number): NonNullable<ModelInfo['context']> => ({
+        context,
+        capped: false,
+        fit: 'fits',
+        placement: 'gpu',
+        ramBytes: 0,
+        vramBytes: 1,
+        source: 'estimate'
+      })
+      const sized: ModelInfo = { ...qwen, context: choice(32768) }
+
+      /** Picks an option of the open menu; Base UI selects on the pointer's release, not on a bare click. */
+      async function choose(name: string): Promise<void> {
+        const option = await screen.findByRole('option', { name })
+        fireEvent.pointerDown(option)
+        fireEvent.mouseDown(option)
+        fireEvent.pointerUp(option)
+        fireEvent.mouseUp(option)
+        fireEvent.click(option)
+      }
+
+      async function openSized(
+        options: LlamaCppSettings['options'] = {},
+        model: ModelInfo = sized
+      ): Promise<Rendered & { group: HTMLElement }> {
+        const rendered = await openModels(
+          { ...chosen, options },
+          { coreState: ready, models: [model, nomic] }
+        )
+        await screen.findByText('D:\\models')
+        fireEvent.click(await screen.findByRole('button', { name: `Options for ${model.id}` }))
+        return { ...rendered, group: screen.getByRole('group', { name: `Options for ${model.id}` }) }
+      }
+
+      describe('the hint', () => {
+        it('asks core about Auto and shows the answer, and asks nothing for an embedding model', async () => {
+          const { coreHttp, group } = await openSized()
+
+          expect(
+            await within(group).findByText(/^32K tokens · fits on your GPU \(4\.0 GB of /)
+          ).toBeInTheDocument()
+          expect(fitQueries(coreHttp)).toEqual([{ context: 'auto', placement: 'auto' }])
+
+          fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.id}` }))
+          await screen.findByRole('group', { name: `Options for ${nomic.id}` })
+          expect(fitQueries(coreHttp)).toHaveLength(1)
+        })
+
+        it('asks about a typed size once, 300 ms after the last keystroke', async () => {
+          const { coreHttp, group } = await openSized({ [qwen.id]: { context: 32768 } })
+          await within(group).findByText(/fits on your GPU/)
+          const input = within(group).getByLabelText('Context size in tokens')
+          const before = fitQueries(coreHttp).length
+
+          vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+          try {
+            fireEvent.change(input, { target: { value: '6553' } })
+            act(() => void vi.advanceTimersByTime(200))
+            fireEvent.change(input, { target: { value: '65536' } })
+            act(() => void vi.advanceTimersByTime(299))
+            expect(fitQueries(coreHttp)).toHaveLength(before)
+            act(() => void vi.advanceTimersByTime(1))
+          } finally {
+            vi.useRealTimers()
+          }
+
+          await waitFor(() => expect(fitQueries(coreHttp)).toHaveLength(before + 1))
+          expect(fitQueries(coreHttp).at(-1)).toEqual({ context: '65536', placement: 'auto' })
+        })
+
+        it('asks at once when the placement changes', async () => {
+          const { coreHttp, group } = await openSized()
+          await within(group).findByText(/fits on your GPU/)
+
+          fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
+          await choose('CPU only')
+
+          await waitFor(() =>
+            expect(fitQueries(coreHttp).at(-1)).toEqual({ context: 'auto', placement: 'cpu' })
+          )
+        })
+        it('empties the hint while the new answer is missing, instead of keeping the old one', async () => {
+          const { coreHttp, group } = await openSized()
+          await within(group).findByText(/fits on your GPU/)
+          coreHttp.respond('GET', `/api/models/${qwen.id}/fit`, () => ({
+            status: 500,
+            body: { error: 'internal', message: 'no answer' }
+          }))
+
+          fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
+          await choose('CPU only')
+
+          await waitFor(() => expect(fitQueries(coreHttp).at(-1)?.placement).toBe('cpu'))
+          await waitFor(() => expect(within(group).queryByText(/fits on your GPU/)).not.toBeInTheDocument())
+        })
+      })
+
+      it('shows Auto for both on a chat model, and neither on an embedding model', async () => {
+        const { group } = await openSized()
+
+        expect(within(group).getByRole('radio', { name: 'Auto' })).toBeChecked()
+        expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('Auto')
+        expect(within(group).queryByLabelText('Context size in tokens')).not.toBeInTheDocument()
+
+        fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.id}` }))
+        const embedding = screen.getByRole('group', { name: `Options for ${nomic.id}` })
+        expect(within(embedding).queryByText('Context')).not.toBeInTheDocument()
+        expect(within(embedding).queryByText('Placement')).not.toBeInTheDocument()
+      })
+
+      it("starts Custom from the model's auto size, and saves a typed size on Enter", async () => {
+        const { coreHttp, group } = await openSized()
+
+        fireEvent.click(within(group).getByRole('radio', { name: 'Custom' }))
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { context: 32768 } })
+
+        const input = await within(group).findByLabelText('Context size in tokens')
+        expect(input).toHaveValue('32768')
+        fireEvent.change(input, { target: { value: '131072' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(2))
+        expect(putValues(coreHttp)[1]?.options).toEqual({ [qwen.id]: { context: 131072 } })
+      })
+
+      it('explains a size out of range, saves nothing, and Escape puts the stored size back', async () => {
+        const { coreHttp, group } = await openSized({ [qwen.id]: { context: 8192 } })
+        const input = within(group).getByLabelText('Context size in tokens')
+
+        fireEvent.change(input, { target: { value: '1000' } })
+        fireEvent.keyDown(input, { key: 'Enter' })
+
+        expect(input).toHaveAttribute('aria-invalid', 'true')
+        expect(input).toHaveAccessibleDescription('A whole number from 2048 to 1048576.')
+        expect(putValues(coreHttp)).toEqual([])
+
+        fireEvent.keyDown(input, { key: 'Escape' })
+        expect(input).toHaveValue('8192')
+        expect(input).not.toHaveAttribute('aria-invalid')
+      })
+
+      it('Auto drops the size and keeps the arguments', async () => {
+        const { coreHttp, group } = await openSized({ [qwen.id]: { args: '--jinja', context: 8192 } })
+
+        fireEvent.click(within(group).getByRole('radio', { name: 'Auto' }))
+
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { args: '--jinja' } })
+      })
+
+      it('offers "Experts in RAM" only for a mixture-of-experts model', async () => {
+        const plain = await openSized()
+        fireEvent.click(within(plain.group).getByRole('combobox', { name: 'Placement' }))
+        expect(await screen.findByRole('option', { name: 'CPU only' })).toBeInTheDocument()
+        expect(screen.queryByRole('option', { name: 'Experts in RAM' })).not.toBeInTheDocument()
+        plain.unmount()
+
+        const moe = await openSized({}, { ...sized, moe: true })
+        fireEvent.click(within(moe.group).getByRole('combobox', { name: 'Placement' }))
+        expect(await screen.findByRole('option', { name: 'Experts in RAM' })).toBeInTheDocument()
+      })
+
+      it('saves a placement, and Auto removes it', async () => {
+        const { coreHttp, group } = await openSized()
+
+        fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
+        await choose('CPU only')
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { placement: 'cpu' } })
+
+        await waitFor(() =>
+          expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('CPU only')
+        )
+        fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
+        await choose('Auto')
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(2))
+        expect(putValues(coreHttp)[1]?.options).toEqual({})
       })
     })
 

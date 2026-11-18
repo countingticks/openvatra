@@ -86,6 +86,41 @@ test('after a core restart the models list fills again without reloading the pag
   await mainWindow.keyboard.press('Escape')
 })
 
+test('a custom context size is passed to llama-server', async () => {
+  await mainWindow.getByRole('button', { name: 'Settings', exact: true }).click()
+  const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
+  await dialog.getByRole('button', { name: 'Models' }).click()
+  const advanced = dialog.getByRole('switch', { name: 'Show advanced' })
+  if ((await advanced.getAttribute('aria-checked')) !== 'true') await advanced.click()
+  await dialog.getByRole('button', { name: 'Options for tiny' }).click()
+
+  // The header-only file has no known shape, so the size is the user's number, with the whole model on the GPU.
+  await dialog.getByRole('radio', { name: 'Custom' }).click()
+  const size = dialog.getByLabel('Context size in tokens')
+  await size.fill('4096')
+  await size.press('Enter')
+  await size.blur()
+  await mainWindow.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+
+  await mainWindow.getByRole('button', { name: /^Model:/ }).click()
+  await mainWindow.getByRole('button', { name: 'Load tiny' }).click()
+  await expect(mainWindow.getByRole('button', { name: 'Unload tiny' })).toBeVisible()
+
+  const coreLog = join(userDataDir, 'logs', 'core.log')
+  await expect
+    .poll(async () => {
+      const text = await readFile(coreLog, 'utf8').catch(() => '')
+      const line = text.split(/\r?\n/).find((l) => l.includes('fake-server args:') && l.includes('tiny'))
+      return line ?? ''
+    })
+    .toMatch(/-c 4096\b.*--fit off|--fit off.*-c 4096\b/)
+  // The next test starts from nothing loaded.
+  await mainWindow.getByRole('button', { name: 'Unload tiny' }).click()
+  await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
+  await mainWindow.keyboard.press('Escape')
+})
+
 test('loads a model from the popover, and quitting leaves no core.exe behind', async () => {
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
   await expect(modelButton).toHaveAccessibleName('Model: no model, Ready')

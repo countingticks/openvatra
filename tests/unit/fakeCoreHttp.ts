@@ -3,6 +3,7 @@
 // so the real base query and event stream run against it.
 
 import { defaultEngineSettings, defaultLlamacppSettings } from '../../src/renderer/src/core/modelSettings'
+import type { Choice } from '@renderer/core/generated'
 import type { ModelInfo } from '@renderer/core/types'
 import type { DownloadItem } from '@renderer/core/types'
 
@@ -40,12 +41,24 @@ export interface FakeCoreHttp {
   setDownloads(items: DownloadItem[]): void
   /** Ends every open stream, as a core that went away. */
   endStreams(): void
+  /** What GET /api/models/{id}/fit answers; default 32768 tokens that fit on the GPU. */
+  fit: Choice
   /** Every request seen. */
   requests: CoreRequest[]
   openStreams(): number
   /** The hello each new stream starts with; default { log: 'log-1', head: 0, reset: false }. */
   hello: { log: string; head: number; reset: boolean }
 }
+
+/** The query of each GET /api/models/{id}/fit seen, as context and placement: what the window asked about. */
+export const fitQueries = (fake: FakeCoreHttp): { context: string | null; placement: string | null }[] =>
+  fake.requests
+    .map((request) => new URL(request.url))
+    .filter((url) => /^\/api\/models\/[^/]+\/fit$/.test(url.pathname))
+    .map((url) => ({
+      context: url.searchParams.get('context'),
+      placement: url.searchParams.get('placement')
+    }))
 
 /** The requests that change something (not GET), as method, path and body: what tests assert the window sent. */
 export const coreWrites = (fake: FakeCoreHttp): { method: string; path: string; body: unknown }[] =>
@@ -152,6 +165,15 @@ export function createFakeCoreHttp(): FakeCoreHttp {
 
   const fake: FakeCoreHttp = {
     requests: [],
+    fit: {
+      context: 32768,
+      capped: false,
+      fit: 'fits',
+      placement: 'gpu',
+      ramBytes: 0,
+      vramBytes: 4 * 1024 ** 3,
+      source: 'estimate'
+    },
     hello: { log: 'log-1', head: 0, reset: false },
     fetch: async (input, init) => {
       const { signal, ...described } = describeCall(input, init)
@@ -169,6 +191,7 @@ export function createFakeCoreHttp(): FakeCoreHttp {
         const answer = handler(call)
         return reply(answer.status ?? 200, answer.body)
       }
+      if (call.method === 'GET' && /^\/api\/models\/[^/]+\/fit$/.test(path)) return reply(200, fake.fit)
       if (call.method === 'GET' && path === '/api/events') return openStream(signal)
       const section = path.startsWith('/api/config/') ? path.slice('/api/config/'.length) : ''
       const entry = config.get(section)
