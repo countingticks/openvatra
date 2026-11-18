@@ -1,0 +1,5 @@
+0.00.000.001 I load_tensors:   CUDA0 model buffer size =   100.00 MiB
+0.00.000.002 I llama_kv_cache:    CUDA1 KV buffer size =    50.50 MiB
+0.00.000.003 I sched_reserve: CUDA_Host compute buffer size =    10.00 MiB
+0.00.000.004 I load_tensors: CPU_REPACK model buffer size =     1.00 MiB
+0.00.000.005 I sched_reserve:    CUDA0 compute buffer size =   abc MiB
