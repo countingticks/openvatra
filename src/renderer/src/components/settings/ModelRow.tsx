@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { ModelOptionsForm } from '@renderer/components/settings/ModelOptionsForm'
 import { Button } from '@renderer/components/ui/button'
-import { formatSize } from '@renderer/lib/modelText'
+import { formatContext, formatSize } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
 import type { ModelInfo } from '@renderer/core/types'
 import type { ModelOptions } from '@renderer/core/generated'
@@ -31,6 +31,14 @@ export function ModelRow({
         <span className="min-w-0 flex-1 truncate font-mono text-[13px]" title={model.id}>
           {model.id}
         </span>
+        {model.context && (
+          <span
+            className="shrink-0 text-xs text-muted-foreground"
+            title={`Loads with ${model.context.context.toLocaleString('en-US')} tokens of context`}
+          >
+            {formatContext(model.context.context)}
+          </span>
+        )}
         <span className="shrink-0 text-xs text-muted-foreground">{formatSize(model.sizeBytes)}</span>
 
         <Button

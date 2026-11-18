@@ -431,6 +431,28 @@ describe('Settings → Models', () => {
     })
   })
 
+  describe('the context size on a row', () => {
+    it('shows the size a chat model loads with, and nothing for an embedding model', async () => {
+      const sized: ModelInfo = {
+        ...qwen,
+        context: {
+          context: 32768,
+          capped: false,
+          fit: 'fits',
+          placement: 'gpu',
+          ramBytes: 0,
+          vramBytes: 1,
+          source: 'estimate'
+        }
+      }
+      await openModels(chosen, { coreState: ready, models: [sized, nomic] })
+
+      const size = await screen.findByTitle('Loads with 32,768 tokens of context')
+      expect(size).toHaveTextContent('32K')
+      expect(screen.getAllByTitle(/^Loads with/)).toHaveLength(1)
+    })
+  })
+
   describe('per-model options', () => {
     async function openOptions(
       options: LlamaCppSettings['options'] = {}

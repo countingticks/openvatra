@@ -7,6 +7,11 @@ export function formatSize(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`
 }
 
+/** A context size in tokens: 32768 → "32K"; a size that is not a multiple of 1024 keeps its digits. */
+export function formatContext(tokens: number): string {
+  return tokens % 1024 === 0 ? `${tokens / 1024}K` : tokens.toLocaleString('en-US')
+}
+
 /** Classes for a model's status dot; always shown next to words, so colour is never the only signal. */
 export function stateDot(state: ModelInfo['state']): string {
   switch (state) {

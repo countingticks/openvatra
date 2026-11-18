@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { failureReason } from '@renderer/lib/modelText'
+import { failureReason, formatContext } from '@renderer/lib/modelText'
 
 describe('failureReason', () => {
   it.each([
@@ -22,5 +22,15 @@ describe('failureReason', () => {
     ['a plain string', 'something broke', 'something broke']
   ])('%s', (_case, error, expected) => {
     expect(failureReason(error)).toBe(expected)
+  })
+})
+
+describe('formatContext', () => {
+  it.each([
+    [32768, '32K'],
+    [262144, '256K'],
+    [40000, '40,000']
+  ])('writes %i as %s', (tokens, text) => {
+    expect(formatContext(tokens)).toBe(text)
   })
 })
