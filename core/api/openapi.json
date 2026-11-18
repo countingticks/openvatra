@@ -1915,6 +1915,66 @@
         "x-scope": "ui"
       }
     },
+    "/api/models/{id}/fit": {
+      "get": {
+        "operationId": "getModelFit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "context",
+            "required": false,
+            "schema": {
+              "description": "auto, or a whole number from 2048 to 1048576; default auto",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "placement",
+            "required": false,
+            "schema": {
+              "description": "auto, gpu, experts, layers or cpu; default auto",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Choice"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: model_not_found, invalid_request, models_unreadable."
+          }
+        },
+        "summary": "Say what a context size and placement would mean for a model, without loading it",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
     "/api/models/{id}/load": {
       "post": {
         "operationId": "loadModel",

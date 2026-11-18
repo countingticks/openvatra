@@ -457,13 +457,13 @@ func TestChoiceFor(t *testing.T) {
 	t.Run("an embedding model has none", func(t *testing.T) {
 		var shapes []engine.Shape
 		embed := models.Model{ID: "qwen", Kind: models.KindEmbedding, Shape: shape}
-		if got := choiceFor(options(llamacpp.ModelOptions{}), embed, report, recording(&shapes)); got != nil {
+		if got := choiceFor(options(llamacpp.ModelOptions{}), embed, report, recording(&shapes), 0, "auto"); got != nil {
 			t.Fatalf("choice = %+v, want nil", got)
 		}
 	})
 	t.Run("a projector that is off does not count", func(t *testing.T) {
 		var shapes []engine.Shape
-		if got := choiceFor(options(llamacpp.ModelOptions{Args: "--no-mmproj"}), chat, report, recording(&shapes)); got == nil {
+		if got := choiceFor(options(llamacpp.ModelOptions{Args: "--no-mmproj"}), chat, report, recording(&shapes), 0, "auto"); got == nil {
 			t.Fatal("choice = nil")
 		}
 		for _, s := range shapes {
@@ -472,7 +472,7 @@ func TestChoiceFor(t *testing.T) {
 			}
 		}
 		shapes = nil
-		choiceFor(options(llamacpp.ModelOptions{}), chat, report, recording(&shapes))
+		choiceFor(options(llamacpp.ModelOptions{}), chat, report, recording(&shapes), 0, "auto")
 		if len(shapes) == 0 || shapes[0].ProjectorBytes != 1<<20 {
 			t.Fatalf("with the projector on, needs saw %+v", shapes)
 		}
@@ -480,9 +480,41 @@ func TestChoiceFor(t *testing.T) {
 	t.Run("the stored context and placement reach the choice", func(t *testing.T) {
 		var shapes []engine.Shape
 		c := options(llamacpp.ModelOptions{Context: new(4096), Placement: "cpu"})
-		got := choiceFor(c, chat, report, recording(&shapes))
+		got := chosen(c, chat, report, recording(&shapes))
 		if got == nil || got.Context != 4096 || got.Placement != fit.PlaceCPU {
 			t.Fatalf("choice = %+v, want 4096 on the CPU", got)
+		}
+	})
+}
+
+func TestFitModel(t *testing.T) {
+	shape := engine.Shape{FileBytes: 1 << 30, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 128, MaxContext: 131072}
+	found := []models.Model{
+		{ID: "qwen", Kind: models.KindChat, Shape: shape},
+		{ID: "nomic", Kind: models.KindEmbedding, Shape: shape},
+	}
+	report := hw.Report{GPU: &hw.GPU{TotalBytes: 24 << 30}, RAMBytes: 64 << 30}
+	needs := func(engine.Spec) engine.Resources {
+		return engine.Resources{VRAMBytes: 1 << 30, Known: true, Source: "estimate"}
+	}
+	stored := llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{
+		"qwen": {Context: new(4096), Placement: "gpu"},
+	}}.Resolve("")
+
+	t.Run("an embedding model is unknown", func(t *testing.T) {
+		if _, err := fitModel(stored, found, "nomic", report, needs, 0, "auto"); !errors.Is(err, provider.ErrUnknownModel) {
+			t.Fatalf("err = %v, want ErrUnknownModel", err)
+		}
+	})
+	t.Run("a missing model is unknown", func(t *testing.T) {
+		if _, err := fitModel(stored, found, "nope", report, needs, 0, "auto"); !errors.Is(err, provider.ErrUnknownModel) {
+			t.Fatalf("err = %v, want ErrUnknownModel", err)
+		}
+	})
+	t.Run("the query's placement and size override the stored ones", func(t *testing.T) {
+		got, err := fitModel(stored, found, "qwen", report, needs, 8192, fit.PlaceCPU)
+		if err != nil || got.Placement != fit.PlaceCPU || got.Context != 8192 {
+			t.Fatalf("choice = %+v, err = %v, want 8192 on the CPU", got, err)
 		}
 	})
 }

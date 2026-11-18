@@ -27,7 +27,9 @@ type Deps struct {
 	// ListModels reports the models on disk now (a function: the folder changes at runtime).
 	ListModels func() ([]models.Model, error)
 	// Choose is the context size and placement a listed model loads with; nil = none (every context null).
-	Choose    func(models.Model) *fit.Choice
+	Choose func(models.Model) *fit.Choice
+	// Fit says what a context size (0 = auto) and placement would mean for model id, without loading it.
+	Fit       func(id string, context int, placement string) (fit.Choice, error)
 	Resident  provider.Resident
 	Upstream  provider.Upstream
 	Config    Config // nil only in tests: the config routes answer 503

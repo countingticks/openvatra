@@ -128,6 +128,16 @@ const injectedRtkApi = api
         query: () => ({ url: `/api/models/refresh`, method: 'POST' }),
         invalidatesTags: ['models']
       }),
+      getModelFit: build.query<GetModelFitApiResponse, GetModelFitApiArg>({
+        query: (queryArg) => ({
+          url: `/api/models/${queryArg.id}/fit`,
+          params: {
+            context: queryArg.context,
+            placement: queryArg.placement
+          }
+        }),
+        providesTags: ['models']
+      }),
       loadModel: build.mutation<LoadModelApiResponse, LoadModelApiArg>({
         query: (queryArg) => ({ url: `/api/models/${queryArg.id}/load`, method: 'POST' }),
         invalidatesTags: ['models']
@@ -247,6 +257,12 @@ export type ListModelsApiResponse = /** status 200 OK */ StateBody
 export type ListModelsApiArg = void
 export type RefreshModelsApiResponse = /** status 202 Accepted */ StatusBody
 export type RefreshModelsApiArg = void
+export type GetModelFitApiResponse = /** status 200 OK */ Choice
+export type GetModelFitApiArg = {
+  id: string
+  context?: string
+  placement?: string
+}
 export type LoadModelApiResponse = /** status 200 OK */ StatusBody
 export type LoadModelApiArg = {
   id: string
@@ -481,6 +497,7 @@ export const {
   useRefreshHardwareMutation,
   useListModelsQuery,
   useRefreshModelsMutation,
+  useGetModelFitQuery,
   useLoadModelMutation,
   useUnloadModelMutation,
   useGetVersionQuery,

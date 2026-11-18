@@ -3,14 +3,51 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
+	"strconv"
 
 	"github.com/countingticks/openvatra/core/internal/feed"
+	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
 // ModelPath is the input of the routes that name one model.
 type ModelPath struct {
 	ID string `path:"id"`
+}
+
+// FitQuery is the input of GET /api/models/{id}/fit.
+type FitQuery struct {
+	ID        string `path:"id"`
+	Context   string `query:"context" doc:"auto, or a whole number from 2048 to 1048576; default auto"`
+	Placement string `query:"placement" doc:"auto, gpu, experts, layers or cpu; default auto"`
+}
+
+const (
+	minFitContext = 2048
+	maxFitContext = 1048576
+)
+
+var fitPlacements = []string{fit.PlaceAuto, fit.PlaceGPU, fit.PlaceExperts, fit.PlaceLayers, fit.PlaceCPU}
+
+// parseFitQuery reads the query's context (0 = auto) and placement, with their defaults.
+func parseFitQuery(in FitQuery) (int, string, error) {
+	size := 0
+	if in.Context != "" && in.Context != "auto" {
+		n, err := strconv.Atoi(in.Context)
+		if err != nil || n < minFitContext || n > maxFitContext {
+			return 0, "", invalidRequest("context must be auto or a whole number from 2048 to 1048576")
+		}
+		size = n
+	}
+	placement := in.Placement
+	if placement == "" {
+		placement = fit.PlaceAuto
+	}
+	if !slices.Contains(fitPlacements, placement) {
+		return 0, "", invalidRequest("placement must be auto, gpu, experts, layers or cpu")
+	}
+	return size, placement, nil
 }
 
 var errModelsUnreadable = &Error{Status: http.StatusInternalServerError, Code: "models_unreadable",
@@ -27,6 +64,26 @@ func modelRoutes(d Deps) []Route {
 				return body, nil
 			}).
 			WithErrors("models_unreadable"),
+		JSON(http.MethodGet, "/api/models/{id}/fit", UI, "getModelFit",
+			"Say what a context size and placement would mean for a model, without loading it",
+			func(_ context.Context, in FitQuery) (fit.Choice, error) {
+				size, placement, err := parseFitQuery(in)
+				if err != nil {
+					return fit.Choice{}, err
+				}
+				if d.Fit == nil {
+					return fit.Choice{}, errModelsUnreadable
+				}
+				choice, err := d.Fit(in.ID, size, placement)
+				if e := toError(err); err != nil {
+					if e.Code == "internal" { // Discover failed
+						return fit.Choice{}, errModelsUnreadable
+					}
+					return fit.Choice{}, e
+				}
+				return choice, nil
+			}).
+			WithErrors("model_not_found", "invalid_request", "models_unreadable"),
 		JSON(http.MethodPost, "/api/models/{id}/load", UI, "loadModel", "Load a model and answer once it is ready",
 			func(ctx context.Context, in ModelPath) (StatusBody, error) {
 				if err := d.Resident.Load(ctx, in.ID); err != nil {
