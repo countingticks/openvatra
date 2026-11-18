@@ -12,6 +12,16 @@ export function formatContext(tokens: number): string {
   return tokens % 1024 === 0 ? `${tokens / 1024}K` : tokens.toLocaleString('en-US')
 }
 
+export const contextMin = 2048
+export const contextMax = 1048576
+
+/** A context size typed by the user: a whole number inside the allowed range, or undefined. */
+export function parseContext(text: string): number | undefined {
+  if (!/^\d+$/.test(text.trim())) return undefined
+  const size = Number(text)
+  return size >= contextMin && size <= contextMax ? size : undefined
+}
+
 /** Classes for a model's status dot; always shown next to words, so colour is never the only signal. */
 export function stateDot(state: ModelInfo['state']): string {
   switch (state) {
