@@ -60,7 +60,7 @@ function FitHint({
     { skip: !expanded }
   )
   const hardware = useGetHardwareQuery()
-  const text = fit.data && !fit.isError ? fitHint(fit.data, hardware.data?.gpu?.totalBytes ?? null) : ''
+  const text = fit.currentData ? fitHint(fit.currentData, hardware.data?.gpu?.totalBytes ?? null) : ''
 
   return (
     <p aria-live="polite" className="min-h-4 text-xs text-muted-foreground">

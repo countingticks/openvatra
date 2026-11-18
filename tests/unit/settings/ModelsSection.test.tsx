@@ -592,6 +592,20 @@ describe('Settings → Models', () => {
             expect(fitQueries(coreHttp).at(-1)).toEqual({ context: 'auto', placement: 'cpu' })
           )
         })
+        it('empties the hint while the new answer is missing, instead of keeping the old one', async () => {
+          const { coreHttp, group } = await openSized()
+          await within(group).findByText(/fits on your GPU/)
+          coreHttp.respond('GET', `/api/models/${qwen.id}/fit`, () => ({
+            status: 500,
+            body: { error: 'internal', message: 'no answer' }
+          }))
+
+          fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
+          await choose('CPU only')
+
+          await waitFor(() => expect(fitQueries(coreHttp).at(-1)?.placement).toBe('cpu'))
+          await waitFor(() => expect(within(group).queryByText(/fits on your GPU/)).not.toBeInTheDocument())
+        })
       })
 
       it('shows Auto for both on a chat model, and neither on an embedding model', async () => {
