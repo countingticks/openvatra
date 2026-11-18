@@ -334,14 +334,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		size, placement := c.Size(m.ID)
 		return choiceFor(c, m, hardware.Get(), llama.Needs, size, placement)
 	}
-	fitModel := fitFunc(resolve, hardware.Get, llama.Needs)
+	fitAt := fitFunc(resolve, hardware.Get, llama.Needs)
 	feed.Start(ctx, eventLog, lc, listModels, choose, dl)
 	defer lc.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
-			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Fit: fitModel, Resident: lc, Upstream: lc,
+			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Fit: fitAt, Resident: lc, Upstream: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
 			Chats: chats, Log: eventLog, Logger: logger,
 		}),
