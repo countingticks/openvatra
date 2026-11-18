@@ -19,7 +19,7 @@ const MaxArgsLength = 2000
 var ReservedFlags = []string{
 	"-m", "--model", "--host", "--port", "--embedding", "--embeddings", "-mm", "--mmproj",
 	"-c", "--ctx-size", "-ngl", "--gpu-layers", "--n-gpu-layers", "-cmoe", "--cpu-moe", "-ncmoe", "--n-cpu-moe",
-	"-fit", "--fit",
+	"-fit", "--fit", "-lv", "--verbosity", "--log-verbosity",
 }
 
 // isJSSpace is JavaScript's \s, not unicode.IsSpace: the two differ at U+0085 and U+FEFF, and the UI and core must
@@ -126,7 +126,7 @@ type Upgraded struct {
 	Dropped   []string // flags removed without a field, in order (e.g. "--n-cpu-moe 4", "-c abc")
 }
 
-// UpgradeArgs takes the flags that became core's own (-c, -ngl, --cpu-moe, --n-cpu-moe, --fit and their aliases) out
+// UpgradeArgs takes the flags that became core's own (-c, -ngl, --cpu-moe, --n-cpu-moe, --fit, -lv and their aliases) out
 // of an argument text stored before they were reserved, turning each into the context or placement field it means.
 // It is the Go twin of upgradeArgs in src/shared/args.ts; both read testdata/upgrade.json. Text without such a flag
 // comes back as it was. The error is Words' only.
@@ -178,7 +178,7 @@ func UpgradeArgs(text string) (Upgraded, error) {
 			default:
 				up.Dropped = append(up.Dropped, flag)
 			}
-		case "-ncmoe", "--n-cpu-moe":
+		case "-ncmoe", "--n-cpu-moe", "-lv", "--verbosity", "--log-verbosity":
 			taken = true
 			_, flag, _ := value()
 			up.Dropped = append(up.Dropped, flag)

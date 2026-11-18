@@ -49,7 +49,8 @@ func (e *Engine) Command(spec engine.Spec) engine.Command {
 		}
 		args = append(args, placementArgs(spec.Placement)...)
 		// llama-server's own fitting is on by default and would change what core chose; off, what runs is what fit said.
-		args = append(args, "--fit", "off")
+		// -lv 4 makes it print the buffer sizes core measures (measure.go).
+		args = append(args, "--fit", "off", "-lv", "4")
 		if spec.Projector != "" {
 			args = append(args, "--mmproj", spec.Projector)
 		}

@@ -19,6 +19,7 @@ func main() {
 	flag.Int("c", 0, "context size (ignored)")
 	flag.String("ngl", "", "layers on the GPU (ignored)")
 	flag.String("fit", "", "llama-server's own fitting (ignored)")
+	flag.Int("lv", 0, "log verbosity (ignored)")
 	flag.Bool("cpu-moe", false, "experts in RAM (ignored)")
 	flag.String("mmproj", "", "projector file (ignored)")
 	flag.Bool("embeddings", false, "embedding server (ignored)")

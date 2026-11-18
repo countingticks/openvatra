@@ -133,5 +133,10 @@
     "name": "reserved --fit",
     "text": "--jinja --fit 1",
     "error": "--fit is set by OpenVatra and can't be changed."
+  },
+  {
+    "name": "reserved -lv",
+    "text": "-lv 4",
+    "error": "-lv is set by OpenVatra and can't be changed."
   }
 ]
