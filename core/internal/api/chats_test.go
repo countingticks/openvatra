@@ -55,10 +55,11 @@ func chatServer(t *testing.T, model http.HandlerFunc) (*httptest.Server, *store.
 // backendInstance is a model server that is already running at url.
 type backendInstance string
 
-func (b backendInstance) BaseURL() string       { return string(b) }
-func (b backendInstance) Stop(time.Duration)    {}
-func (b backendInstance) State() engine.State   { return engine.StateReady }
-func (b backendInstance) Wait() <-chan struct{} { return nil }
+func (b backendInstance) BaseURL() string                    { return string(b) }
+func (b backendInstance) Stop(time.Duration)                 {}
+func (b backendInstance) State() engine.State                { return engine.StateReady }
+func (b backendInstance) Wait() <-chan struct{}              { return nil }
+func (b backendInstance) Measured() (engine.Resources, bool) { return engine.Resources{}, false }
 
 func call(t *testing.T, srv *httptest.Server, method, path, body string) *http.Response {
 	t.Helper()

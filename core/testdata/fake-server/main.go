@@ -25,6 +25,7 @@ func main() {
 	flag.Bool("embeddings", false, "embedding server (ignored)")
 	// Like a real server loading a model: /health says 503 until it is done.
 	loadTime := flag.Duration("load-time", 0, "answer /health with 503 for this long")
+	loadLog := flag.String("load-log", "", "copy this file to stdout before the listening line")
 	exitCode := flag.Int("exit", -1, "exit immediately with this code (>= 0)")
 	flag.Parse()
 
@@ -45,6 +46,14 @@ func main() {
 		fmt.Fprint(w, `{"object":"list","data":[]}`)
 	})
 
+	if *loadLog != "" {
+		data, err := os.ReadFile(*loadLog)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Stdout.Write(data)
+	}
 	fmt.Printf("fake-server listening on 127.0.0.1:%d\n", *port)
 	fmt.Printf("fake-server args: %s\n", strings.Join(os.Args[1:], " "))
 	if err := http.ListenAndServe(fmt.Sprintf("127.0.0.1:%d", *port), mux); err != nil {

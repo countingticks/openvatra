@@ -140,6 +140,9 @@ func (i *instance) BaseURL() string { return fmt.Sprintf("http://127.0.0.1:%d", 
 
 func (i *instance) Wait() <-chan struct{} { return i.done }
 
+// Measured: a plain runner reads no output; the engine that parses it wraps the instance.
+func (i *instance) Measured() (Resources, bool) { return Resources{}, false }
+
 // Stop asks the process tree to exit, force-kills it if it is still alive after grace, and returns once it is
 // gone. Stopping a stopped instance does nothing.
 func (i *instance) Stop(grace time.Duration) {

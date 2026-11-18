@@ -202,3 +202,59 @@ func TestNeeds(t *testing.T) {
 		})
 	}
 }
+
+// startLoad starts the fake server printing the load log at path, and returns its instance and the prefixed log.
+func startLoad(t *testing.T, path string) (engine.Instance, *bytes.Buffer) {
+	t.Helper()
+	var out bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	spec := engine.Spec{Model: "fake", Path: "model.gguf", Context: 8192}
+	if path != "" {
+		spec.Args = []string{"-load-log", path}
+	}
+	inst, err := New(fakePath, &out).Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inst, &out
+}
+
+func TestStartMeasuresTheLoad(t *testing.T) {
+	const mib = 1 << 20
+	cases := map[string]struct {
+		log        string
+		vram, ram  int64
+		wantKnown  bool
+		wantSource string
+	}{
+		"a real b12078 load": {"testdata/load-b12078-moe-experts.log", 2271205130, 19818736518, true, "measured"},
+		"odd lines":          {"testdata/load-odd.log", 150*mib + mib/2, 11 * mib, true, "measured"},
+		"no buffer line":     {"", 0, 0, false, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			inst, _ := startLoad(t, tc.log)
+			defer inst.Stop(5 * time.Second)
+			got, ok := inst.Measured()
+			want := engine.Resources{VRAMBytes: tc.vram, RAMBytes: tc.ram, Known: tc.wantKnown, Source: tc.wantSource}
+			if ok != tc.wantKnown || got != want {
+				t.Fatalf("Measured = %+v, %v, want %+v, %v", got, ok, want, tc.wantKnown)
+			}
+		})
+	}
+}
+
+func TestMeasuringKeepsTheLogWhole(t *testing.T) {
+	inst, out := startLoad(t, "testdata/load-odd.log")
+	inst.Stop(5 * time.Second) // the buffer is read only after the process and its output copier are gone
+	for _, line := range []string{
+		"[fake] 0.00.000.001 I load_tensors:   CUDA0 model buffer size =   100.00 MiB\n",
+		"[fake] 0.00.000.005 I sched_reserve:    CUDA0 compute buffer size =   abc MiB\n",
+		"[fake] fake-server listening",
+	} {
+		if !strings.Contains(out.String(), line) {
+			t.Fatalf("log = %q, want it to hold %q", out.String(), line)
+		}
+	}
+}

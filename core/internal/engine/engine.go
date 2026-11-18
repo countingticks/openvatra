@@ -68,4 +68,6 @@ type Instance interface {
 	State() State
 	Stop(grace time.Duration) // tree terminate, kill after grace; returns when gone
 	Wait() <-chan struct{}    // closed when the process has exited
+	// Measured is what the server reported using while it loaded; false when it reported nothing.
+	Measured() (Resources, bool)
 }

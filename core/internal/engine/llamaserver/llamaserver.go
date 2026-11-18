@@ -83,7 +83,15 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Instance, 
 	if out == nil {
 		out = io.Discard
 	}
-	return e.runner.Start(ctx, e.Command(spec), logs.Prefixed(out, spec.Model))
+	if spec.Embedding {
+		return e.runner.Start(ctx, e.Command(spec), logs.Prefixed(out, spec.Model))
+	}
+	m := &measurer{}
+	inst, err := e.runner.Start(ctx, e.Command(spec), io.MultiWriter(m, logs.Prefixed(out, spec.Model)))
+	if err != nil {
+		return nil, err
+	}
+	return &measuredInstance{Instance: inst, m: m}, nil
 }
 
 // computeAllowance is what llama-server's compute buffers take on top of weights and KV cache.

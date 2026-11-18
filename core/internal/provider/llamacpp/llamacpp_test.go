@@ -18,6 +18,8 @@ type fakeInstance struct {
 	id     string
 	url    string // "" = http://<id>, a server nobody answers on
 	events *eventLog
+	// measured is what the server reported while it loaded; the zero value reports nothing.
+	measured engine.Resources
 }
 
 func (f *fakeInstance) Stop(time.Duration) { f.events.add("stop " + f.id) }
@@ -27,8 +29,9 @@ func (f *fakeInstance) BaseURL() string {
 	}
 	return "http://" + f.id
 }
-func (f *fakeInstance) State() engine.State   { return engine.StateReady }
-func (f *fakeInstance) Wait() <-chan struct{} { return nil }
+func (f *fakeInstance) State() engine.State                { return engine.StateReady }
+func (f *fakeInstance) Wait() <-chan struct{}              { return nil }
+func (f *fakeInstance) Measured() (engine.Resources, bool) { return f.measured, f.measured.Known }
 
 // testStart records the start and runs startFn (nil: succeeds at once).
 func testStart(events *eventLog, startFn func(id string) func() error) func(context.Context, engine.Spec) (engine.Instance, error) {
