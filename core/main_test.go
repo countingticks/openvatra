@@ -438,6 +438,9 @@ func TestSpecFor(t *testing.T) {
 	}
 }
 
+// plain is a needsFor that answers the same whatever the spec.
+func plain(needs fit.Needs) needsFor { return func(engine.Spec) fit.Needs { return needs } }
+
 func TestChoiceFor(t *testing.T) {
 	shape := engine.Shape{FileBytes: 1 << 30, ProjectorBytes: 1 << 20, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 128,
 		MaxContext: 131072}
@@ -457,13 +460,13 @@ func TestChoiceFor(t *testing.T) {
 	t.Run("an embedding model has none", func(t *testing.T) {
 		var shapes []engine.Shape
 		embed := models.Model{ID: "qwen", Kind: models.KindEmbedding, Shape: shape}
-		if got := choiceFor(options(llamacpp.ModelOptions{}), embed, report, recording(&shapes), 0, "auto"); got != nil {
+		if got := choiceFor(options(llamacpp.ModelOptions{}), embed, report, plain(recording(&shapes)), 0, "auto"); got != nil {
 			t.Fatalf("choice = %+v, want nil", got)
 		}
 	})
 	t.Run("a projector that is off does not count", func(t *testing.T) {
 		var shapes []engine.Shape
-		if got := choiceFor(options(llamacpp.ModelOptions{Args: "--no-mmproj"}), chat, report, recording(&shapes), 0, "auto"); got == nil {
+		if got := choiceFor(options(llamacpp.ModelOptions{Args: "--no-mmproj"}), chat, report, plain(recording(&shapes)), 0, "auto"); got == nil {
 			t.Fatal("choice = nil")
 		}
 		for _, s := range shapes {
@@ -472,7 +475,7 @@ func TestChoiceFor(t *testing.T) {
 			}
 		}
 		shapes = nil
-		choiceFor(options(llamacpp.ModelOptions{}), chat, report, recording(&shapes), 0, "auto")
+		choiceFor(options(llamacpp.ModelOptions{}), chat, report, plain(recording(&shapes)), 0, "auto")
 		if len(shapes) == 0 || shapes[0].ProjectorBytes != 1<<20 {
 			t.Fatalf("with the projector on, needs saw %+v", shapes)
 		}
@@ -480,7 +483,7 @@ func TestChoiceFor(t *testing.T) {
 	t.Run("the stored context and placement reach the choice", func(t *testing.T) {
 		var shapes []engine.Shape
 		c := options(llamacpp.ModelOptions{Context: new(4096), Placement: "cpu"})
-		got := chosen(c, chat, report, recording(&shapes))
+		got := chosen(c, chat, report, plain(recording(&shapes)))
 		if got == nil || got.Context != 4096 || got.Placement != fit.PlaceCPU {
 			t.Fatalf("choice = %+v, want 4096 on the CPU", got)
 		}
@@ -502,17 +505,17 @@ func TestFitModel(t *testing.T) {
 	}}.Resolve("")
 
 	t.Run("an embedding model is unknown", func(t *testing.T) {
-		if _, err := fitModel(stored, found, "nomic", report, needs, 0, "auto"); !errors.Is(err, provider.ErrUnknownModel) {
+		if _, err := fitModel(stored, found, "nomic", report, plain(needs), 0, "auto"); !errors.Is(err, provider.ErrUnknownModel) {
 			t.Fatalf("err = %v, want ErrUnknownModel", err)
 		}
 	})
 	t.Run("a missing model is unknown", func(t *testing.T) {
-		if _, err := fitModel(stored, found, "nope", report, needs, 0, "auto"); !errors.Is(err, provider.ErrUnknownModel) {
+		if _, err := fitModel(stored, found, "nope", report, plain(needs), 0, "auto"); !errors.Is(err, provider.ErrUnknownModel) {
 			t.Fatalf("err = %v, want ErrUnknownModel", err)
 		}
 	})
 	t.Run("the query's placement and size override the stored ones", func(t *testing.T) {
-		got, err := fitModel(stored, found, "qwen", report, needs, 8192, fit.PlaceCPU)
+		got, err := fitModel(stored, found, "qwen", report, plain(needs), 8192, fit.PlaceCPU)
 		if err != nil || got.Placement != fit.PlaceCPU || got.Context != 8192 {
 			t.Fatalf("choice = %+v, err = %v, want 8192 on the CPU", got, err)
 		}
@@ -926,22 +929,182 @@ func TestToProviderModels(t *testing.T) {
 	resolve := func(m llamacpp.LlamaCppSettings) llamacpp.Resolved { return m.Resolve("") }
 
 	t.Run("a chat model with a projector has Vision", func(t *testing.T) {
-		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found, hw.Report{}, unknownNeeds)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found, hw.Report{}, plain(unknownNeeds))
 		// Nothing is known about the hardware, so the chat model loads at fit's default.
 		if len(got) != 2 || got[0] != (provider.Model{ID: "qwen", Kind: provider.ModelChat, Vision: true, Context: fit.DefaultContext}) {
 			t.Fatalf("models = %+v", got)
 		}
 	})
 	t.Run("--no-mmproj takes Vision away", func(t *testing.T) {
-		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found, hw.Report{}, unknownNeeds)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{Options: map[string]llamacpp.ModelOptions{"qwen": {Args: "--no-mmproj"}}}), found, hw.Report{}, plain(unknownNeeds))
 		if got[0].Vision {
 			t.Fatalf("models = %+v", got)
 		}
 	})
 	t.Run("unreadable models are left out and embedding models have no Vision", func(t *testing.T) {
-		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found, hw.Report{}, unknownNeeds)
+		got := toProviderModels(resolve(llamacpp.LlamaCppSettings{}), found, hw.Report{}, plain(unknownNeeds))
 		if len(got) != 2 || got[1] != (provider.Model{ID: "embed", Kind: provider.ModelEmbedding}) {
 			t.Fatalf("models = %+v", got)
 		}
 	})
+}
+
+// estimateOf is a needs func with a fixed estimate of vram bytes for every spec.
+func estimateOf(vram int64) fit.Needs {
+	return func(engine.Spec) engine.Resources {
+		return engine.Resources{VRAMBytes: vram, Known: true, Source: "estimate"}
+	}
+}
+
+func TestMeasuredNeeds(t *testing.T) {
+	const gib = 1 << 30
+	rows := []store.ModelFit{
+		{FitPlace: store.FitPlace{Context: 8192, Placement: "gpu"}, Memory: true, VRAMBytes: 3 * gib, RAMBytes: 100, TokensPerSecond: 24},
+		{FitPlace: store.FitPlace{Context: 16384, Placement: "gpu"}, TokensPerSecond: 12},
+		{FitPlace: store.FitPlace{Context: 8192, Placement: "layers", Layers: 12}, Memory: true, VRAMBytes: gib, RAMBytes: 2 * gib},
+	}
+	needs := measuredNeeds(rows, estimateOf(5*gib))
+	layers := func(n int) engine.Placement { return engine.Placement{Kind: engine.PlaceLayers, Layers: n} }
+	cases := map[string]struct {
+		spec engine.Spec
+		want engine.Resources
+	}{
+		"a memory row": {engine.Spec{Context: 8192},
+			engine.Resources{VRAMBytes: 3 * gib, RAMBytes: 100, Known: true, Source: "measured", TokensPerSecond: 24}},
+		"a speed-only row keeps the estimate and adds the speed": {engine.Spec{Context: 16384},
+			engine.Resources{VRAMBytes: 5 * gib, Known: true, Source: "estimate", TokensPerSecond: 12}},
+		"layers 12": {engine.Spec{Context: 8192, Placement: layers(12)},
+			engine.Resources{VRAMBytes: gib, RAMBytes: 2 * gib, Known: true, Source: "measured"}},
+		"layers 20 is not answered by 12": {engine.Spec{Context: 8192, Placement: layers(20)},
+			engine.Resources{VRAMBytes: 5 * gib, Known: true, Source: "estimate"}},
+		"no row": {engine.Spec{Context: 32768},
+			engine.Resources{VRAMBytes: 5 * gib, Known: true, Source: "estimate"}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := needs(tc.spec); got != tc.want {
+				t.Fatalf("needs = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+	t.Run("a speed-only row on an unknown estimate stays unknown", func(t *testing.T) {
+		got := measuredNeeds(rows, unknownNeeds)(engine.Spec{Context: 16384})
+		if got != (engine.Resources{}) {
+			t.Fatalf("needs = %+v, want nothing", got)
+		}
+	})
+}
+
+// measuredFixture is a chat model with a real file, an empty store, and the report of a 24 GiB GPU.
+type measuredFixture struct {
+	db     *store.Store
+	m      models.Model
+	report hw.Report
+	needs  needsFor
+}
+
+func newMeasuredFixture(t *testing.T, estimate fit.Needs) *measuredFixture {
+	t.Helper()
+	db, err := store.Open(t.TempDir(), event.NewBus(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	path := filepath.Join(t.TempDir(), "qwen.gguf")
+	if err := os.WriteFile(path, make([]byte, 1000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return &measuredFixture{
+		db:     db,
+		m:      models.Model{ID: "qwen", Kind: models.KindChat, Path: path, Shape: engine.Shape{FileBytes: 1000, MaxContext: 131072}},
+		report: hw.Report{GPU: &hw.GPU{TotalBytes: 24 << 30}, RAMBytes: 64 << 30},
+		needs:  measuredNeedsFor(db, estimate, slog.New(slog.NewTextHandler(io.Discard, nil))),
+	}
+}
+
+func (f *measuredFixture) record(t *testing.T, c llamacpp.Resolved, m llamacpp.Measurement) {
+	t.Helper()
+	if rec := recordFunc(f.db, slog.New(slog.NewTextHandler(io.Discard, nil))); rec == nil {
+		t.Fatal("recordFunc is nil with a database")
+	} else {
+		rec(m)
+	}
+}
+
+func TestAutoPrefersAMeasuredSizeThatFits(t *testing.T) {
+	const gib = 1 << 30
+	// The estimate says nothing from 32K up fits in 24 GiB; a real load at 32K used 10 GiB.
+	estimate := func(s engine.Spec) engine.Resources {
+		vram := int64(gib)
+		if s.Context >= 32768 {
+			vram = 100 * gib
+		}
+		return engine.Resources{VRAMBytes: vram, Known: true, Source: "estimate"}
+	}
+	f := newMeasuredFixture(t, estimate)
+	c := resolved("")
+	got := choiceFor(c, f.m, f.report, f.needs, 0, "auto")
+	if got == nil || got.Context != 16384 || got.Source != "estimate" {
+		t.Fatalf("before a load: choice = %+v, want 16K by estimate", got)
+	}
+	spec := specFor(c, f.m, false, &fit.Choice{Context: 32768, Placement: fit.PlaceGPU})
+	f.record(t, c, llamacpp.Measurement{Spec: spec, Memory: engine.Resources{VRAMBytes: 10 * gib, Known: true, Source: "measured"}})
+	got = choiceFor(c, f.m, f.report, f.needs, 0, "auto")
+	if got == nil || got.Context != 32768 || got.Placement != fit.PlaceGPU || got.Source != "measured" {
+		t.Fatalf("after a load: choice = %+v, want gpu at 32K, measured", got)
+	}
+}
+
+func TestFitAnswersMeasuredOnlyForTheSizeLoaded(t *testing.T) {
+	f := newMeasuredFixture(t, estimateOf(1<<30))
+	c := resolved("")
+	spec := specFor(c, f.m, false, &fit.Choice{Context: 8192, Placement: fit.PlaceGPU})
+	f.record(t, c, llamacpp.Measurement{Spec: spec, Memory: engine.Resources{VRAMBytes: 2 << 30, Known: true, Source: "measured"}})
+	f.record(t, c, llamacpp.Measurement{Spec: spec, TokensPerSecond: 24})
+	found := []models.Model{f.m}
+
+	got, err := fitModel(c, found, "qwen", f.report, f.needs, 8192, fit.PlaceGPU)
+	if err != nil || got.Source != "measured" || got.TokensPerSecond != 24 || got.VRAMBytes != 2<<30 {
+		t.Fatalf("the size loaded: choice = %+v, err = %v", got, err)
+	}
+	got, err = fitModel(c, found, "qwen", f.report, f.needs, 16384, fit.PlaceGPU)
+	if err != nil || got.Source != "estimate" || got.TokensPerSecond != 0 {
+		t.Fatalf("another size: choice = %+v, err = %v", got, err)
+	}
+}
+
+func TestMeasurementsStopCountingWhenTheModelChanges(t *testing.T) {
+	f := newMeasuredFixture(t, estimateOf(1<<30))
+	c := resolved("")
+	spec := specFor(c, f.m, false, &fit.Choice{Context: 8192, Placement: fit.PlaceGPU})
+	f.record(t, c, llamacpp.Measurement{Spec: spec, Memory: engine.Resources{VRAMBytes: 2 << 30, Known: true, Source: "measured"}})
+	f.record(t, c, llamacpp.Measurement{Spec: spec, TokensPerSecond: 24})
+
+	if got := choiceFor(c, f.m, f.report, f.needs, 8192, fit.PlaceGPU); got.Source != "measured" || got.TokensPerSecond != 24 {
+		t.Fatalf("a load and then an answer: choice = %+v, want one measured choice", got)
+	}
+	if got := choiceFor(resolved("--jinja"), f.m, f.report, f.needs, 8192, fit.PlaceGPU); got.Source != "estimate" {
+		t.Fatalf("other args: choice = %+v, want an estimate", got)
+	}
+	// The file is rewritten with another size.
+	if err := os.WriteFile(f.m.Path, make([]byte, 2000), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.m.Shape.FileBytes = 2000
+	if got := choiceFor(c, f.m, f.report, f.needs, 8192, fit.PlaceGPU); got.Source != "estimate" || got.TokensPerSecond != 0 {
+		t.Fatalf("another file: choice = %+v, want an estimate", got)
+	}
+}
+
+func TestWithoutADatabaseNothingIsRecordedOrMeasured(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if recordFunc(nil, logger) != nil {
+		t.Fatal("recordFunc has a function without a database")
+	}
+	m := models.Model{ID: "qwen", Kind: models.KindChat, Shape: engine.Shape{FileBytes: 1000, MaxContext: 131072}}
+	report := hw.Report{GPU: &hw.GPU{TotalBytes: 24 << 30}, RAMBytes: 64 << 30}
+	needs := measuredNeedsFor(nil, estimateOf(1<<30), logger)
+	if got := choiceFor(resolved(""), m, report, needs, 8192, fit.PlaceGPU); got.Source != "estimate" {
+		t.Fatalf("choice = %+v, want an estimate", got)
+	}
 }

@@ -46,6 +46,21 @@ type Choice struct {
 	RAMBytes  int64  `json:"ramBytes"`
 	Source    string `json:"source" enum:"estimate,measured,unknown"`
 	Capped    bool   `json:"capped"` // the number asked for was above the model's maximum
+	// TokensPerSecond is how fast answers came on this size and placement; 0 = not known.
+	TokensPerSecond float64 `json:"tokensPerSecond"`
+}
+
+// PlacementName is the inverse of Choice.Spec.
+func PlacementName(p engine.Placement) string {
+	switch p.Kind {
+	case engine.PlaceExperts:
+		return PlaceExperts
+	case engine.PlaceLayers:
+		return PlaceLayers
+	case engine.PlaceCPU:
+		return PlaceCPU
+	}
+	return PlaceGPU
 }
 
 // Spec is the engine placement of the choice.
@@ -178,6 +193,7 @@ func (f fitter) build(context int, placement string, layers int) Choice {
 	return Choice{
 		Context: context, Placement: placement, Layers: layers, Fit: f.label(res),
 		VRAMBytes: res.VRAMBytes, RAMBytes: res.RAMBytes, Source: res.Source,
+		TokensPerSecond: res.TokensPerSecond,
 	}
 }
 

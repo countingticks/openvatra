@@ -45,6 +45,7 @@ describe('fitHint', () => {
     placement: 'gpu',
     ramBytes: 2 * GB,
     vramBytes: 6 * GB,
+    tokensPerSecond: 0,
     source: 'estimate'
   }
 

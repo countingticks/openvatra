@@ -51,7 +51,8 @@ type Shape struct {
 type Resources struct {
 	VRAMBytes, RAMBytes int64
 	Known               bool
-	Source              string // "estimate" or "measured"; "" when !Known
+	Source              string  // "estimate" or "measured"; "" when !Known
+	TokensPerSecond     float64 // measured only; 0 = not known
 }
 
 type State string
