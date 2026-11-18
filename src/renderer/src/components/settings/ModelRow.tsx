@@ -64,7 +64,13 @@ export function ModelRow({
         )}
       >
         <div className="overflow-hidden">
-          <ModelOptionsForm id={optionsId} model={model} options={options} onChange={onOptions} />
+          <ModelOptionsForm
+            id={optionsId}
+            model={model}
+            options={options}
+            expanded={expanded}
+            onChange={onOptions}
+          />
         </div>
       </div>
     </li>

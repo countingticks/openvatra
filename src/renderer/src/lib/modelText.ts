@@ -1,4 +1,5 @@
 // Words and the status dot for models, used by the model button and its popover.
+import type { Choice } from '@renderer/core/generated'
 import type { ModelInfo } from '@renderer/core/types'
 
 export function formatSize(bytes: number): string {
@@ -20,6 +21,28 @@ export function parseContext(text: string): number | undefined {
   if (!/^\d+$/.test(text.trim())) return undefined
   const size = Number(text)
   return size >= contextMin && size <= contextMax ? size : undefined
+}
+
+/** What a context size and placement would mean for this PC, as one line for the options of a model. */
+export function fitHint(choice: Choice, gpuTotalBytes: number | null): string {
+  const prefix = `${formatContext(choice.context)} tokens${choice.capped ? " (the model's maximum)" : ''}`
+  const vram = formatSize(choice.vramBytes)
+  const ram = formatSize(choice.ramBytes)
+  switch (choice.fit) {
+    case 'fits':
+      return `${prefix} · fits on your GPU (${gpuTotalBytes === null ? vram : `${vram} of ${formatSize(gpuTotalBytes)}`})`
+    case 'slower':
+      if (choice.placement === 'experts')
+        return `${prefix} · experts in RAM: slower · ${vram} GPU, ${ram} RAM`
+      if (choice.placement === 'layers') {
+        return `${prefix} · ${choice.layers} layers on the GPU: slower · ${vram} GPU, ${ram} RAM`
+      }
+      return `${prefix} · CPU only: slower · ${ram} RAM`
+    case 'tooBig':
+      return `${prefix} · too big for this PC · needs ${choice.placement === 'cpu' ? `${ram} RAM` : `${vram} GPU, ${ram} RAM`}`
+    case 'unknown':
+      return `${prefix} · memory use can't be estimated for this model`
+  }
 }
 
 /** Classes for a model's status dot; always shown next to words, so colour is never the only signal. */

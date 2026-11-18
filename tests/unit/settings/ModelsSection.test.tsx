@@ -1,5 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { App } from '@renderer/App'
 import { coreApi } from '@renderer/core/coreApi'
 import type { LlamaCppSettings, LlamaServerSettings } from '@renderer/core/generated'
@@ -7,7 +7,7 @@ import { defaultEngineSettings, defaultLlamacppSettings } from '@renderer/core/m
 import { settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState } from '../../../src/shared/core'
 import type { ModelInfo } from '@renderer/core/types'
-import { coreWrites, type FakeCoreHttp } from '../fakeCoreHttp'
+import { coreWrites, fitQueries, type FakeCoreHttp } from '../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../renderWithStore'
 
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
@@ -544,6 +544,55 @@ describe('Settings → Models', () => {
         fireEvent.click(await screen.findByRole('button', { name: `Options for ${model.id}` }))
         return { ...rendered, group: screen.getByRole('group', { name: `Options for ${model.id}` }) }
       }
+
+      describe('the hint', () => {
+        it('asks core about Auto and shows the answer, and asks nothing for an embedding model', async () => {
+          const { coreHttp, group } = await openSized()
+
+          expect(
+            await within(group).findByText(/^32K tokens · fits on your GPU \(4\.0 GB of /)
+          ).toBeInTheDocument()
+          expect(fitQueries(coreHttp)).toEqual([{ context: 'auto', placement: 'auto' }])
+
+          fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.id}` }))
+          await screen.findByRole('group', { name: `Options for ${nomic.id}` })
+          expect(fitQueries(coreHttp)).toHaveLength(1)
+        })
+
+        it('asks about a typed size once, 300 ms after the last keystroke', async () => {
+          const { coreHttp, group } = await openSized({ [qwen.id]: { context: 32768 } })
+          await within(group).findByText(/fits on your GPU/)
+          const input = within(group).getByLabelText('Context size in tokens')
+          const before = fitQueries(coreHttp).length
+
+          vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+          try {
+            fireEvent.change(input, { target: { value: '6553' } })
+            act(() => void vi.advanceTimersByTime(200))
+            fireEvent.change(input, { target: { value: '65536' } })
+            act(() => void vi.advanceTimersByTime(299))
+            expect(fitQueries(coreHttp)).toHaveLength(before)
+            act(() => void vi.advanceTimersByTime(1))
+          } finally {
+            vi.useRealTimers()
+          }
+
+          await waitFor(() => expect(fitQueries(coreHttp)).toHaveLength(before + 1))
+          expect(fitQueries(coreHttp).at(-1)).toEqual({ context: '65536', placement: 'auto' })
+        })
+
+        it('asks at once when the placement changes', async () => {
+          const { coreHttp, group } = await openSized()
+          await within(group).findByText(/fits on your GPU/)
+
+          fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
+          await choose('CPU only')
+
+          await waitFor(() =>
+            expect(fitQueries(coreHttp).at(-1)).toEqual({ context: 'auto', placement: 'cpu' })
+          )
+        })
+      })
 
       it('shows Auto for both on a chat model, and neither on an embedding model', async () => {
         const { group } = await openSized()
