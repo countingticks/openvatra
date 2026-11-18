@@ -264,8 +264,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// and placement are chosen for this report.
 	hardware := hw.NewChecker(enginePath, logger)
 	providerSeam := seam.NewRegistry[provider.Provider]()
+	// Estimates, with what real loads measured taking their place; without a database every choice is an estimate.
+	needs := measuredNeedsFor(chatStore, llama.Needs, logger)
 	lc := llamacpp.New(llamacpp.Config{
-		Plan:           planFunc(resolve, hardware.Get, llama.Needs, logger),
+		Plan:           planFunc(resolve, hardware.Get, needs, logger),
+		Record:         recordFunc(chatStore, logger),
 		Start:          startFunc(llama, logger),
 		EmbeddingModel: func() string { return resolveEmbedding(resolve()) },
 		IdleTimeout: func(id string) time.Duration {
@@ -281,7 +284,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 			if err != nil {
 				return nil, err
 			}
-			return toProviderModels(c, found, hardware.Get(), llama.Needs), nil
+			return toProviderModels(c, found, hardware.Get(), needs), nil
 		},
 	})
 	providerSeam.Register(lc)
@@ -332,9 +335,9 @@ func run(args []string, stdout, stderr io.Writer) error {
 	choose := func(m models.Model) *fit.Choice {
 		c := resolve()
 		size, placement := c.Size(m.ID)
-		return choiceFor(c, m, hardware.Get(), llama.Needs, size, placement)
+		return choiceFor(c, m, hardware.Get(), needs, size, placement)
 	}
-	fitAt := fitFunc(resolve, hardware.Get, llama.Needs)
+	fitAt := fitFunc(resolve, hardware.Get, needs)
 	feed.Start(ctx, eventLog, lc, listModels, choose, dl)
 	defer lc.Close() // after the server is down, so no request is mid-stream
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
@@ -391,9 +394,96 @@ func resolveEmbedding(c llamacpp.Resolved) string {
 	return models.ResolveEmbedding(found, c.EmbeddingModel)
 }
 
+// needsFor gives the Needs for what spec would start: its measurements first, then the engine's estimate.
+type needsFor func(spec engine.Spec) fit.Needs
+
+// measuredNeeds answers from the measured rows where one matches the size and placement asked about, and from needs
+// otherwise. A row with only a speed keeps the estimate's memory and adds the speed.
+func measuredNeeds(rows []store.ModelFit, needs fit.Needs) fit.Needs {
+	return func(s engine.Spec) engine.Resources {
+		placement, layers := fit.PlacementName(s.Placement), 0
+		if placement == fit.PlaceLayers {
+			layers = s.Placement.Layers
+		}
+		for _, row := range rows {
+			if row.Context != s.Context || row.Placement != placement || row.Layers != layers {
+				continue
+			}
+			if row.Memory {
+				return engine.Resources{VRAMBytes: row.VRAMBytes, RAMBytes: row.RAMBytes, Known: true, Source: "measured",
+					TokensPerSecond: row.TokensPerSecond}
+			}
+			res := needs(s)
+			if res.Known {
+				res.TokensPerSecond = row.TokensPerSecond
+			}
+			return res
+		}
+		return needs(s)
+	}
+}
+
+// measuredNeedsFor reads the measured rows of the model spec starts, once per call. Without a database, or when they
+// can't be read, it is plain needs.
+func measuredNeedsFor(db *store.Store, needs fit.Needs, logger *slog.Logger) needsFor {
+	return func(spec engine.Spec) fit.Needs {
+		if db == nil {
+			return needs
+		}
+		key, err := fitModelKey(spec)
+		if err != nil {
+			logger.Debug("no measured fits: the model file can't be read", "model", spec.Model, "err", err)
+			return needs
+		}
+		rows, err := db.ModelFits(context.Background(), key)
+		if err != nil {
+			logger.Debug("no measured fits: the database can't be read", "model", spec.Model, "err", err)
+			return needs
+		}
+		return measuredNeeds(rows, needs)
+	}
+}
+
+// fitModelKey names the model spec starts as it was measured: a changed file or set of arguments is another key.
+func fitModelKey(spec engine.Spec) (store.FitModel, error) {
+	info, err := os.Stat(spec.Path)
+	if err != nil {
+		return store.FitModel{}, err
+	}
+	return store.FitModel{
+		ModelID: spec.Model, Projector: spec.Projector != "", Args: config.JoinArgs(spec.Args),
+		FileBytes: spec.Shape.FileBytes, FileMtime: info.ModTime(),
+	}, nil
+}
+
+// recordFunc keeps what the provider measured; a failure is a warning and nothing else. nil without a database.
+func recordFunc(db *store.Store, logger *slog.Logger) func(llamacpp.Measurement) {
+	if db == nil {
+		return nil
+	}
+	return func(m llamacpp.Measurement) {
+		key, err := fitModelKey(m.Spec)
+		if err == nil {
+			place := store.FitPlace{Context: m.Spec.Context, Placement: fit.PlacementName(m.Spec.Placement)}
+			if place.Placement == fit.PlaceLayers {
+				place.Layers = m.Spec.Placement.Layers
+			}
+			if m.Memory.Known {
+				err = db.RecordFitMemory(context.Background(), key, place, m.Memory.VRAMBytes, m.Memory.RAMBytes)
+			}
+			if err == nil && m.TokensPerSecond > 0 {
+				err = db.RecordFitSpeed(context.Background(), key, place, m.TokensPerSecond)
+			}
+		}
+		if err != nil {
+			logger.Warn("could not keep a measurement", "model", m.Spec.Model, "err", err)
+		}
+	}
+}
+
 // toProviderModels is the models folder as the provider seam shows it: readable chat and embedding models, in order.
 // A chat model's Context is the size it loads with under r.
-func toProviderModels(c llamacpp.Resolved, found []models.Model, r hw.Report, needs fit.Needs) []provider.Model {
+func toProviderModels(c llamacpp.Resolved, found []models.Model, r hw.Report, needs needsFor) []provider.Model {
 	out := make([]provider.Model, 0, len(found))
 	for _, m := range found {
 		switch m.Kind {
@@ -411,7 +501,7 @@ func toProviderModels(c llamacpp.Resolved, found []models.Model, r hw.Report, ne
 
 // planFunc builds the provider's planner: look the model up on disk and say what to start for it, at the size and
 // placement fit chooses for the hardware (the cached report).
-func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs fit.Needs,
+func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs needsFor,
 	logger *slog.Logger,
 ) func(id string, embedding bool) (engine.Spec, error) {
 	return func(id string, embedding bool) (engine.Spec, error) {
@@ -435,14 +525,14 @@ func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs
 }
 
 // chosen is choiceFor with the size and placement stored for m.
-func chosen(c llamacpp.Resolved, m models.Model, r hw.Report, needs fit.Needs) *fit.Choice {
+func chosen(c llamacpp.Resolved, m models.Model, r hw.Report, needs needsFor) *fit.Choice {
 	size, placement := c.Size(m.ID)
 	return choiceFor(c, m, r, needs, size, placement)
 }
 
 // fitFunc answers what a context size (0 = auto) and placement would mean for chat model id, in place of the stored
 // ones. Nothing is loaded, written or published.
-func fitFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs fit.Needs,
+func fitFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs needsFor,
 ) func(id string, context int, placement string) (fit.Choice, error) {
 	return func(id string, context int, placement string) (fit.Choice, error) {
 		c := resolve()
@@ -455,7 +545,7 @@ func fitFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs 
 }
 
 // fitModel is fitFunc over the models already found. An id that is not a chat model is an unknown model.
-func fitModel(c llamacpp.Resolved, found []models.Model, id string, r hw.Report, needs fit.Needs, context int,
+func fitModel(c llamacpp.Resolved, found []models.Model, id string, r hw.Report, needs needsFor, context int,
 	placement string,
 ) (fit.Choice, error) {
 	for _, m := range found {
@@ -482,11 +572,11 @@ func loadShape(c llamacpp.Resolved, m models.Model) engine.Shape {
 // choiceFor is the context size and placement chat model m loads with: the user's own (options.context and
 // options.placement; callers pass c.Size), with fit filling in what is auto (context 0, placement "auto"). nil for a
 // model that is not a chat model.
-func choiceFor(c llamacpp.Resolved, m models.Model, r hw.Report, needs fit.Needs, context int, placement string) *fit.Choice {
+func choiceFor(c llamacpp.Resolved, m models.Model, r hw.Report, needs needsFor, context int, placement string) *fit.Choice {
 	if m.Kind != models.KindChat {
 		return nil
 	}
-	choice := fit.Check(loadShape(c, m), r, needs, context, placement)
+	choice := fit.Check(loadShape(c, m), r, needs(specFor(c, m, false, nil)), context, placement)
 	return &choice
 }
 

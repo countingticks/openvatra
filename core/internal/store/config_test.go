@@ -105,7 +105,7 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 4 {
+	if v, _ := s.Version(); v != 5 {
 		t.Fatalf("version = %d", v)
 	}
 	if _, err := s.GetChat(context.Background(), chat.ID); err != nil {

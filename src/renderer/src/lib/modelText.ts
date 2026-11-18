@@ -25,6 +25,16 @@ export function parseContext(text: string): number | undefined {
 
 /** What a context size and placement would mean for this PC, as one line for the options of a model. */
 export function fitHint(choice: Choice, gpuTotalBytes: number | null): string {
+  const line = fitLine(choice, gpuTotalBytes)
+  if (choice.fit === 'unknown') return line
+  const measured = choice.source === 'measured' ? ' · measured' : ''
+  const tokens = Math.max(1, Math.round(choice.tokensPerSecond))
+  const speed =
+    choice.tokensPerSecond > 0 ? ` · about ${tokens} ${tokens === 1 ? 'token' : 'tokens'} per second` : ''
+  return line + measured + speed
+}
+
+function fitLine(choice: Choice, gpuTotalBytes: number | null): string {
   const prefix = `${formatContext(choice.context)} tokens${choice.capped ? " (the model's maximum)" : ''}`
   const vram = formatSize(choice.vramBytes)
   const ram = formatSize(choice.ramBytes)

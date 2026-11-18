@@ -145,3 +145,23 @@ func TestSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestPlacementNameInvertsSpec(t *testing.T) {
+	for _, c := range []Choice{
+		{Placement: PlaceGPU}, {Placement: PlaceExperts}, {Placement: PlaceLayers, Layers: 12}, {Placement: PlaceCPU},
+	} {
+		if got := PlacementName(c.Spec()); got != c.Placement {
+			t.Errorf("PlacementName(%+v) = %q, want %q", c.Spec(), got, c.Placement)
+		}
+	}
+}
+
+func TestChoiceCarriesTheMeasuredSpeed(t *testing.T) {
+	measured := func(engine.Spec) engine.Resources {
+		return engine.Resources{VRAMBytes: gib, Known: true, Source: "measured", TokensPerSecond: 24}
+	}
+	got := Check(small, machine(12, 32), measured, 8192, PlaceGPU)
+	if got.TokensPerSecond != 24 || got.Source != "measured" {
+		t.Fatalf("choice = %+v, want measured at 24 tokens per second", got)
+	}
+}

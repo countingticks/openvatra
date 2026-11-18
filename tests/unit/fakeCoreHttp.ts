@@ -172,6 +172,7 @@ export function createFakeCoreHttp(): FakeCoreHttp {
       placement: 'gpu',
       ramBytes: 0,
       vramBytes: 4 * 1024 ** 3,
+      tokensPerSecond: 0,
       source: 'estimate'
     },
     hello: { log: 'log-1', head: 0, reset: false },

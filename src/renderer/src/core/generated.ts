@@ -423,6 +423,7 @@ export type Choice = {
   placement: 'gpu' | 'experts' | 'layers' | 'cpu'
   ramBytes: number
   source: 'estimate' | 'measured' | 'unknown'
+  tokensPerSecond: number
   vramBytes: number
 }
 export type Model = {

@@ -30,7 +30,10 @@ export const reservedFlags = [
   '-ncmoe',
   '--n-cpu-moe',
   '-fit',
-  '--fit'
+  '--fit',
+  '-lv',
+  '--verbosity',
+  '--log-verbosity'
 ]
 
 /** The longest argument text a box may hold. */
@@ -98,7 +101,7 @@ const integer = (value: string | undefined): number | undefined =>
   value !== undefined && /^[0-9]+$/.test(value) ? Number(value) : undefined
 
 /**
- * Takes the size and placement flags that became core's own (-c, -ngl, --cpu-moe, --n-cpu-moe, --fit and their
+ * Takes the size and placement flags that became core's own (-c, -ngl, --cpu-moe, --n-cpu-moe, --fit, -lv and their
  * aliases) out of argument text written before they were reserved, turning each into the field it means. The TS twin
  * of config.UpgradeArgs in core; both read core/internal/config/testdata/upgrade.json. Text without such a flag, or
  * that doesn't split, comes back as it was.
@@ -157,6 +160,9 @@ export function upgradeArgs(text: string): UpgradedArgs {
       }
       case '-ncmoe':
       case '--n-cpu-moe':
+      case '-lv':
+      case '--verbosity':
+      case '--log-verbosity':
         taken = true
         dropped.push(value().flag)
         break

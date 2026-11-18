@@ -62,15 +62,15 @@ func TestCommand(t *testing.T) {
 		spec engine.Spec
 		want []string
 	}{
-		"gpu at 32768": {engine.Spec{Path: "P", Context: 32768}, with("-c", "32768", "-ngl", "all", "--fit", "off")},
+		"gpu at 32768": {engine.Spec{Path: "P", Context: 32768}, with("-c", "32768", "-ngl", "all", "--fit", "off", "-lv", "4")},
 		"experts": {engine.Spec{Path: "P", Context: 8192, Placement: engine.Placement{Kind: engine.PlaceExperts}},
-			with("-c", "8192", "-ngl", "all", "--cpu-moe", "--fit", "off")},
-		"layers 20":  {engine.Spec{Path: "P", Placement: layers(20)}, with("-ngl", "20", "--fit", "off")},
-		"layers 0":   {engine.Spec{Path: "P", Placement: layers(0)}, with("-ngl", "0", "--fit", "off")},
-		"cpu":        {engine.Spec{Path: "P", Placement: engine.Placement{Kind: engine.PlaceCPU}}, with("-ngl", "0", "--fit", "off")},
-		"no context": {engine.Spec{Path: "P"}, with("-ngl", "all", "--fit", "off")},
+			with("-c", "8192", "-ngl", "all", "--cpu-moe", "--fit", "off", "-lv", "4")},
+		"layers 20":  {engine.Spec{Path: "P", Placement: layers(20)}, with("-ngl", "20", "--fit", "off", "-lv", "4")},
+		"layers 0":   {engine.Spec{Path: "P", Placement: layers(0)}, with("-ngl", "0", "--fit", "off", "-lv", "4")},
+		"cpu":        {engine.Spec{Path: "P", Placement: engine.Placement{Kind: engine.PlaceCPU}}, with("-ngl", "0", "--fit", "off", "-lv", "4")},
+		"no context": {engine.Spec{Path: "P"}, with("-ngl", "all", "--fit", "off", "-lv", "4")},
 		"projector and user's args last": {engine.Spec{Path: "P", Context: 16384, Projector: "M", Args: []string{"--temp", "0.7"}},
-			with("-c", "16384", "-ngl", "all", "--fit", "off", "--mmproj", "M", "--temp", "0.7")},
+			with("-c", "16384", "-ngl", "all", "--fit", "off", "-lv", "4", "--mmproj", "M", "--temp", "0.7")},
 		"embedding": {engine.Spec{Path: "P", Embedding: true, Context: 8192, Projector: "M", Placement: layers(3)},
 			with("--embeddings")},
 	}
@@ -113,7 +113,7 @@ func TestStartLogsWithModelPrefix(t *testing.T) {
 	if !strings.HasPrefix(out.String(), "[fake] fake-server listening") {
 		t.Fatalf("log = %q, want the start-up line prefixed [fake] ", out.String())
 	}
-	if !strings.Contains(out.String(), "[fake] fake-server args: -m model.gguf --host 127.0.0.1 -c 8192 -ngl all --cpu-moe --fit off --mmproj mmproj.gguf --port ") {
+	if !strings.Contains(out.String(), "[fake] fake-server args: -m model.gguf --host 127.0.0.1 -c 8192 -ngl all --cpu-moe --fit off -lv 4 --mmproj mmproj.gguf --port ") {
 		t.Fatalf("log = %q, want the arguments line", out.String())
 	}
 }
@@ -200,5 +200,61 @@ func TestNeeds(t *testing.T) {
 				t.Fatalf("Needs = %+v, want %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+// startLoad starts the fake server printing the load log at path, and returns its instance and the prefixed log.
+func startLoad(t *testing.T, path string) (engine.Instance, *bytes.Buffer) {
+	t.Helper()
+	var out bytes.Buffer
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	spec := engine.Spec{Model: "fake", Path: "model.gguf", Context: 8192}
+	if path != "" {
+		spec.Args = []string{"-load-log", path}
+	}
+	inst, err := New(fakePath, &out).Start(ctx, spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inst, &out
+}
+
+func TestStartMeasuresTheLoad(t *testing.T) {
+	const mib = 1 << 20
+	cases := map[string]struct {
+		log        string
+		vram, ram  int64
+		wantKnown  bool
+		wantSource string
+	}{
+		"a real b12078 load": {"testdata/load-b12078-moe-experts.log", 2271205130, 19818736518, true, "measured"},
+		"odd lines":          {"testdata/load-odd.log", 150*mib + mib/2, 11 * mib, true, "measured"},
+		"no buffer line":     {"", 0, 0, false, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			inst, _ := startLoad(t, tc.log)
+			defer inst.Stop(5 * time.Second)
+			got, ok := inst.Measured()
+			want := engine.Resources{VRAMBytes: tc.vram, RAMBytes: tc.ram, Known: tc.wantKnown, Source: tc.wantSource}
+			if ok != tc.wantKnown || got != want {
+				t.Fatalf("Measured = %+v, %v, want %+v, %v", got, ok, want, tc.wantKnown)
+			}
+		})
+	}
+}
+
+func TestMeasuringKeepsTheLogWhole(t *testing.T) {
+	inst, out := startLoad(t, "testdata/load-odd.log")
+	inst.Stop(5 * time.Second) // the buffer is read only after the process and its output copier are gone
+	for _, line := range []string{
+		"[fake] 0.00.000.001 I load_tensors:   CUDA0 model buffer size =   100.00 MiB\n",
+		"[fake] 0.00.000.005 I sched_reserve:    CUDA0 compute buffer size =   abc MiB\n",
+		"[fake] fake-server listening",
+	} {
+		if !strings.Contains(out.String(), line) {
+			t.Fatalf("log = %q, want it to hold %q", out.String(), line)
+		}
 	}
 }

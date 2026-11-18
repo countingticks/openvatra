@@ -296,3 +296,102 @@ func TestCompleteUnknownModelSendsNothing(t *testing.T) {
 		t.Fatalf("%d requests reached the server", n)
 	}
 }
+
+// answerAt is a handler that finishes every answer with the speed speeds[n] (0 = no timings at all).
+func answerAt(speeds ...float64) *upstream {
+	return &upstream{handler: func(n int, w http.ResponseWriter, _ *http.Request) {
+		last := `{"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1}}`
+		if speeds[n] > 0 {
+			last = fmt.Sprintf(`{"choices":[],"timings":{"predicted_per_second":%v}}`, speeds[n])
+		}
+		sse(w, `{"choices":[{"delta":{"content":"hi"}}]}`, last, `[DONE]`)
+	}}
+}
+
+// recordingServer is a provider answering from up, with what it records collected in the returned recorder.
+func recordingServer(t *testing.T, up *upstream) (*Provider, *recorder) {
+	t.Helper()
+	url := up.start(t)
+	rec := &recorder{}
+	p := newServerProvider(&eventLog{}, func(string) string { return url })
+	p.cfg.Record = rec.record
+	return p, rec
+}
+
+func answer(t *testing.T, p *Provider, model string) {
+	t.Helper()
+	req := hello()
+	req.Model = model
+	if _, err := p.Complete(context.Background(), req, func(provider.Delta) {}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func speedsOf(ms []Measurement) []float64 {
+	out := make([]float64, len(ms))
+	for i, m := range ms {
+		out[i] = m.TokensPerSecond
+	}
+	return out
+}
+
+func TestCompleteRecordsTheMedianOfTheLastAnswers(t *testing.T) {
+	cases := map[string]struct {
+		speeds []float64
+		want   []float64
+	}{
+		"three answers":                  {[]float64{10, 30, 20}, []float64{10, 20, 20}},
+		"six answers keep the last five": {[]float64{10, 20, 30, 40, 50, 60}, []float64{10, 15, 20, 25, 30, 40}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			p, rec := recordingServer(t, answerAt(tc.speeds...))
+			for range tc.speeds {
+				answer(t, p, "qwen")
+			}
+			got := rec.all()
+			if !slices.Equal(speedsOf(got), tc.want) || got[0].Spec.Model != "qwen" {
+				t.Fatalf("recorded %+v, want speeds %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCompleteRecordsNothingForAnswersWithoutASpeed(t *testing.T) {
+	up := &upstream{handler: func(n int, w http.ResponseWriter, r *http.Request) {
+		switch n {
+		case 0: // no timings
+			sse(w, `{"choices":[{"delta":{"content":"hi"}}]}`, `[DONE]`)
+		case 1: // the server fails
+			http.Error(w, "boom", http.StatusInternalServerError)
+		default: // cancelled mid-stream, with a speed already reported
+			sse(w, `{"choices":[{"delta":{"content":"half"}}],"timings":{"predicted_per_second":50}}`)
+			<-r.Context().Done()
+		}
+	}}
+	p, rec := recordingServer(t, up)
+	answer(t, p, "qwen")
+	req := hello()
+	req.Model = "qwen"
+	if _, err := p.Complete(context.Background(), req, func(provider.Delta) {}); err == nil {
+		t.Fatal("a 500 answer did not fail")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := p.Complete(ctx, req, func(provider.Delta) { cancel() }); err != nil {
+		t.Fatal(err)
+	}
+	if got := rec.all(); len(got) != 0 {
+		t.Fatalf("recorded %+v, want nothing", got)
+	}
+}
+
+func TestCompleteStartsANewListAfterTheModelReloads(t *testing.T) {
+	p, rec := recordingServer(t, answerAt(10, 20, 30))
+	answer(t, p, "qwen")
+	answer(t, p, "other") // unloads qwen
+	answer(t, p, "qwen")
+	if got := speedsOf(rec.all()); !slices.Equal(got, []float64{10, 20, 30}) {
+		t.Fatalf("recorded speeds %v, want each answer's own", got)
+	}
+}

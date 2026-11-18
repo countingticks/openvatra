@@ -51,7 +51,8 @@ type Shape struct {
 type Resources struct {
 	VRAMBytes, RAMBytes int64
 	Known               bool
-	Source              string // "estimate" or "measured"; "" when !Known
+	Source              string  // "estimate" or "measured"; "" when !Known
+	TokensPerSecond     float64 // measured only; 0 = not known
 }
 
 type State string
@@ -68,4 +69,6 @@ type Instance interface {
 	State() State
 	Stop(grace time.Duration) // tree terminate, kill after grace; returns when gone
 	Wait() <-chan struct{}    // closed when the process has exited
+	// Measured is what the server reported using while it loaded; false when it reported nothing.
+	Measured() (Resources, bool)
 }

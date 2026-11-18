@@ -86,5 +86,18 @@
     "args": "  --alias=\"my qwen\"\t--jinja ",
     "dropped": []
   },
+  { "name": "-lv takes its value", "text": "-lv 2 --jinja", "args": "--jinja", "dropped": ["-lv 2"] },
+  {
+    "name": "--log-verbosity=3 inline",
+    "text": "--log-verbosity=3",
+    "args": "",
+    "dropped": ["--log-verbosity=3"]
+  },
+  {
+    "name": "--verbosity at the end",
+    "text": "--jinja --verbosity",
+    "args": "--jinja",
+    "dropped": ["--verbosity"]
+  },
   { "name": "empty text", "text": "", "args": "", "dropped": [] }
 ]

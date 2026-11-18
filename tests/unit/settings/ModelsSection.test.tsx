@@ -442,6 +442,7 @@ describe('Settings → Models', () => {
           placement: 'gpu',
           ramBytes: 0,
           vramBytes: 1,
+          tokensPerSecond: 0,
           source: 'estimate'
         }
       }
@@ -518,6 +519,7 @@ describe('Settings → Models', () => {
         placement: 'gpu',
         ramBytes: 0,
         vramBytes: 1,
+        tokensPerSecond: 0,
         source: 'estimate'
       })
       const sized: ModelInfo = { ...qwen, context: choice(32768) }
