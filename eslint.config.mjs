@@ -58,7 +58,12 @@ export default defineConfig(
   },
   {
     // The host is reached through Platform, so the UI runs unchanged on another host and tests fake one object.
-    files: ['src/app/**/*.{ts,tsx}', 'src/renderer/src/**/*.{ts,tsx}', 'tests/unit/**/*.{ts,tsx}'],
+    files: [
+      'src/app/**/*.{ts,tsx}',
+      'src/shared/**/*.ts',
+      'src/renderer/src/**/*.{ts,tsx}',
+      'tests/unit/**/*.{ts,tsx}'
+    ],
     ignores: ['src/renderer/src/main.tsx', 'src/renderer/src/desktopPlatform.ts'],
     rules: {
       'no-restricted-properties': [
@@ -68,6 +73,69 @@ export default defineConfig(
           property: 'api',
           message:
             'Use usePlatform() (or the platform passed to createAppStore); only main.tsx and desktopPlatform.ts read window.api.'
+        }
+      ]
+    }
+  },
+  {
+    // Rule 1: the UI never reaches Electron, and folders reach each other by alias, never by `../`.
+    files: ['src/app/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            { name: 'electron', message: 'src/app is host-independent: reach the host through Platform.' }
+          ],
+          patterns: [
+            {
+              group: ['electron/*'],
+              message: 'src/app is host-independent: reach the host through Platform.'
+            },
+            {
+              regex: '^\\.\\./',
+              message: 'Import across folders by alias (@app/<folder>/…), never with ../.'
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    files: ['src/shared/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'electron',
+              message: 'src/shared holds types and schemas used by both sides: no Electron.'
+            },
+            { name: '@app', message: 'src/shared is layer 0: it imports nothing from the UI.' }
+          ],
+          patterns: [
+            {
+              group: ['electron/*'],
+              message: 'src/shared holds types and schemas used by both sides: no Electron.'
+            },
+            { group: ['@app/*'], message: 'src/shared is layer 0: it imports nothing from the UI.' },
+            { regex: '^\\.\\./', message: 'Import across folders by alias, never with ../.' }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    files: ['src/renderer/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['@app/*'], message: 'The host imports the UI only through the bare @app entry.' },
+            { regex: '^\\.\\./', message: 'Import across folders by alias, never with ../.' }
+          ]
         }
       ]
     }
