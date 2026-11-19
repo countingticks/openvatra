@@ -1,3 +1,4 @@
+import fs from 'node:fs'
 import { defineConfig } from 'eslint/config'
 import tseslint from '@electron-toolkit/eslint-config-ts'
 import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
@@ -19,6 +20,20 @@ function banRoot(who) {
     message: `${who} is below the app root: it may not import @app, App, createApp or index.`
   }
 }
+
+// Features are reached through their index.ts only, and only along these edges (SPEC-app decision 12).
+const featureEdges = { settings: ['models'], chat: ['models'] }
+
+// A new feature folder gets its block without editing this file.
+const featureNames = fs
+  .readdirSync('src/app/features', { withFileTypes: true })
+  .filter((d) => d.isDirectory())
+  .map((d) => d.name)
+
+const banDeepFeature = ban(
+  ['@app/features/*/**'],
+  'Import a feature by its bare name (@app/features/<name>): its index.ts is the only entry.'
+)
 
 function layerBlock(files, banned) {
   return {
@@ -198,10 +213,24 @@ export default defineConfig(
     ),
     banRoot('store')
   ]),
-  layerBlock('src/app/shell/**', [banRoot('shell')]),
-  layerBlock('src/app/features/**', [
-    ban(['@app/shell'], 'A feature may not import shell.'),
-    banRoot('a feature')
-  ]),
+  layerBlock('src/app/shell/**', [banRoot('shell'), banDeepFeature]),
+  layerBlock('src/app/*.{ts,tsx}', [banDeepFeature]),
+  ...featureNames.map((a) =>
+    layerBlock(`src/app/features/${a}/**`, [
+      ban(['@app/shell'], 'A feature may not import shell.'),
+      banRoot('a feature'),
+      banDeepFeature,
+      ...featureNames
+        .filter((b) => !featureEdges[a]?.includes(b))
+        .map((b) =>
+          ban(
+            [`@app/features/${b}`],
+            b === a
+              ? `Import ${a}'s own files relatively, not through @app/features/${a}.`
+              : `${a} may not import ${b}: the allowed feature edges are listed in eslint.config.mjs.`
+          )
+        )
+    ])
+  ),
   eslintConfigPrettier
 )

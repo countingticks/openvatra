@@ -43,7 +43,24 @@ const cases: Array<[string, string, string, boolean]> = [
   ['core imports a store type', 'src/app/core/Fake.ts', imp('@app/store/store', true), false],
   ['core imports a store value', 'src/app/core/Fake.ts', imp('@app/store/store'), true],
   ['store imports a feature', 'src/app/store/Fake.ts', imp('@app/features/models'), true],
-  ['shell imports the app root', 'src/app/shell/Fake.tsx', imp('@app/App'), true]
+  ['shell imports the app root', 'src/app/shell/Fake.tsx', imp('@app/App'), true],
+  [
+    'feature imports a deep path',
+    'src/app/features/settings/Fake.ts',
+    imp('@app/features/models/useModels'),
+    true
+  ],
+  ['feature imports along an edge', 'src/app/features/settings/Fake.ts', imp('@app/features/models'), false],
+  ['models imports settings', 'src/app/features/models/Fake.ts', imp('@app/features/settings'), true],
+  ['chat imports models', 'src/app/features/chat/Fake.tsx', imp('@app/features/models'), false],
+  ['code imports models', 'src/app/features/code/Fake.tsx', imp('@app/features/models'), true],
+  [
+    'shell imports a deep feature path',
+    'src/app/shell/Fake.tsx',
+    imp('@app/features/models/ModelsDialog'),
+    true
+  ],
+  ['shell imports a feature', 'src/app/shell/Fake.tsx', imp('@app/features/models'), false]
 ]
 
 describe('lint: host and folder edges', () => {

@@ -96,6 +96,9 @@ vendor/          git submodules (Open WebUI); never edit files here
 - The renderer uses no Node APIs; it reaches core over loopback HTTP with a `ui` token, and everything else
   privileged goes through `window.api`, typed in `src/shared/ipc.ts`.
 - Keep comments for the _why_; the code should say the _what_.
+- Layers, lowest first: `shared → lib/ui → platform/core/store → features → shell/app root → host`. A folder
+  imports only layers below it; a feature imports another only as `@app/features/<name>`, along the edges listed in
+  `eslint.config.mjs`; cross-folder imports use the alias, never `../`. Lint enforces all of it.
 
 ## Security rules
 
