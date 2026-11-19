@@ -35,7 +35,15 @@ const cases: Array<[string, string, string, boolean]> = [
   ['bare @app from the host', 'src/renderer/src/fake.ts', imp('@app'), false],
   ['@shared from the host', 'src/renderer/src/fake.ts', imp('@shared/settings'), false],
   ['window.api in src/app', 'src/app/core/Fake.ts', readsApi, true],
-  ['window.api in src/shared', 'src/shared/fake.ts', readsApi, true]
+  ['window.api in src/shared', 'src/shared/fake.ts', readsApi, true],
+  ['ui imports store', 'src/app/ui/Fake.tsx', imp('@app/store/hooks'), true],
+  ['ui imports lib', 'src/app/ui/Fake.tsx', imp('@app/lib/utils'), false],
+  ['lib imports ui', 'src/app/lib/fake.ts', imp('@app/ui/button'), true],
+  ['platform imports core', 'src/app/platform/Fake.ts', imp('@app/core/coreApi'), true],
+  ['core imports a store type', 'src/app/core/Fake.ts', imp('@app/store/store', true), false],
+  ['core imports a store value', 'src/app/core/Fake.ts', imp('@app/store/store'), true],
+  ['store imports a feature', 'src/app/store/Fake.ts', imp('@app/features/models'), true],
+  ['shell imports the app root', 'src/app/shell/Fake.tsx', imp('@app/App'), true]
 ]
 
 describe('lint: host and folder edges', () => {

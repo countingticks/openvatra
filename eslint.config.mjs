@@ -6,6 +6,27 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 import eslintPluginJsxA11y from 'eslint-plugin-jsx-a11y'
 
+// A block banning imports by alias. Specifiers are matched as written; cross-folder imports are always `@app/…`.
+// Uses the typescript-eslint rule for `allowTypeImports`. Each folder gets exactly one block so none overrides another.
+function ban(group, message, allowTypeImports = false) {
+  return { group, message, ...(allowTypeImports ? { allowTypeImports } : {}) }
+}
+
+// `@app` itself and the app root files; as a regex because a gitignore-style `@app` would match everything below it.
+function banRoot(who) {
+  return {
+    regex: '^@app(/(App|createApp|index))?$',
+    message: `${who} is below the app root: it may not import @app, App, createApp or index.`
+  }
+}
+
+function layerBlock(files, banned) {
+  return {
+    files: [files],
+    rules: { '@typescript-eslint/no-restricted-imports': ['error', { patterns: banned }] }
+  }
+}
+
 export default defineConfig(
   { ignores: ['**/node_modules', '**/dist', '**/out', 'src/app/core/generated.ts'] },
   tseslint.configs.recommended,
@@ -140,5 +161,47 @@ export default defineConfig(
       ]
     }
   },
+  // Layers: shared → lib/ui → platform/core/store → features → shell/app root → host (see SPEC-app).
+  layerBlock('src/app/lib/**', [
+    ban(
+      ['@app/ui', '@app/platform', '@app/core', '@app/store', '@app/features', '@app/shell'],
+      'lib is layer 1: it imports @shared only.'
+    ),
+    banRoot('lib')
+  ]),
+  layerBlock('src/app/ui/**', [
+    ban(
+      ['@app/platform', '@app/core', '@app/store', '@app/features', '@app/shell'],
+      'ui is layer 1: it may import lib and @shared only.'
+    ),
+    banRoot('ui')
+  ]),
+  layerBlock('src/app/platform/**', [
+    ban(
+      ['@app/core', '@app/store', '@app/features', '@app/shell'],
+      'platform is layer 2: it may import lib, ui and @shared only.'
+    ),
+    banRoot('platform')
+  ]),
+  layerBlock('src/app/core/**', [
+    ban(['@app/store'], 'core may only `import type` from store.', true),
+    ban(
+      ['@app/features', '@app/shell'],
+      'core is layer 2: it may import lib, ui, platform and @shared only.'
+    ),
+    banRoot('core')
+  ]),
+  layerBlock('src/app/store/**', [
+    ban(
+      ['@app/features', '@app/shell'],
+      'store is layer 2: it may import lib, ui, platform, core and @shared only.'
+    ),
+    banRoot('store')
+  ]),
+  layerBlock('src/app/shell/**', [banRoot('shell')]),
+  layerBlock('src/app/features/**', [
+    ban(['@app/shell'], 'A feature may not import shell.'),
+    banRoot('a feature')
+  ]),
   eslintConfigPrettier
 )
