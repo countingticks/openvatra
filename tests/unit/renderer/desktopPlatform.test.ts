@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { desktopPlatform } from '@renderer/desktopPlatform'
+import { desktopPlatform } from '../../../src/renderer/src/desktopPlatform'
 import type { Api } from '@shared/ipc'
 import type { CoreState } from '@shared/core'
 import { defaultSettings } from '@shared/settings'

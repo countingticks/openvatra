@@ -3,7 +3,6 @@
   "include": [
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
-    "src/renderer/src/**/*.tsx",
     "src/app/**/*",
     "src/preload/*.d.ts",
     "src/shared/**/*",
@@ -18,10 +17,7 @@
     "paths": {
       "@app": ["src/app/index.ts"],
       "@app/*": ["src/app/*"],
-      "@shared/*": ["src/shared/*"],
-      "@renderer/*": [
-        "src/renderer/src/*"
-      ]
+      "@shared/*": ["src/shared/*"]
     }
   }
 }
