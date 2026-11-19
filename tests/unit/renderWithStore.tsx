@@ -1,15 +1,14 @@
-// Renders UI inside a real Redux store, so component tests exercise the actual reducers. Only the IPC to the main
-// process and core's HTTP side are faked: settings answer like main does (with the whole saved file),
-// window.api.files answers with example paths, window.api.appWindow records the window buttons and can report
-// maximize changes the way main would, and fetch is a fake core (coreHttp). tests/setup.ts removes the fakes after
-// each test.
+// Renders UI inside a real Redux store, so component tests exercise the actual reducers. The host is faked through
+// fakePlatform (settings answer like main does, files answer with example paths, the window buttons are recorded and
+// maximize changes can be reported the way main would), and fetch is a fake core (coreHttp). tests/setup.ts removes
+// the fakes after each test.
 import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@app/store/store'
 import type { CoreConnection, CoreState } from '../../src/shared/core'
 import type { ModelInfo } from '@app/core/types'
-import type { Api, AppApi, AppWindowApi, CoreApi, FilesApi, SettingsApi } from '../../src/shared/ipc'
+import type { AppApi, AppWindowApi, CoreApi, FilesApi, SettingsApi } from '../../src/shared/ipc'
 import type { DownloadItem, HardwareReport } from '@app/core/types'
 import type { CatalogView } from '@app/features/models/catalogView'
 import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@app/core/generated'
@@ -174,23 +173,6 @@ export function renderWithStore(
     maximized: options.maximized,
     omit: options.omit
   })
-  // Components read window.api until they move to usePlatform.
-  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
-    app: { quit: fake.quit },
-    core: {
-      getState: fake.core.state,
-      onState: fake.platform.core.onState,
-      restart: fake.core.restart,
-      openLog: fake.core.openLog
-    },
-    files: fake.files,
-    appWindow: {
-      ...fake.window,
-      onMaximizedChange: (callback) => fake.platform.window?.onMaximizedChange(callback) ?? (() => {})
-    }
-  }
-  vi.stubGlobal('api', api)
-
   const store = createAppStore({ platform: fake.platform, initialSettings: { ...defaultSettings, ...saved } })
   return {
     platform: fake,
