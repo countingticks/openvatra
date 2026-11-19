@@ -101,7 +101,7 @@
 }
 
 /*
- * Fonts ship with the app (the CSP allows only our own files); main.tsx imports the Fontsource packages.
+ * Fonts ship with the app (the CSP allows only our own files); src/app/index.ts imports the Fontsource packages.
  * font-sans is Tailwind's default, so Geist applies everywhere; font-serif is for the model's replies.
  */
 @theme {
