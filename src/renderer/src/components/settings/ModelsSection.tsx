@@ -62,7 +62,7 @@ export function ModelsSection(): React.JSX.Element {
         path={llamacpp.modelsDir}
         defaultText="The OpenVatra\Models folder in your user folder"
         browseText="Change…"
-        onBrowse={() => void pick('modelsDir')}
+        onBrowse={files && (() => void pick('modelsDir'))}
       />
       {problem && (
         <p role="alert" className="pt-3 text-destructive">
@@ -120,7 +120,7 @@ export function ModelsSection(): React.JSX.Element {
             path={engine.path}
             defaultText={bundledText}
             browseText="Use my own…"
-            onBrowse={() => void pick('llamaServer')}
+            onBrowse={files && (() => void pick('llamaServer'))}
           >
             {engine.path && (
               <Button variant="outline" size="sm" onClick={() => fail(updateEngine({ path: null }))}>

@@ -75,12 +75,16 @@ export function ModelButton(): React.JSX.Element {
         {state?.status === 'ready' && <ModelPicker models={models} />}
         <CudaEngineOffer variant="card" />
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => run(async () => core.restart?.())}>
-            Restart
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => run(async () => core.openLog?.())}>
-            Open log
-          </Button>
+          {core.restart && (
+            <Button variant="outline" size="sm" onClick={() => run(async () => core.restart?.())}>
+              Restart
+            </Button>
+          )}
+          {core.openLog && (
+            <Button variant="outline" size="sm" onClick={() => run(async () => core.openLog?.())}>
+              Open log
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

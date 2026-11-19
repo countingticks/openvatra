@@ -106,12 +106,16 @@ export function ModelList(): React.JSX.Element {
           Available models
         </h3>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => run(async () => platform.core.openLog?.())}>
-            Open log
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => run(async () => platform.core.restart?.())}>
-            Restart
-          </Button>
+          {platform.core.openLog && (
+            <Button variant="outline" size="sm" onClick={() => run(async () => platform.core.openLog?.())}>
+              Open log
+            </Button>
+          )}
+          {platform.core.restart && (
+            <Button variant="outline" size="sm" onClick={() => run(async () => platform.core.restart?.())}>
+              Restart
+            </Button>
+          )}
         </div>
       </div>
       {saveProblem && (

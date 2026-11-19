@@ -184,3 +184,12 @@ describe('welcome card', () => {
     expect(screen.queryByRole('heading', { name: "Let's get you a model" })).not.toBeInTheDocument()
   })
 })
+
+describe('welcome card on a host without files', () => {
+  it('has no Change… link but still says where models are saved', async () => {
+    renderWithStore(<App />, {}, { coreState: ready, setup: { catalog }, omit: ['files'] })
+
+    expect(await screen.findByText(/Models are saved in/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Change…' })).toBeNull()
+  })
+})

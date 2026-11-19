@@ -87,9 +87,11 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
 
       <p className="text-xs text-muted-foreground">
         Models are saved in {modelsDir ?? 'the OpenVatra\\Models folder in your user folder'}.{' '}
-        <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={change}>
-          Change…
-        </Button>
+        {files && (
+          <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={change}>
+            Change…
+          </Button>
+        )}
       </p>
       <Button variant="ghost" size="sm" onClick={onSeeOtherModels}>
         See other models

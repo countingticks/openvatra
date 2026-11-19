@@ -29,7 +29,7 @@ import {
 import { tabs } from '@renderer/tabs'
 import type { EditCommand } from '../../../shared/ipc'
 
-const menus: readonly MenuName[] = ['File', 'Edit', 'View', 'Go', 'Help']
+const allMenus: readonly MenuName[] = ['File', 'Edit', 'View', 'Go', 'Help']
 
 const editItems: readonly (readonly [EditCommand, string, string] | 'separator')[] = [
   ['undo', 'Undo', 'Ctrl+Z'],
@@ -60,6 +60,8 @@ function AccessKey({ label }: { label: string }): React.JSX.Element {
 export function AppMenu(): React.JSX.Element {
   const dispatch = useAppDispatch()
   const platform = usePlatform()
+  // The Edit commands go to the window, so a host without one has no Edit menu.
+  const menus = platform.window ? allMenus : allMenus.filter((name) => name !== 'Edit')
   const activeTab = useAppSelector(selectActiveTab)
   const canGoBack = useAppSelector(selectCanGoBack)
   const canGoForward = useAppSelector(selectCanGoForward)
@@ -145,13 +147,17 @@ export function AppMenu(): React.JSX.Element {
                   <DropdownMenuItem onClick={() => dispatch(settingsOpened())}>
                     Settings… <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => run(async () => platform.window?.close())}>
-                    Close window <DropdownMenuShortcut>Ctrl+W</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => run(async () => platform.quit?.())}>
-                    Quit OpenVatra <DropdownMenuShortcut>Ctrl+Q</DropdownMenuShortcut>
-                  </DropdownMenuItem>
+                  {(platform.window || platform.quit) && <DropdownMenuSeparator />}
+                  {platform.window && (
+                    <DropdownMenuItem onClick={() => run(async () => platform.window?.close())}>
+                      Close window <DropdownMenuShortcut>Ctrl+W</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                  )}
+                  {platform.quit && (
+                    <DropdownMenuItem onClick={() => run(async () => platform.quit?.())}>
+                      Quit OpenVatra <DropdownMenuShortcut>Ctrl+Q</DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                  )}
                 </>
               )}
               {name === 'Edit' &&
@@ -196,9 +202,11 @@ export function AppMenu(): React.JSX.Element {
               )}
               {name === 'Help' && (
                 <>
-                  <DropdownMenuItem onClick={() => run(async () => platform.files?.openFolder('logs'))}>
-                    Open logs folder
-                  </DropdownMenuItem>
+                  {platform.files && (
+                    <DropdownMenuItem onClick={() => run(async () => platform.files?.openFolder('logs'))}>
+                      Open logs folder
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem disabled>About OpenVatra</DropdownMenuItem>
                 </>
               )}

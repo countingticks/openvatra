@@ -194,3 +194,47 @@ describe('app menu', () => {
     })
   })
 })
+
+describe('app menu on a host without some members', () => {
+  it('has no Quit item and Ctrl+Q does nothing without quit', async () => {
+    const { quit } = renderWithStore(<App />, {}, { omit: ['quit'] })
+
+    expect(within(await openSubmenu('File')).queryByRole('menuitem', { name: /Quit OpenVatra/ })).toBeNull()
+    const prevented = !fireEvent.keyDown(window, { key: 'q', ctrlKey: true, cancelable: true })
+
+    expect(quit).not.toHaveBeenCalled()
+    expect(prevented).toBe(false)
+  })
+
+  it('has no Edit menu, no Close window and no Ctrl+W without window', async () => {
+    const { appWindow } = renderWithStore(<App />, {}, { omit: ['window'] })
+
+    const root = await openMenu()
+    expect(within(root).queryByRole('menuitem', { name: 'Edit' })).toBeNull()
+    fireEvent.click(within(root).getByRole('menuitem', { name: 'File' }))
+    const file = await screen.findByRole('menu', { name: 'File' })
+    expect(within(file).queryByRole('menuitem', { name: /Close window/ })).toBeNull()
+    const prevented = !fireEvent.keyDown(window, { key: 'w', ctrlKey: true, cancelable: true })
+    expect(appWindow.close).not.toHaveBeenCalled()
+    expect(prevented).toBe(false)
+  })
+
+  it('still opens the menu with Alt+E, with no submenu open', async () => {
+    renderWithStore(<App />, {}, { omit: ['window'] })
+
+    fireEvent.keyDown(window, { key: 'Alt', altKey: true })
+    fireEvent.keyDown(window, { key: 'e', altKey: true })
+
+    expect(await screen.findByRole('menu', { name: 'Menu' })).toBeInTheDocument()
+    expect(screen.queryByRole('menu', { name: 'Edit' })).toBeNull()
+    expect(screen.queryByRole('menu', { name: 'File' })).toBeNull()
+  })
+
+  it('has no Open logs folder without files', async () => {
+    renderWithStore(<App />, {}, { omit: ['files'] })
+
+    const help = await openSubmenu('Help')
+
+    expect(within(help).queryByRole('menuitem', { name: /Open logs folder/ })).toBeNull()
+  })
+})

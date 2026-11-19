@@ -24,8 +24,9 @@ export function useAppShortcuts(): void {
       if (!event.ctrlKey || event.altKey) return
       const key = event.key.toLowerCase()
       if (key === ',') dispatch(settingsOpened())
-      else if (key === 'w') void platform.window?.close().catch((error) => console.error(error))
-      else if (key === 'q') void platform.quit?.().catch((error) => console.error(error))
+      else if (key === 'w' && platform.window)
+        void platform.window.close().catch((error) => console.error(error))
+      else if (key === 'q' && platform.quit) void platform.quit().catch((error) => console.error(error))
       else return
       event.preventDefault()
     }

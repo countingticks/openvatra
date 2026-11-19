@@ -97,6 +97,22 @@ async function openModels(
 }
 
 describe('Settings → Models', () => {
+  describe('on a host without some members', () => {
+    it('has no Change… or Use my own… without files', async () => {
+      await openModels({}, { coreState: ready, omit: ['files'] })
+
+      expect(screen.queryByRole('button', { name: 'Change…' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Use my own…' })).toBeNull()
+    })
+
+    it('has no Restart or Open log without restart and openLog', async () => {
+      await openModels({}, { coreState: ready, omit: ['restart', 'openLog'] })
+
+      expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Open log' })).toBeNull()
+    })
+  })
+
   describe('paths', () => {
     it("shows both of core's paths, or the default folder when none is chosen", async () => {
       await openModels({ engineSettings: { path: 'C:\\llama\\llama-server.exe' } }, { coreState: ready })
