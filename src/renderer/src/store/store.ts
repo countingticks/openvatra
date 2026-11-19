@@ -4,6 +4,10 @@ import {
   configureStore,
   createListenerMiddleware,
   isAnyOf,
+  type EnhancedStore,
+  type StoreEnhancer,
+  type ThunkDispatch,
+  type Tuple,
   type UnknownAction
 } from '@reduxjs/toolkit'
 import type { CoreState } from '../../../shared/core'
@@ -18,14 +22,18 @@ import { initialUiState, sidebarToggled, tabSelected, uiSlice, wentBack, wentFor
 const rootReducer = combineSlices(uiSlice, settingsSlice, connectionSlice, coreApi)
 
 export type RootState = ReturnType<typeof rootReducer>
-/** configureStore's own result type for our state (thunk-capable dispatch), named up front for the return type. */
-export type AppStore = ReturnType<typeof configureStore<RootState>>
-export type AppDispatch = AppStore['dispatch']
-
 /** What thunks and listeners get as their extra argument: the host, never window.api. */
 export interface AppExtra {
   platform: Platform
 }
+
+/** The store's own type: thunks get the platform as their extra argument, named up front to avoid a circular type. */
+export type AppStore = EnhancedStore<
+  RootState,
+  UnknownAction,
+  Tuple<[StoreEnhancer<{ dispatch: ThunkDispatch<RootState, AppExtra, UnknownAction> }>, StoreEnhancer]>
+>
+export type AppDispatch = AppStore['dispatch']
 
 export interface AppStoreOptions {
   /** The host: where changes are saved, and where pushes from main and core arrive. */
