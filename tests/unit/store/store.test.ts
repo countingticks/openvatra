@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppStore } from '@renderer/store/store'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
 import {
@@ -10,31 +10,8 @@ import {
 } from '@renderer/store/uiSlice'
 import { selectConnection } from '@renderer/core/connectionSlice'
 import type { CoreConnection, CoreState } from '../../../src/shared/core'
-import type { CoreApi, SettingsApi } from '../../../src/shared/ipc'
 import { defaultSettings, type Settings } from '../../../src/shared/settings'
-
-interface FakeSettings {
-  update: Mock<SettingsApi['update']>
-  onChange: SettingsApi['onChange']
-  /** Plays main's settings:changed push to the callback the store subscribed. */
-  push(settings: Settings): void
-}
-
-// Stands in for window.api.settings: records what the store asks to save and the callback it subscribes. Typed
-// like the real API, so the fake can't drift from what it replaces.
-function fakeSettings(
-  update = vi.fn<SettingsApi['update']>().mockResolvedValue(defaultSettings)
-): FakeSettings {
-  let subscribed: ((settings: Settings) => void) | undefined
-  return {
-    update,
-    onChange: (callback) => {
-      subscribed = callback
-      return () => (subscribed = undefined)
-    },
-    push: (settings) => subscribed?.(settings)
-  }
-}
+import { fakePlatform } from '../fakePlatform'
 
 // Listener effects run after dispatch returns; one macrotask lets them finish.
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
@@ -46,7 +23,7 @@ afterEach(() => {
 describe('app store', () => {
   it('opens on the tab saved in settings', () => {
     const store = createAppStore({
-      settings: fakeSettings(),
+      platform: fakePlatform().platform,
       initialSettings: { ...defaultSettings, lastTab: 'code' }
     })
 
@@ -54,36 +31,37 @@ describe('app store', () => {
   })
 
   it('opens on Chat when nothing was saved', () => {
-    const store = createAppStore({ settings: fakeSettings() })
+    const store = createAppStore({ platform: fakePlatform().platform })
 
     expect(selectActiveTab(store.getState())).toBe('chat')
   })
 
   it('saves the new tab as lastTab when the tab changes', async () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(tabSelected('automations'))
     await settle()
 
-    expect(settings.update).toHaveBeenCalledOnce()
-    expect(settings.update).toHaveBeenCalledWith({ lastTab: 'automations' })
+    expect(fake.prefs.update).toHaveBeenCalledOnce()
+    expect(fake.prefs.update).toHaveBeenCalledWith({ lastTab: 'automations' })
   })
 
   it('does not save when the open tab is selected again', async () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(tabSelected('chat'))
     await settle()
 
-    expect(settings.update).not.toHaveBeenCalled()
+    expect(fake.prefs.update).not.toHaveBeenCalled()
   })
 
   it('still switches the tab when saving fails', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const settings = fakeSettings(vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')))
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    fake.prefs.update.mockRejectedValue(new Error('disk full'))
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(tabSelected('automations'))
     await settle()
@@ -96,7 +74,7 @@ describe('app store', () => {
 describe('sidebar state', () => {
   it('opens the way it was left', () => {
     const store = createAppStore({
-      settings: fakeSettings(),
+      platform: fakePlatform().platform,
       initialSettings: { ...defaultSettings, sidebarOpen: false }
     })
 
@@ -104,34 +82,36 @@ describe('sidebar state', () => {
   })
 
   it('saves whether the sidebar is open each time it is toggled', async () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(sidebarToggled())
     await settle()
     store.dispatch(sidebarToggled())
     await settle()
 
-    expect(settings.update.mock.calls).toEqual([[{ sidebarOpen: false }], [{ sidebarOpen: true }]])
+    expect(fake.prefs.update.mock.calls).toEqual([[{ sidebarOpen: false }], [{ sidebarOpen: true }]])
   })
 })
 
 describe('changing settings', () => {
   it('shows the change at once, before it is saved', () => {
     // A save that never finishes: whatever the page shows now came from the optimistic update alone.
-    const settings = fakeSettings(vi.fn<SettingsApi['update']>(() => new Promise(() => {})))
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    fake.prefs.update.mockReturnValue(new Promise(() => {}))
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(settingsChanged({ closeAction: 'quit' }))
 
     expect(selectSettings(store.getState()).closeAction).toBe('quit')
-    expect(settings.update).toHaveBeenCalledWith({ closeAction: 'quit' })
+    expect(fake.prefs.update).toHaveBeenCalledWith({ closeAction: 'quit' })
   })
 
   it('takes what main saved as the truth', async () => {
     const saved = { ...defaultSettings, theme: 'dark' as const, startWithWindows: true }
-    const settings = fakeSettings(vi.fn<SettingsApi['update']>().mockResolvedValue(saved))
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    fake.prefs.update.mockResolvedValue(saved)
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(settingsChanged({ theme: 'dark' }))
     await settle()
@@ -141,8 +121,9 @@ describe('changing settings', () => {
 
   it('puts the old value back when saving fails, so the page never shows a setting that is not saved', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    const settings = fakeSettings(vi.fn<SettingsApi['update']>().mockRejectedValue(new Error('disk full')))
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    fake.prefs.update.mockRejectedValue(new Error('disk full'))
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(settingsChanged({ startWithWindows: true }))
     expect(selectSettings(store.getState()).startWithWindows).toBe(true)
@@ -154,22 +135,22 @@ describe('changing settings', () => {
 
 describe('settings pushed by main', () => {
   it('a push from main replaces the settings slice', () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
     const pushed: Settings = { ...defaultSettings, cudaOfferDismissed: true }
 
-    settings.push(pushed)
+    fake.prefs.emit(pushed)
 
     expect(selectSettings(store.getState())).toEqual(pushed)
   })
 
   it('a push leaves the open tab and the sidebar as they are', () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
     store.dispatch(tabSelected('code'))
     store.dispatch(sidebarToggled())
 
-    settings.push({ ...defaultSettings, lastTab: 'automations', sidebarOpen: true })
+    fake.prefs.emit({ ...defaultSettings, lastTab: 'automations', sidebarOpen: true })
 
     expect(selectActiveTab(store.getState())).toBe('code')
     expect(selectSidebarOpen(store.getState())).toBe(false)
@@ -178,60 +159,36 @@ describe('settings pushed by main', () => {
 
 describe('back and forward', () => {
   it('remembers the tab Back lands on as the last tab, so the app reopens there', async () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
     store.dispatch(tabSelected('code'))
     await settle()
 
     store.dispatch(wentBack())
     await settle()
 
-    expect(settings.update.mock.calls).toEqual([[{ lastTab: 'code' }], [{ lastTab: 'chat' }]])
+    expect(fake.prefs.update.mock.calls).toEqual([[{ lastTab: 'code' }], [{ lastTab: 'chat' }]])
   })
 
   it('saves nothing when there is nowhere to go back to', async () => {
-    const settings = fakeSettings()
-    const store = createAppStore({ settings })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
     store.dispatch(wentBack())
     await settle()
 
-    expect(settings.update).not.toHaveBeenCalled()
+    expect(fake.prefs.update).not.toHaveBeenCalled()
   })
 
   it('starts each launch with an empty history', () => {
     const store = createAppStore({
-      settings: fakeSettings(),
+      platform: fakePlatform().platform,
       initialSettings: { ...defaultSettings, lastTab: 'code' }
     })
 
     expect(store.getState().ui).toMatchObject({ activeTab: 'code', back: [], forward: [] })
   })
 })
-
-interface FakeCoreState {
-  core: Pick<CoreApi, 'getState' | 'onState'>
-  /** Plays main's core:state push. */
-  push(state: CoreState): void
-  /** Answers the store's getState call. */
-  answer(state: CoreState): void
-}
-
-function fakeCoreState(): FakeCoreState {
-  let listener: ((state: CoreState) => void) | undefined
-  let answer: (state: CoreState) => void = () => {}
-  return {
-    core: {
-      getState: () => new Promise((resolve) => (answer = resolve)),
-      onState: (callback) => {
-        listener = callback
-        return () => (listener = undefined)
-      }
-    },
-    push: (state) => listener?.(state),
-    answer: (state) => answer(state)
-  }
-}
 
 const connection: CoreConnection = { baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }
 const ready = (to: CoreConnection): CoreState => ({
@@ -243,34 +200,34 @@ const ready = (to: CoreConnection): CoreState => ({
 
 describe("core's connection", () => {
   it('a ready state pushed by main sets the connection; a starting state clears it', () => {
-    const fake = fakeCoreState()
-    const store = createAppStore({ settings: fakeSettings(), core: fake.core })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
-    fake.push(ready(connection))
+    fake.core.emit(ready(connection))
     expect(selectConnection(store.getState())).toEqual(connection)
 
-    fake.push({ status: 'starting' })
+    fake.core.emit({ status: 'starting' })
     expect(selectConnection(store.getState())).toBeNull()
   })
 
   it("ignores getState's answer when a newer state was already pushed", async () => {
-    const fake = fakeCoreState()
-    const store = createAppStore({ settings: fakeSettings(), core: fake.core })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
-    fake.push(ready(connection))
-    fake.answer({ status: 'starting' })
+    fake.core.emit(ready(connection))
+    fake.core.answer({ status: 'starting' })
     await settle()
 
     expect(selectConnection(store.getState())).toEqual(connection)
   })
 
   it('keeps the same object when an equal connection is pushed twice', () => {
-    const fake = fakeCoreState()
-    const store = createAppStore({ settings: fakeSettings(), core: fake.core })
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform })
 
-    fake.push(ready(connection))
+    fake.core.emit(ready(connection))
     const first = selectConnection(store.getState())
-    fake.push(ready({ ...connection }))
+    fake.core.emit(ready({ ...connection }))
 
     expect(selectConnection(store.getState())).toBe(first)
   })

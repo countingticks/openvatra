@@ -3,8 +3,7 @@ import { coreApi } from '@renderer/core/coreApi'
 import type { Event, Model } from '@renderer/core/generated'
 import { createAppStore, type AppStore } from '@renderer/store/store'
 import type { CoreConnection, CoreState } from '../../../src/shared/core'
-import type { CoreApi } from '../../../src/shared/ipc'
-import { defaultSettings } from '../../../src/shared/settings'
+import { fakePlatform } from '../fakePlatform'
 import { createFakeCoreHttp, type FakeCoreHttp } from '../fakeCoreHttp'
 
 const first: CoreConnection = { baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }
@@ -48,22 +47,12 @@ let harness: Harness | undefined
 function setup(): Harness {
   const http = createFakeCoreHttp()
   vi.stubGlobal('fetch', http.fetch)
-  let listener: ((state: CoreState) => void) | undefined
-  const core: Pick<CoreApi, 'getState' | 'onState'> = {
-    getState: () => new Promise(() => {}),
-    onState: (callback) => {
-      listener = callback
-      return () => (listener = undefined)
-    }
-  }
-  const store = createAppStore({
-    settings: { update: vi.fn().mockResolvedValue(defaultSettings), onChange: () => () => {} },
-    core
-  })
+  const fake = fakePlatform()
+  const store = createAppStore({ platform: fake.platform })
   harness = {
     store,
     http,
-    push: (state) => listener?.(state),
+    push: fake.core.emit,
     streamRequests: () => http.requests.filter((request) => new URL(request.url).pathname === '/api/events')
   }
   return harness

@@ -2,8 +2,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { coreApi } from '@renderer/core/coreApi'
 import { createAppStore, type AppStore } from '@renderer/store/store'
 import type { CoreConnection, CoreState } from '../../../src/shared/core'
-import type { CoreApi } from '../../../src/shared/ipc'
-import { defaultSettings } from '../../../src/shared/settings'
+import { fakePlatform } from '../fakePlatform'
 
 const connection: CoreConnection = { baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }
 const ready = (to: CoreConnection): CoreState => ({
@@ -15,17 +14,9 @@ const ready = (to: CoreConnection): CoreState => ({
 
 /** A store whose core state is set by the test through push. */
 function storeWithCore(): { store: AppStore; push(state: CoreState): void } {
-  let listener: ((state: CoreState) => void) | undefined
-  const core: Pick<CoreApi, 'getState' | 'onState'> = {
-    getState: () => new Promise(() => {}),
-    onState: (callback) => {
-      listener = callback
-      return () => (listener = undefined)
-    }
-  }
-  const settings = { update: vi.fn().mockResolvedValue(defaultSettings), onChange: () => () => {} }
-  const store = createAppStore({ settings, core })
-  return { store, push: (state) => listener?.(state) }
+  const fake = fakePlatform()
+  const store = createAppStore({ platform: fake.platform })
+  return { store, push: fake.core.emit }
 }
 
 const json = (body: unknown, status = 200): Response =>

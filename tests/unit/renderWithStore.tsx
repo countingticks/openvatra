@@ -9,21 +9,15 @@ import { vi, type Mock } from 'vitest'
 import { createAppStore, type AppStore } from '@renderer/store/store'
 import type { CoreConnection, CoreState } from '../../src/shared/core'
 import type { ModelInfo } from '@renderer/core/types'
-import type {
-  Api,
-  AppApi,
-  AppWindowApi,
-  CoreApi,
-  FileLocations,
-  FilesApi,
-  SettingsApi
-} from '../../src/shared/ipc'
+import type { Api, AppApi, AppWindowApi, CoreApi, FilesApi, SettingsApi } from '../../src/shared/ipc'
 import type { DownloadItem, HardwareReport } from '@renderer/core/types'
 import type { CatalogView } from '@renderer/core/catalogView'
 import type { Item as CoreCatalogItem, View as CoreCatalogView } from '@renderer/core/generated'
-import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
+import { defaultSettings, type Settings } from '../../src/shared/settings'
 import { defaultEngineSettings, defaultLlamacppSettings } from '@renderer/core/modelSettings'
 import type { LlamaCppSettings, LlamaServerSettings } from '@renderer/core/generated'
+import { PlatformProvider } from '@renderer/platform/PlatformProvider'
+import { exampleLocations, fakePlatform, type FakePlatform, type OptionalMember } from './fakePlatform'
 import { createFakeCoreHttp, type FakeCoreHttp } from './fakeCoreHttp'
 
 /** A connection a ready core hands the window. */
@@ -32,10 +26,7 @@ export const exampleConnection: CoreConnection = {
   token: 'a'.repeat(64)
 }
 
-export const exampleLocations: FileLocations = {
-  settingsFile: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\settings.json',
-  logsFolder: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\logs'
-}
+export { exampleLocations }
 
 /** A catalog entry as core sends it: its files, no total size. */
 export function exampleCatalogEntry(overrides: Partial<CoreCatalogItem> = {}): CoreCatalogItem {
@@ -109,6 +100,7 @@ export interface FakeAppWindow {
 }
 
 interface Rendered extends RenderResult {
+  platform: FakePlatform
   store: AppStore
   saveSettings: Mock<SettingsApi['update']>
   /** Plays main's settings:changed push; replaces the fake's saved settings too. */
@@ -127,6 +119,8 @@ interface Rendered extends RenderResult {
 interface Options {
   /** The window starts maximized. */
   maximized?: boolean
+  /** Platform members left out, to render the UI on a host without them. */
+  omit?: readonly OptionalMember[]
   /** What core's state is when the UI first asks; default: ready, with exampleConnection. */
   coreState?: CoreState
   /** The model list when the UI first asks; default: none. */
@@ -141,64 +135,11 @@ interface Options {
   engines?: { tag?: string | null; cuda?: 'none' | 'ready' | 'stale' }
 }
 
-function fakeCore(start: CoreState, coreHttp: FakeCoreHttp): { api: CoreApi; fake: FakeCore } {
-  const listeners = new Set<(state: CoreState) => void>()
-  const fake: FakeCore = {
-    restart: vi.fn<CoreApi['restart']>().mockResolvedValue(undefined),
-    openLog: vi.fn<CoreApi['openLog']>().mockResolvedValue(undefined),
-    emitState: (state) => act(() => listeners.forEach((listener) => listener(state))),
-    emitModels: (list) =>
-      act(() => {
-        coreHttp.setModels(list)
-      })
-  }
-  const api: CoreApi = {
-    getState: vi.fn<CoreApi['getState']>().mockResolvedValue(start),
-    onState: (callback) => {
-      listeners.add(callback)
-      return () => listeners.delete(callback)
-    },
-    restart: fake.restart,
-    openLog: fake.openLog
-  }
-  return { api, fake }
-}
-
-function fakeAppWindow(startMaximized: boolean): { api: AppWindowApi; fake: FakeAppWindow } {
-  const listeners = new Set<(maximized: boolean) => void>()
-  const fake: FakeAppWindow = {
-    minimize: vi.fn<AppWindowApi['minimize']>().mockResolvedValue(undefined),
-    toggleMaximize: vi.fn<AppWindowApi['toggleMaximize']>().mockResolvedValue(undefined),
-    close: vi.fn<AppWindowApi['close']>().mockResolvedValue(undefined),
-    edit: vi.fn<AppWindowApi['edit']>().mockResolvedValue(undefined),
-    emitMaximized: (maximized) => act(() => listeners.forEach((listener) => listener(maximized))),
-    listeners: () => listeners.size
-  }
-  const api: AppWindowApi = {
-    minimize: fake.minimize,
-    toggleMaximize: fake.toggleMaximize,
-    close: fake.close,
-    edit: fake.edit,
-    isMaximized: vi.fn<AppWindowApi['isMaximized']>().mockResolvedValue(startMaximized),
-    onMaximizedChange: (callback) => {
-      listeners.add(callback)
-      return () => listeners.delete(callback)
-    }
-  }
-  return { api, fake }
-}
-
 export function renderWithStore(
   ui: React.ReactElement,
   saved: Partial<Settings> = {},
   options: Options = {}
 ): Rendered {
-  let current: Settings = { ...defaultSettings, ...saved }
-  const saveSettings = vi.fn<SettingsApi['update']>(async (patch) => (current = applyPatch(current, patch)))
-  const openFolder = vi.fn<FilesApi['openFolder']>().mockResolvedValue(undefined)
-  const appWindow = fakeAppWindow(options.maximized ?? false)
-  const quit = vi.fn<AppApi['quit']>().mockResolvedValue(undefined)
-  const pick = vi.fn<FilesApi['pick']>().mockResolvedValue(false)
   const coreHttp = createFakeCoreHttp()
   vi.stubGlobal('fetch', coreHttp.fetch)
   coreHttp.setModels(options.models ?? [])
@@ -222,46 +163,60 @@ export function renderWithStore(
     bundled: { tag: options.engines?.tag === undefined ? 'b12078' : options.engines.tag },
     cuda: options.engines?.cuda ?? 'none'
   })
-  const core = fakeCore(
-    options.coreState ?? { status: 'ready', port: 53121, version: '0.4.0', connection: exampleConnection },
-    coreHttp
-  )
-  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
-    app: { quit },
-    core: core.api,
-    files: {
-      locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations),
-      openFolder,
-      pick
+  const fake = fakePlatform({
+    coreState: options.coreState ?? {
+      status: 'ready',
+      port: 53121,
+      version: '0.4.0',
+      connection: exampleConnection
     },
-    appWindow: appWindow.api
+    settings: { ...defaultSettings, ...saved },
+    maximized: options.maximized,
+    omit: options.omit
+  })
+  // Components read window.api until they move to usePlatform.
+  const api: Pick<Api, 'files' | 'appWindow' | 'app' | 'core'> = {
+    app: { quit: fake.quit },
+    core: {
+      getState: fake.core.state,
+      onState: fake.platform.core.onState,
+      restart: fake.core.restart,
+      openLog: fake.core.openLog
+    },
+    files: fake.files,
+    appWindow: {
+      ...fake.window,
+      onMaximizedChange: (callback) => fake.platform.window?.onMaximizedChange(callback) ?? (() => {})
+    }
   }
   vi.stubGlobal('api', api)
 
-  const settingsListeners = new Set<(settings: Settings) => void>()
-  const onChange: SettingsApi['onChange'] = (callback) => {
-    settingsListeners.add(callback)
-    return () => settingsListeners.delete(callback)
-  }
-  const emitSettings = (settings: Settings): void => {
-    current = settings
-    act(() => settingsListeners.forEach((listener) => listener(settings)))
-  }
-
-  const store = createAppStore({
-    settings: { update: saveSettings, onChange },
-    initialSettings: current,
-    core: core.api
-  })
+  const store = createAppStore({ platform: fake.platform, initialSettings: { ...defaultSettings, ...saved } })
   return {
+    platform: fake,
     store,
-    saveSettings,
-    emitSettings,
-    openFolder,
-    pick,
-    appWindow: appWindow.fake,
-    quit,
-    core: core.fake,
+    saveSettings: fake.prefs.update,
+    emitSettings: (settings) => act(() => fake.prefs.emit(settings)),
+    openFolder: fake.files.openFolder,
+    pick: fake.files.pick,
+    appWindow: {
+      minimize: fake.window.minimize,
+      toggleMaximize: fake.window.toggleMaximize,
+      close: fake.window.close,
+      edit: fake.window.edit,
+      emitMaximized: (maximized) => act(() => fake.window.emitMaximized(maximized)),
+      listeners: fake.window.listeners
+    },
+    quit: fake.quit,
+    core: {
+      restart: fake.core.restart,
+      openLog: fake.core.openLog,
+      emitState: (state) => act(() => fake.core.emit(state)),
+      emitModels: (list) =>
+        act(() => {
+          coreHttp.setModels(list)
+        })
+    },
     coreHttp,
     setup: {
       emitDownloads: (items) =>
@@ -269,6 +224,10 @@ export function renderWithStore(
           coreHttp.setDownloads(items)
         })
     },
-    ...render(<Provider store={store}>{ui}</Provider>)
+    ...render(
+      <PlatformProvider platform={fake.platform}>
+        <Provider store={store}>{ui}</Provider>
+      </PlatformProvider>
+    )
   }
 }
