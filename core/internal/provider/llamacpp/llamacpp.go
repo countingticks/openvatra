@@ -314,8 +314,12 @@ func (r *Provider) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	r.mu.Unlock()
 	close(next.ready)
 	// Every waiter may have given up while we loaded; then nobody will release.
+	// A request that already finished after ready closed armed the timer; arming
+	// again here would restart its countdown late.
 	s.mu.Lock()
-	r.armIdle(s, next)
+	if next.stopTimer == nil {
+		r.armIdle(s, next)
+	}
 	s.mu.Unlock()
 	r.notify()
 	if res, ok := inst.Measured(); ok && r.cfg.Record != nil && !next.spec.Embedding {
