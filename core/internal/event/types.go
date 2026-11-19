@@ -10,7 +10,7 @@ type ConfigChanged struct {
 
 func (ConfigChanged) EventType() Type { return Type{Name: "config.changed", V: 1, Class: Durable} }
 
-// ModelState is the models list as GET /api/state shows it; Models is that JSON array.
+// ModelState is the models list as GET /api/models shows it; Models is that JSON array.
 type ModelState struct {
 	Models json.RawMessage `json:"models"`
 }
