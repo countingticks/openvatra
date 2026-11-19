@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FolderOpen } from 'lucide-react'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { Button } from '@renderer/components/ui/button'
 import type { AppFolder, FileLocations as Locations } from '../../../../shared/ipc'
 
@@ -10,25 +11,26 @@ const rows: { folder: AppFolder; label: string; path: (locations: Locations) => 
 
 /** Where OpenVatra keeps its files, e.g. to attach the log to a bug report. Main decides the paths. */
 export function FileLocations(): React.JSX.Element {
+  const { files } = usePlatform()
   const [locations, setLocations] = useState<Locations>()
   const [problem, setProblem] = useState<string>()
 
   useEffect(() => {
     let current = true
-    window.api.files
-      .locations()
+    files
+      ?.locations()
       .then((found) => current && setLocations(found))
       .catch(() => current && setProblem('The file locations could not be read.'))
     // Ignore an answer that arrives after the page is gone.
     return () => {
       current = false
     }
-  }, [])
+  }, [files])
 
   async function open(folder: AppFolder): Promise<void> {
     setProblem(undefined)
     try {
-      await window.api.files.openFolder(folder)
+      await files?.openFolder(folder)
     } catch {
       setProblem('That folder could not be opened.')
     }

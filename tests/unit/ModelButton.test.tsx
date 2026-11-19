@@ -213,3 +213,21 @@ describe('model button', () => {
     await waitFor(() => expect(popover).not.toHaveTextContent('No models found'))
   })
 })
+
+describe('model button on a host without service actions', () => {
+  it('has no Restart and no Open log without restart and openLog', async () => {
+    renderWithStore(<App />, {}, { omit: ['restart', 'openLog'] })
+    const popover = await openPopover()
+
+    expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()
+    expect(within(popover).queryByRole('button', { name: 'Open log' })).toBeNull()
+  })
+
+  it('keeps Open log when only restart is missing', async () => {
+    renderWithStore(<App />, {}, { omit: ['restart'] })
+    const popover = await openPopover()
+
+    expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()
+    expect(within(popover).getByRole('button', { name: 'Open log' })).toBeInTheDocument()
+  })
+})

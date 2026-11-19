@@ -4,13 +4,17 @@ import {
   configureStore,
   createListenerMiddleware,
   isAnyOf,
+  type EnhancedStore,
+  type StoreEnhancer,
+  type ThunkDispatch,
+  type Tuple,
   type UnknownAction
 } from '@reduxjs/toolkit'
 import type { CoreState } from '../../../shared/core'
-import type { CoreApi, SettingsApi } from '../../../shared/ipc'
 import { defaultSettings, type Settings, type SettingsPatch } from '../../../shared/settings'
 import { connectionChanged, connectionSlice } from '../core/connectionSlice'
 import { coreApi } from '../core/coreApi'
+import type { Platform } from '../platform/platform'
 import { followCoreStream } from '../core/stream'
 import { settingsChanged, settingsReplaced, settingsSlice } from './settingsSlice'
 import { initialUiState, sidebarToggled, tabSelected, uiSlice, wentBack, wentForward } from './uiSlice'
@@ -18,26 +22,33 @@ import { initialUiState, sidebarToggled, tabSelected, uiSlice, wentBack, wentFor
 const rootReducer = combineSlices(uiSlice, settingsSlice, connectionSlice, coreApi)
 
 export type RootState = ReturnType<typeof rootReducer>
-/** configureStore's own result type for our state (thunk-capable dispatch), named up front for the return type. */
-export type AppStore = ReturnType<typeof configureStore<RootState>>
+/** What thunks and listeners get as their extra argument: the host, never window.api. */
+export interface AppExtra {
+  platform: Platform
+}
+
+/** The store's own type: thunks get the platform as their extra argument, named up front to avoid a circular type. */
+export type AppStore = EnhancedStore<
+  RootState,
+  UnknownAction,
+  Tuple<[StoreEnhancer<{ dispatch: ThunkDispatch<RootState, AppExtra, UnknownAction> }>, StoreEnhancer]>
+>
 export type AppDispatch = AppStore['dispatch']
 
 export interface AppStoreOptions {
-  /** Where changes are saved, and where main's pushes arrive. Passed in (not read from window.api) for tests. */
-  settings: Pick<SettingsApi, 'update' | 'onChange'>
+  /** The host: where changes are saved, and where pushes from main and core arrive. */
+  platform: Platform
   /** The settings read at startup, so the app reopens as it was left (tab, sidebar) and Settings shows them. */
   initialSettings?: Settings
-  /** Where core's state comes from; without it the connection stays null (store-only tests). */
-  core?: Pick<CoreApi, 'getState' | 'onState'>
 }
 
-export function createAppStore({ settings, initialSettings, core }: AppStoreOptions): AppStore {
+export function createAppStore({ platform, initialSettings }: AppStoreOptions): AppStore {
   // Reducers must stay pure (no I/O), so saving to disk happens here, after an action has gone through.
-  const listener = createListenerMiddleware<RootState>()
+  const listener = createListenerMiddleware<RootState, AppDispatch, AppExtra>({ extra: { platform } })
 
   /** Saves a change; main answers with the whole saved file, which becomes the settings slice. */
   async function save(patch: SettingsPatch, dispatch: (action: UnknownAction) => unknown): Promise<void> {
-    dispatch(settingsReplaced(await settings.update(patch)))
+    dispatch(settingsReplaced(await platform.prefs.update(patch)))
   }
 
   listener.startListening({
@@ -90,22 +101,23 @@ export function createAppStore({ settings, initialSettings, core }: AppStoreOpti
       ui: { ...initialUiState, activeTab: startup.lastTab, sidebarOpen: startup.sidebarOpen },
       settings: startup
     },
-    middleware: (getDefault) => getDefault().prepend(listener.middleware).concat(coreApi.middleware)
+    middleware: (getDefault) =>
+      getDefault({ thunk: { extraArgument: { platform } satisfies AppExtra } })
+        .prepend(listener.middleware)
+        .concat(coreApi.middleware)
   })
   // Main may change settings on its own (the CUDA download switches the engine). One store per window, so the
   // subscription lives as long as the window and is never removed. The ui slice is the window's own state.
-  settings.onChange((pushed) => store.dispatch(settingsReplaced(pushed)))
-  if (core) {
-    // Started before core's state arrives, so the first ready state opens the stream. Like the settings
-    // subscription, it lives as long as the window.
-    followCoreStream({ dispatch: store.dispatch, getState: store.getState, subscribe: store.subscribe })
-    followCoreState(core, store.dispatch)
-  }
+  platform.prefs.onChange((pushed) => store.dispatch(settingsReplaced(pushed)))
+  // Started before core's state arrives, so the first ready state opens the stream. Like the settings
+  // subscription, it lives as long as the window.
+  followCoreStream({ dispatch: store.dispatch, getState: store.getState, subscribe: store.subscribe })
+  followCoreState(platform.core, store.dispatch)
   return store
 }
 
 /** Keeps the connection slice in step with core's state, for as long as the window lives. */
-function followCoreState(core: Pick<CoreApi, 'getState' | 'onState'>, dispatch: AppDispatch): void {
+function followCoreState(core: Platform['core'], dispatch: AppDispatch): void {
   let received = false
   const apply = (state: CoreState): void => {
     dispatch(connectionChanged(state.status === 'ready' ? state.connection : null))
@@ -116,7 +128,7 @@ function followCoreState(core: Pick<CoreApi, 'getState' | 'onState'>, dispatch: 
     apply(state)
   })
   core
-    .getState()
+    .state()
     .then((state) => {
       if (!received) apply(state)
     })

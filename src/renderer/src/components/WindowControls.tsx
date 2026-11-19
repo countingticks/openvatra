@@ -1,5 +1,7 @@
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useMaximized } from '@renderer/hooks/useMaximized'
 import { cn } from '@renderer/lib/utils'
+import type { AppWindowApi } from '../../../shared/ipc'
 
 // Windows' own sizes (46×40) and thin glyphs, so the buttons feel native although the UI draws them.
 const button =
@@ -10,9 +12,14 @@ function run(action: () => Promise<void>): void {
   action().catch((error) => console.error('Window action failed', error))
 }
 
-export function WindowControls(): React.JSX.Element {
-  const maximized = useMaximized()
-  const { appWindow } = window.api
+export function WindowControls(): React.JSX.Element | null {
+  const { window: appWindow } = usePlatform()
+  if (!appWindow) return null
+  return <Controls appWindow={appWindow} />
+}
+
+function Controls({ appWindow }: { appWindow: AppWindowApi }): React.JSX.Element {
+  const maximized = useMaximized(appWindow)
 
   return (
     <div className="flex h-10">

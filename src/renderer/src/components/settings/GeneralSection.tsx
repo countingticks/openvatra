@@ -3,6 +3,7 @@ import { FileLocations } from '@renderer/components/settings/FileLocations'
 import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
 import type { SettingsPatch } from '../../../../shared/settings'
@@ -28,6 +29,7 @@ const closeOptions = [
 export function GeneralSection(): React.JSX.Element {
   const settings = useAppSelector(selectSettings)
   const dispatch = useAppDispatch()
+  const { files } = usePlatform()
   const change = (patch: SettingsPatch): void => {
     dispatch(settingsChanged(patch))
   }
@@ -88,7 +90,7 @@ export function GeneralSection(): React.JSX.Element {
         />
       </SettingRow>
 
-      <FileLocations />
+      {files && <FileLocations />}
     </div>
   )
 }

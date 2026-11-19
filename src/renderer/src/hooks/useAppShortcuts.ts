@@ -1,11 +1,13 @@
 // App-wide shortcuts from the menu: Ctrl+, (Settings), Ctrl+W (close window), Ctrl+Q (quit),
 // Alt+← / Alt+→ (back / forward).
 import { useEffect } from 'react'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useAppDispatch } from '@renderer/store/hooks'
 import { settingsOpened, wentBack, wentForward } from '@renderer/store/uiSlice'
 
 export function useAppShortcuts(): void {
   const dispatch = useAppDispatch()
+  const platform = usePlatform()
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
@@ -22,13 +24,14 @@ export function useAppShortcuts(): void {
       if (!event.ctrlKey || event.altKey) return
       const key = event.key.toLowerCase()
       if (key === ',') dispatch(settingsOpened())
-      else if (key === 'w') void window.api.appWindow.close().catch((error) => console.error(error))
-      else if (key === 'q') void window.api.app.quit().catch((error) => console.error(error))
+      else if (key === 'w' && platform.window)
+        void platform.window.close().catch((error) => console.error(error))
+      else if (key === 'q' && platform.quit) void platform.quit().catch((error) => console.error(error))
       else return
       event.preventDefault()
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [dispatch])
+  }, [dispatch, platform])
 }

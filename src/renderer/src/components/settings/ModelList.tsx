@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { ModelRow } from '@renderer/components/settings/ModelRow'
 import { Button } from '@renderer/components/ui/button'
 import { Label } from '@renderer/components/ui/label'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { useModels } from '@renderer/hooks/useModels'
@@ -62,6 +63,7 @@ export function ModelList(): React.JSX.Element {
   const { value: settings, update } = useLlamacppSettings()
   const [saveProblem, setSaveProblem] = useState<string>()
   const core = useCoreState()
+  const platform = usePlatform()
   const models = useModels()
   const headingId = useId()
   const embeddingId = useId()
@@ -104,12 +106,16 @@ export function ModelList(): React.JSX.Element {
           Available models
         </h3>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => run(window.api.core.openLog)}>
-            Open log
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => run(window.api.core.restart)}>
-            Restart
-          </Button>
+          {platform.core.openLog && (
+            <Button variant="outline" size="sm" onClick={() => run(async () => platform.core.openLog?.())}>
+              Open log
+            </Button>
+          )}
+          {platform.core.restart && (
+            <Button variant="outline" size="sm" onClick={() => run(async () => platform.core.restart?.())}>
+              Restart
+            </Button>
+          )}
         </div>
       </div>
       {saveProblem && (

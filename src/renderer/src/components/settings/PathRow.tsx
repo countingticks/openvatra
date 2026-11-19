@@ -11,7 +11,8 @@ interface PathRowProps {
   defaultText?: string
   /** The Browse button's text; its accessible name stays "Browse for <label>". */
   browseText?: string
-  onBrowse: () => void
+  /** Without it (a host that cannot open a dialog) there is no button. */
+  onBrowse?: () => void
   /** Extra buttons beside Browse. */
   children?: React.ReactNode
 }
@@ -45,15 +46,17 @@ export function PathRow({
       </div>
       <div className="flex shrink-0 gap-2">
         {children}
-        <Button
-          variant="outline"
-          size="sm"
-          aria-label={`Browse for ${label}`}
-          aria-describedby={pathId}
-          onClick={onBrowse}
-        >
-          {browseText}
-        </Button>
+        {onBrowse && (
+          <Button
+            variant="outline"
+            size="sm"
+            aria-label={`Browse for ${label}`}
+            aria-describedby={pathId}
+            onClick={onBrowse}
+          >
+            {browseText}
+          </Button>
+        )}
       </div>
     </div>
   )

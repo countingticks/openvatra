@@ -8,6 +8,7 @@ import { SegmentedControl } from '@renderer/components/settings/SegmentedControl
 import { SettingRow } from '@renderer/components/settings/SettingRow'
 import { Switch } from '@renderer/components/ui/switch'
 import { useGetEnginesQuery } from '@renderer/core/generated'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
 import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { idleOptions } from '@renderer/lib/idleOptions'
@@ -23,6 +24,7 @@ export function ModelsSection(): React.JSX.Element {
   const { value: llamacpp, update } = useLlamacppSettings()
   const { value: engine, update: updateEngine } = useEngineSettings()
   const dispatch = useAppDispatch()
+  const { files } = usePlatform()
   const idleId = useId()
   const advancedId = useId()
   const [problem, setProblem] = useState<string>()
@@ -34,7 +36,7 @@ export function ModelsSection(): React.JSX.Element {
   async function pick(target: PickTarget): Promise<void> {
     setProblem(undefined)
     try {
-      await window.api.files.pick(target)
+      await files?.pick(target)
     } catch {
       setProblem('That path could not be saved.')
     }
@@ -60,7 +62,7 @@ export function ModelsSection(): React.JSX.Element {
         path={llamacpp.modelsDir}
         defaultText="The OpenVatra\Models folder in your user folder"
         browseText="Change…"
-        onBrowse={() => void pick('modelsDir')}
+        onBrowse={files && (() => void pick('modelsDir'))}
       />
       {problem && (
         <p role="alert" className="pt-3 text-destructive">
@@ -118,7 +120,7 @@ export function ModelsSection(): React.JSX.Element {
             path={engine.path}
             defaultText={bundledText}
             browseText="Use my own…"
-            onBrowse={() => void pick('llamaServer')}
+            onBrowse={files && (() => void pick('llamaServer'))}
           >
             {engine.path && (
               <Button variant="outline" size="sm" onClick={() => fail(updateEngine({ path: null }))}>

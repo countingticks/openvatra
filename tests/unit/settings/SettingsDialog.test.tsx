@@ -150,6 +150,14 @@ describe('Settings dialog', () => {
   })
 
   describe('File locations', () => {
+    it('are not shown on a host without files', async () => {
+      renderWithStore(<App />, {}, { omit: ['files'] })
+      await openSettings()
+
+      expect(within(dialog()).queryByText('File locations')).toBeNull()
+      expect(within(dialog()).queryByText(exampleLocations.settingsFile)).toBeNull()
+    })
+
     it('shows where the settings file and the logs are', async () => {
       renderWithStore(<App />)
       await openSettings()

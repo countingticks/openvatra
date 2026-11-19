@@ -53,3 +53,13 @@ describe('title bar', () => {
     expect(appWindow.listeners()).toBe(0)
   })
 })
+
+describe('title bar on a host without a window', () => {
+  it('has no Minimize, Maximize or Close buttons', () => {
+    renderWithStore(<App />, {}, { omit: ['window'] })
+
+    for (const name of ['Minimize', 'Maximize', 'Restore', 'Close']) {
+      expect(within(titleBar()).queryByRole('button', { name })).toBeNull()
+    }
+  })
+})

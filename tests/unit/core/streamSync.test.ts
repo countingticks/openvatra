@@ -5,7 +5,7 @@ import { coreApi } from '@renderer/core/coreApi'
 import type { Event } from '@renderer/core/generated'
 import { applyEvent } from '@renderer/core/streamSync'
 import { createAppStore, type AppStore } from '@renderer/store/store'
-import { defaultSettings } from '../../../src/shared/settings'
+import { fakePlatform } from '../fakePlatform'
 import { createFakeCoreHttp, type FakeCoreHttp } from '../fakeCoreHttp'
 
 const llamacpp = { embeddingModel: null, idleUnloadMinutes: null, modelsDir: null, options: {} }
@@ -24,9 +24,7 @@ async function storeWithConfig(): Promise<{ store: AppStore; http: FakeCoreHttp;
   const http = createFakeCoreHttp()
   vi.stubGlobal('fetch', http.fetch)
   http.answer('/api/config/provider.llamacpp', { rev: 3, value: llamacpp })
-  const store = createAppStore({
-    settings: { update: vi.fn().mockResolvedValue(defaultSettings), onChange: () => () => {} }
-  })
+  const store = createAppStore({ platform: fakePlatform().platform })
   store.dispatch(connectionChanged({ baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }))
   await store.dispatch(coreApi.endpoints.getConfigProviderLlamacpp.initiate())
   const configFetches = (): number =>

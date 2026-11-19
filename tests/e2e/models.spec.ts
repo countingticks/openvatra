@@ -60,6 +60,16 @@ type CoreStateInPage = { status: string; connection?: { baseUrl: string } }
 type PageWithApi = { api: { core: { getState(): Promise<CoreStateInPage>; restart(): Promise<void> } } }
 
 test('after a core restart the models list fills again without reloading the page', async () => {
+  // Core starts detached and can take several seconds on a busy CI runner; wait for it like coreHost.spec does.
+  await expect
+    .poll(
+      () =>
+        mainWindow.evaluate(
+          async () => (await (window as unknown as PageWithApi).api.core.getState()).status
+        ),
+      { timeout: 20_000 }
+    )
+    .toBe('ready')
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
   await modelButton.click()
   await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
@@ -74,11 +84,13 @@ test('after a core restart the models list fills again without reloading the pag
 
   // A new core run has a new port and token; the window follows without a reload.
   await expect
-    .poll(() =>
-      mainWindow.evaluate(async () => {
-        const state = await (window as unknown as PageWithApi).api.core.getState()
-        return state.status === 'ready' ? state.connection?.baseUrl : undefined
-      })
+    .poll(
+      () =>
+        mainWindow.evaluate(async () => {
+          const state = await (window as unknown as PageWithApi).api.core.getState()
+          return state.status === 'ready' ? state.connection?.baseUrl : undefined
+        }),
+      { timeout: 20_000 }
     )
     .not.toBe(baseUrl)
   await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()

@@ -56,5 +56,21 @@ export default defineConfig(
       'react-refresh/only-export-components': 'off'
     }
   },
+  {
+    // The host is reached through Platform, so the UI runs unchanged on another host and tests fake one object.
+    files: ['src/renderer/src/**/*.{ts,tsx}', 'tests/unit/**/*.{ts,tsx}'],
+    ignores: ['src/renderer/src/main.tsx', 'src/renderer/src/desktopPlatform.ts'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        {
+          object: 'window',
+          property: 'api',
+          message:
+            'Use usePlatform() (or the platform passed to createAppStore); only main.tsx and desktopPlatform.ts read window.api.'
+        }
+      ]
+    }
+  },
   eslintConfigPrettier
 )

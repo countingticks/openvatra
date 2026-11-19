@@ -25,7 +25,7 @@ if (typeof HTMLCanvasElement !== 'undefined') {
 // Unmount whatever a test rendered, so tests never see each other's leftovers.
 afterEach(() => {
   cleanup()
-  // Fakes put on window (like window.api from renderWithStore) never leak into the next test.
+  // Fakes put on window (like fetch from renderWithStore) never leak into the next test.
   vi.unstubAllGlobals()
   // Nor does the app's motion decision on <html> (set by App, or by a test). Node-only test files have no document.
   if (typeof document !== 'undefined') document.documentElement.removeAttribute('data-motion')
