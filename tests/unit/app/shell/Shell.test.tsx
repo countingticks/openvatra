@@ -1,14 +1,14 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { Shell } from '@app/shell/Shell'
+import { renderWithStore } from '../../renderWithStore'
 
 const sidebar = (): HTMLElement => screen.getByRole('navigation', { name: 'Main' })
 const tabButton = (name: string): HTMLElement => within(sidebar()).getByRole('button', { name })
 
-describe('App', () => {
+describe('Shell', () => {
   it('shows a sidebar with the three tabs in order', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     const names = within(sidebar())
       .getAllByRole('button')
@@ -17,7 +17,7 @@ describe('App', () => {
   })
 
   it('opens on Chat the first time', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     expect(tabButton('Chat')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('heading', { level: 1, name: 'Chat' })).toBeInTheDocument()
@@ -25,14 +25,14 @@ describe('App', () => {
   })
 
   it('opens on the tab saved last time', () => {
-    renderWithStore(<App />, { lastTab: 'automations' })
+    renderWithStore(<Shell />, { lastTab: 'automations' })
 
     expect(tabButton('Automations')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('heading', { level: 1, name: 'Automations' })).toBeInTheDocument()
   })
 
   it('switches tabs when a sidebar item is clicked', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     fireEvent.click(tabButton('Code'))
 
@@ -48,7 +48,7 @@ describe('App', () => {
     ['3', 'Automations']
   ])('Ctrl+%s opens %s', (key, name) => {
     // Start somewhere else, so Ctrl+1 really has to switch.
-    renderWithStore(<App />, { lastTab: key === '1' ? 'code' : 'chat' })
+    renderWithStore(<Shell />, { lastTab: key === '1' ? 'code' : 'chat' })
 
     fireEvent.keyDown(window, { key, ctrlKey: true })
 
@@ -56,7 +56,7 @@ describe('App', () => {
   })
 
   it('ignores the digit without Ctrl, and Ctrl with other modifiers or digits', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     fireEvent.keyDown(window, { key: '2' })
     fireEvent.keyDown(window, { key: '2', ctrlKey: true, shiftKey: true })
@@ -67,14 +67,14 @@ describe('App', () => {
   })
 
   it('announces each shortcut to assistive technology', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     expect(tabButton('Chat')).toHaveAttribute('aria-keyshortcuts', 'Control+1')
     expect(tabButton('Automations')).toHaveAttribute('aria-keyshortcuts', 'Control+3')
   })
 
   it('remembers the newly opened tab in settings', async () => {
-    const { saveSettings } = renderWithStore(<App />)
+    const { saveSettings } = renderWithStore(<Shell />)
 
     fireEvent.click(tabButton('Automations'))
 
@@ -82,7 +82,7 @@ describe('App', () => {
   })
 
   it('stops listening for shortcuts once it is gone', () => {
-    const { store, unmount } = renderWithStore(<App />)
+    const { store, unmount } = renderWithStore(<Shell />)
 
     unmount()
     fireEvent.keyDown(window, { key: '3', ctrlKey: true })

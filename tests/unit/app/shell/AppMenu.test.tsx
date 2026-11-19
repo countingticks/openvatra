@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { Shell } from '@app/shell/Shell'
+import { renderWithStore } from '../../renderWithStore'
 
 const menuButton = (): HTMLElement => screen.getByRole('button', { name: 'Menu' })
 
@@ -22,7 +22,7 @@ const item = (menu: HTMLElement, name: string | RegExp): HTMLElement =>
 
 describe('app menu', () => {
   it('sits first in the title bar, before the sidebar toggle', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     const names = within(screen.getByRole('banner'))
       .getAllByRole('button')
@@ -31,7 +31,7 @@ describe('app menu', () => {
   })
 
   it('opens a list of File, Edit, View, Go and Help', async () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     const root = await openMenu()
 
@@ -42,7 +42,7 @@ describe('app menu', () => {
   })
 
   it('closes with Esc', async () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     const root = await openMenu()
 
     fireEvent.keyDown(root, { key: 'Escape' })
@@ -52,7 +52,7 @@ describe('app menu', () => {
 
   describe('File', () => {
     it('quits OpenVatra', async () => {
-      const { quit } = renderWithStore(<App />)
+      const { quit } = renderWithStore(<Shell />)
 
       fireEvent.click(item(await openSubmenu('File'), /Quit OpenVatra/))
 
@@ -60,7 +60,7 @@ describe('app menu', () => {
     })
 
     it('closes the window', async () => {
-      const { appWindow } = renderWithStore(<App />)
+      const { appWindow } = renderWithStore(<Shell />)
 
       fireEvent.click(item(await openSubmenu('File'), /Close window/))
 
@@ -68,7 +68,7 @@ describe('app menu', () => {
     })
 
     it('opens Settings', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       fireEvent.click(item(await openSubmenu('File'), /Settings/))
 
@@ -76,7 +76,7 @@ describe('app menu', () => {
     })
 
     it('shows New chat as not available yet', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       expect(item(await openSubmenu('File'), /New chat/)).toHaveAttribute('aria-disabled', 'true')
     })
@@ -84,7 +84,7 @@ describe('app menu', () => {
 
   describe('Edit', () => {
     it('runs the command on the field that had focus before the menu opened', async () => {
-      const { appWindow } = renderWithStore(<App />)
+      const { appWindow } = renderWithStore(<Shell />)
       const field = document.createElement('input')
       document.body.append(field)
       field.focus()
@@ -102,7 +102,7 @@ describe('app menu', () => {
     })
 
     it('offers undo, redo, cut, copy, paste and select all', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       const names = within(await openSubmenu('Edit'))
         .getAllByRole('menuitem')
@@ -113,7 +113,7 @@ describe('app menu', () => {
 
   describe('View', () => {
     it('switches tabs, with the open one marked', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       const view = await openSubmenu('View')
 
       expect(within(view).getByRole('menuitemradio', { name: /Chat/ })).toHaveAttribute(
@@ -126,7 +126,7 @@ describe('app menu', () => {
     })
 
     it('toggles the sidebar', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       fireEvent.click(item(await openSubmenu('View'), /Toggle sidebar/))
 
@@ -135,7 +135,7 @@ describe('app menu', () => {
   })
 
   it('Go: Back and Forward are dimmed while there is no history', async () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     const go = await openSubmenu('Go')
 
     expect(item(go, /Back/)).toHaveAttribute('aria-disabled', 'true')
@@ -143,7 +143,7 @@ describe('app menu', () => {
   })
 
   it('Help: opens the logs folder by name', async () => {
-    const { openFolder } = renderWithStore(<App />)
+    const { openFolder } = renderWithStore(<Shell />)
 
     fireEvent.click(item(await openSubmenu('Help'), /Open logs folder/))
 
@@ -152,7 +152,7 @@ describe('app menu', () => {
 
   describe('Alt', () => {
     it('on its own opens the menu', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       fireEvent.keyDown(window, { key: 'Alt', altKey: true })
       fireEvent.keyUp(window, { key: 'Alt' })
@@ -161,7 +161,7 @@ describe('app menu', () => {
     })
 
     it('with a letter opens that menu: Alt+F → File', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       fireEvent.keyDown(window, { key: 'Alt', altKey: true })
       fireEvent.keyDown(window, { key: 'f', altKey: true })
@@ -170,7 +170,7 @@ describe('app menu', () => {
     })
 
     it('does nothing if another key came in between (Alt+Tab, Alt+←)', () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       fireEvent.keyDown(window, { key: 'Alt', altKey: true })
       fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
@@ -182,7 +182,7 @@ describe('app menu', () => {
 
   describe('shortcuts', () => {
     it('Ctrl+Q quits, Ctrl+W closes the window, Ctrl+, opens Settings', async () => {
-      const { quit, appWindow } = renderWithStore(<App />)
+      const { quit, appWindow } = renderWithStore(<Shell />)
 
       fireEvent.keyDown(window, { key: 'q', ctrlKey: true })
       fireEvent.keyDown(window, { key: 'w', ctrlKey: true })
@@ -197,7 +197,7 @@ describe('app menu', () => {
 
 describe('app menu on a host without some members', () => {
   it('has no Quit item and Ctrl+Q does nothing without quit', async () => {
-    const { quit } = renderWithStore(<App />, {}, { omit: ['quit'] })
+    const { quit } = renderWithStore(<Shell />, {}, { omit: ['quit'] })
 
     expect(within(await openSubmenu('File')).queryByRole('menuitem', { name: /Quit OpenVatra/ })).toBeNull()
     const prevented = !fireEvent.keyDown(window, { key: 'q', ctrlKey: true, cancelable: true })
@@ -207,7 +207,7 @@ describe('app menu on a host without some members', () => {
   })
 
   it('has no Edit menu, no Close window and no Ctrl+W without window', async () => {
-    const { appWindow } = renderWithStore(<App />, {}, { omit: ['window'] })
+    const { appWindow } = renderWithStore(<Shell />, {}, { omit: ['window'] })
 
     const root = await openMenu()
     expect(within(root).queryByRole('menuitem', { name: 'Edit' })).toBeNull()
@@ -220,7 +220,7 @@ describe('app menu on a host without some members', () => {
   })
 
   it('still opens the menu with Alt+E, with no submenu open', async () => {
-    renderWithStore(<App />, {}, { omit: ['window'] })
+    renderWithStore(<Shell />, {}, { omit: ['window'] })
 
     fireEvent.keyDown(window, { key: 'Alt', altKey: true })
     fireEvent.keyDown(window, { key: 'e', altKey: true })
@@ -231,7 +231,7 @@ describe('app menu on a host without some members', () => {
   })
 
   it('has no Open logs folder without files', async () => {
-    renderWithStore(<App />, {}, { omit: ['files'] })
+    renderWithStore(<Shell />, {}, { omit: ['files'] })
 
     const help = await openSubmenu('Help')
 

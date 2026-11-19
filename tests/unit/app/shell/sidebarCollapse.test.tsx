@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { Shell } from '@app/shell/Shell'
+import { renderWithStore } from '../../renderWithStore'
 
 const panel = (): HTMLElement => document.getElementById('sidebar') as HTMLElement
 // One toggle in the title bar, always visible; aria-expanded says whether the sidebar is open.
@@ -14,7 +14,7 @@ const pressCtrlB = (): void => {
 // off (data-state) and what keyboard and screen-reader users get (inert, aria-expanded, focus).
 describe('collapsible sidebar', () => {
   it('starts open', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     expect(panel()).toHaveAttribute('data-state', 'open')
     expect(panel()).not.toHaveAttribute('inert')
@@ -22,14 +22,14 @@ describe('collapsible sidebar', () => {
   })
 
   it('opens the way it was left', () => {
-    renderWithStore(<App />, { sidebarOpen: false })
+    renderWithStore(<Shell />, { sidebarOpen: false })
 
     expect(panel()).toHaveAttribute('data-state', 'closed')
     expect(toggle()).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('closes with the toggle: hidden from the keyboard and screen readers, not just from view', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     fireEvent.click(toggle())
 
@@ -39,7 +39,7 @@ describe('collapsible sidebar', () => {
   })
 
   it('opens again with the same toggle, which stays where it is', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     fireEvent.click(toggle())
 
     fireEvent.click(toggle())
@@ -49,7 +49,7 @@ describe('collapsible sidebar', () => {
   })
 
   it('toggles with Ctrl+B, and ignores Ctrl+Shift+B', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     pressCtrlB()
     expect(panel()).toHaveAttribute('data-state', 'closed')
@@ -62,7 +62,7 @@ describe('collapsible sidebar', () => {
   })
 
   it('keeps the tabs: closing the sidebar does not change the open tab', () => {
-    const { store } = renderWithStore(<App />, { lastTab: 'code' })
+    const { store } = renderWithStore(<Shell />, { lastTab: 'code' })
 
     pressCtrlB()
 
@@ -72,7 +72,7 @@ describe('collapsible sidebar', () => {
 
   describe('focus', () => {
     it('stays on the toggle when the toggle is used', () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       toggle().focus()
       fireEvent.click(toggle())
@@ -81,7 +81,7 @@ describe('collapsible sidebar', () => {
     })
 
     it('moves to the toggle when Ctrl+B hides the tab that had it', () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       const nav = screen.getByRole('navigation', { name: 'Main' })
       within(nav).getByRole('button', { name: 'Code' }).focus()
 
@@ -91,7 +91,7 @@ describe('collapsible sidebar', () => {
     })
 
     it('stays put when it was somewhere else', () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       const outside = document.createElement('button')
       document.body.append(outside)
       outside.focus()

@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
-import { renderWithStore } from './renderWithStore'
+import { Shell } from '@app/shell/Shell'
+import { renderWithStore } from '../../renderWithStore'
 
 const bar = (): HTMLElement => screen.getByRole('banner')
 const back = (): HTMLElement => within(bar()).getByRole('button', { name: 'Back' })
@@ -13,7 +13,7 @@ const heading = (name: string): HTMLElement => screen.getByRole('heading', { lev
 
 describe('back and forward', () => {
   it('sit after the sidebar toggle, dimmed while there is nowhere to go', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
 
     const names = within(bar())
       .getAllByRole('button')
@@ -24,7 +24,7 @@ describe('back and forward', () => {
   })
 
   it('Back returns to the tab you came from, Forward goes there again', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     openTab('Code')
 
     fireEvent.click(back())
@@ -37,7 +37,7 @@ describe('back and forward', () => {
   })
 
   it('Alt+← and Alt+→ do the same from anywhere', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     openTab('Automations')
 
     fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
@@ -48,7 +48,7 @@ describe('back and forward', () => {
   })
 
   it('a plain arrow key does not navigate', () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     openTab('Code')
 
     fireEvent.keyDown(window, { key: 'ArrowLeft' })
@@ -57,7 +57,7 @@ describe('back and forward', () => {
   })
 
   it('the menu Go → Back works too', async () => {
-    renderWithStore(<App />, {}, { coreState: { status: 'starting' } })
+    renderWithStore(<Shell />, {}, { coreState: { status: 'starting' } })
     openTab('Code')
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }))

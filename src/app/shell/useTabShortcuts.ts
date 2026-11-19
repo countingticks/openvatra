@@ -2,7 +2,7 @@
 import { useEffect } from 'react'
 import { useAppDispatch } from '@app/store/hooks'
 import { tabSelected } from '@app/store/uiSlice'
-import { tabs } from '@renderer/tabs'
+import { tabs } from './tabs'
 
 export function useTabShortcuts(): void {
   const dispatch = useAppDispatch()

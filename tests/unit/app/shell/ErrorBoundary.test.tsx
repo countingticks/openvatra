@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
+import { ErrorBoundary } from '@app/shell/ErrorBoundary'
 
 let broken = true
 function Page(): React.JSX.Element {

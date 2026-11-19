@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import type { LlamaServerSettings } from '@app/core/generated'
 import { settingsOpened } from '@app/store/uiSlice'
 import type { ModelInfo } from '@app/core/types'
@@ -34,7 +34,7 @@ function show(
 ): ReturnType<typeof renderWithStore> {
   const { showAdvanced, cudaOfferDismissed, engineSettings } = models
   return renderWithStore(
-    <App />,
+    <Shell />,
     { showAdvancedModels: showAdvanced ?? false, cudaOfferDismissed: cudaOfferDismissed ?? false },
     { coreState: ready, engines: { cuda }, models: list, engineSettings }
   )
@@ -85,7 +85,7 @@ describe('faster engine for NVIDIA', () => {
 
   it('offers "Use the faster engine" when core reports it installed', async () => {
     const { store } = renderWithStore(
-      <App />,
+      <Shell />,
       { cudaOfferDismissed: true },
       { coreState: ready, engines: { cuda: 'ready' }, models: [stopped] }
     )

@@ -7,7 +7,7 @@ import { useAppSelector } from '@app/store/hooks'
 import { selectActiveTab } from '@app/store/uiSlice'
 
 /** The open tab's content. Each module replaces its placeholder when it arrives. */
-export function TabView(): React.JSX.Element {
+export function Routes(): React.JSX.Element {
   const coreState = useCoreState()
   const noChatModels = useModels().every((model) => model.kind !== 'chat')
   // Only once core is up: before that the model list is empty just because nobody has answered yet.

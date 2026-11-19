@@ -1,6 +1,6 @@
 // The app's tabs in sidebar order. Their position also gives the shortcut: the first is Ctrl+1, and so on.
 import { Code, MessageSquare, Zap, type LucideIcon } from 'lucide-react'
-import { tabIds, type TabId } from '../../shared/settings'
+import { tabIds, type TabId } from '@shared/settings'
 
 export interface Tab {
   id: TabId

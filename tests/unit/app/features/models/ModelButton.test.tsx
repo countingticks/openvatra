@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import { defaultEngineSettings } from '@app/features/models/modelSettings'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
@@ -27,7 +27,7 @@ async function openPopover(): Promise<HTMLElement> {
 describe('model button', () => {
   it('sits in the Chat tab and says "No model" with the state in words', async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       { coreState: { status: 'ready', port: 1234, version: '1', connection: exampleConnection } }
     )
@@ -37,7 +37,7 @@ describe('model button', () => {
   })
 
   it('starts as Starting and follows every state change', async () => {
-    const { core } = renderWithStore(<App />)
+    const { core } = renderWithStore(<Shell />)
     expect(button()).toHaveAccessibleName('Model: no model, Starting')
 
     core.emitState({ status: 'problem', reason: 'llama-server.exe not found' })
@@ -48,7 +48,7 @@ describe('model button', () => {
   })
 
   it('restarts the service and opens the log', async () => {
-    const { core } = renderWithStore(<App />)
+    const { core } = renderWithStore(<Shell />)
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Restart' }))
@@ -59,7 +59,7 @@ describe('model button', () => {
   })
 
   it('opens Settings on Models from "Model settings…" and closes the popover', async () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Model settings…' }))
@@ -69,7 +69,7 @@ describe('model button', () => {
   })
 
   it('closes with Esc', async () => {
-    renderWithStore(<App />)
+    renderWithStore(<Shell />)
     const popover = await openPopover()
 
     fireEvent.keyDown(popover, { key: 'Escape' })
@@ -80,7 +80,7 @@ describe('model button', () => {
   })
 
   it('lists the models and loads one through core', async () => {
-    const { coreHttp } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
+    const { coreHttp } = renderWithStore(<Shell />, {}, { coreState: ready, models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.click(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' }))
@@ -95,7 +95,7 @@ describe('model button', () => {
   it('lists chat models only: embedding models and unreadable files load on demand or not at all', async () => {
     const embed: ModelInfo = { ...qwen, id: 'nomic-embed', kind: 'embedding', state: 'ready' }
     const junk: ModelInfo = { ...qwen, id: 'junk', kind: 'unreadable', error: 'not a GGUF file' }
-    renderWithStore(<App />, {}, { coreState: ready, models: [embed, qwen, junk] })
+    renderWithStore(<Shell />, {}, { coreState: ready, models: [embed, qwen, junk] })
     const popover = await openPopover()
 
     expect(await within(popover).findByRole('button', { name: 'Load Qwen3-8B' })).toBeInTheDocument()
@@ -107,7 +107,7 @@ describe('model button', () => {
 
   it('names the loaded model on the button, highlights its row and unloads it on click', async () => {
     const { coreHttp } = renderWithStore(
-      <App />,
+      <Shell />,
       {},
       {
         coreState: ready,
@@ -137,7 +137,7 @@ describe('model button', () => {
   })
 
   it('shows a disabled spinner row while a model loads, and no state words', async () => {
-    renderWithStore(<App />, {}, { coreState: ready, models: [{ ...qwen, state: 'loading' }] })
+    renderWithStore(<Shell />, {}, { coreState: ready, models: [{ ...qwen, state: 'loading' }] })
     await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Loading'))
     const popover = await openPopover()
 
@@ -146,7 +146,7 @@ describe('model button', () => {
   })
 
   it('says what is happening when there is no list: starting, or a problem', async () => {
-    const { core } = renderWithStore(<App />, {}, { coreState: { status: 'starting' } })
+    const { core } = renderWithStore(<Shell />, {}, { coreState: { status: 'starting' } })
     const popover = await openPopover()
     expect(popover).toHaveTextContent('Starting the models service…')
 
@@ -156,7 +156,7 @@ describe('model button', () => {
 
   it("shows core's error under the model's name", async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       { coreState: ready, models: [{ ...qwen, state: 'error', error: 'not enough memory' }] }
     )
@@ -167,7 +167,7 @@ describe('model button', () => {
   })
 
   it("says Loading while a model loads, and shows core's reason when the request fails", async () => {
-    const { coreHttp } = renderWithStore(<App />, {}, { coreState: ready, models: [qwen] })
+    const { coreHttp } = renderWithStore(<Shell />, {}, { coreState: ready, models: [qwen] })
     coreHttp.respond('POST', '/api/models/Qwen3-8B/load', () => ({
       status: 503,
       body: { error: 'model_load_failed', message: 'out of memory' }
@@ -180,7 +180,7 @@ describe('model button', () => {
 
   it('switches to the standard engine from a model that failed on the faster one', async () => {
     const { coreHttp } = renderWithStore(
-      <App />,
+      <Shell />,
       {},
       {
         coreState: ready,
@@ -205,7 +205,7 @@ describe('model button', () => {
   })
 
   it('explains an empty list, and lists nothing while core is not ready', async () => {
-    const { core } = renderWithStore(<App />, {}, { coreState: ready })
+    const { core } = renderWithStore(<Shell />, {}, { coreState: ready })
     const popover = await openPopover()
     expect(popover).toHaveTextContent('No models found')
 
@@ -216,7 +216,7 @@ describe('model button', () => {
 
 describe('model button on a host without service actions', () => {
   it('has no Restart and no Open log without restart and openLog', async () => {
-    renderWithStore(<App />, {}, { omit: ['restart', 'openLog'] })
+    renderWithStore(<Shell />, {}, { omit: ['restart', 'openLog'] })
     const popover = await openPopover()
 
     expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()
@@ -224,7 +224,7 @@ describe('model button on a host without service actions', () => {
   })
 
   it('keeps Open log when only restart is missing', async () => {
-    renderWithStore(<App />, {}, { omit: ['restart'] })
+    renderWithStore(<Shell />, {}, { omit: ['restart'] })
     const popover = await openPopover()
 
     expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()

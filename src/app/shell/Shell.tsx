@@ -1,19 +1,18 @@
 import { useEffect, useRef } from 'react'
-import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
-import { ModelsDialog, ResumeDownloadsDialog } from '@app/features/models'
-import { SettingsDialog } from '@app/features/settings'
-import { Sidebar } from '@renderer/components/Sidebar'
-import { TabView } from '@renderer/components/TabView'
-import { TitleBar } from '@renderer/components/TitleBar'
-import { useAppShortcuts } from '@renderer/hooks/useAppShortcuts'
-import { useApplyMotion } from '@renderer/hooks/useApplyMotion'
-import { useSidebarShortcut } from '@renderer/hooks/useSidebarShortcut'
-import { useTabShortcuts } from '@renderer/hooks/useTabShortcuts'
+import { DialogHost } from './DialogHost'
+import { ErrorBoundary } from './ErrorBoundary'
+import { Sidebar } from './Sidebar'
+import { Routes } from './Routes'
+import { TitleBar } from './TitleBar'
+import { useAppShortcuts } from './useAppShortcuts'
+import { useApplyMotion } from './useApplyMotion'
+import { useSidebarShortcut } from './useSidebarShortcut'
+import { useTabShortcuts } from './useTabShortcuts'
 import { useAppSelector } from '@app/store/hooks'
 import { selectActiveTab, selectSidebarOpen } from '@app/store/uiSlice'
-import { sidebarId } from '@renderer/tabs'
+import { sidebarId } from './tabs'
 
-export function App(): React.JSX.Element {
+export function Shell(): React.JSX.Element {
   useTabShortcuts()
   useSidebarShortcut()
   useAppShortcuts()
@@ -37,14 +36,10 @@ export function App(): React.JSX.Element {
       <main className="relative min-w-0 flex-1">
         {/* Keyed by tab: switching tabs starts a fresh boundary, so a broken page doesn't follow you around. */}
         <ErrorBoundary key={activeTab}>
-          <TabView />
+          <Routes />
         </ErrorBoundary>
       </main>
-      <ErrorBoundary>
-        <SettingsDialog />
-        <ModelsDialog />
-        <ResumeDownloadsDialog />
-      </ErrorBoundary>
+      <DialogHost />
     </div>
   )
 }

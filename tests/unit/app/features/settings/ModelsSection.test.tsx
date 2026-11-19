@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import { coreApi } from '@app/core/coreApi'
 import type { LlamaCppSettings, LlamaServerSettings } from '@app/core/generated'
 import { defaultEngineSettings, defaultLlamacppSettings } from '@app/features/models/modelSettings'
@@ -82,7 +82,7 @@ async function openModels(
   // Most tests are about the advanced view, so it is on unless a test says otherwise.
   const { showAdvanced = true, cudaOfferDismissed = false, engineSettings, ...core } = models
   const rendered = renderWithStore(
-    <App />,
+    <Shell />,
     { showAdvancedModels: showAdvanced, cudaOfferDismissed },
     { llamacppSettings: core, engineSettings, ...options }
   )

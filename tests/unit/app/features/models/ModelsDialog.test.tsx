@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
 import type { DownloadItem } from '@app/core/types'
@@ -44,7 +44,7 @@ async function openDialog(
   view: CatalogView,
   downloads: DownloadItem[] = []
 ): Promise<ReturnType<typeof renderWithStore> & { dialog: HTMLElement }> {
-  const rendered = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog: view, downloads } })
+  const rendered = renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog: view, downloads } })
   fireEvent.click(await screen.findByRole('button', { name: 'See other models' }))
   const dialog = await screen.findByRole('dialog', { name: 'Get more models' })
   return { ...rendered, dialog }
@@ -164,7 +164,7 @@ describe('Models dialog', () => {
 
   it('opens from the model button and from Settings → Models', async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       {
         coreState: ready,

@@ -1,7 +1,7 @@
 import { usePlatform } from '@app/platform/usePlatform'
-import { useMaximized } from '@renderer/hooks/useMaximized'
+import { useMaximized } from './useMaximized'
 import { cn } from '@app/lib/utils'
-import type { AppWindowApi } from '../../../shared/ipc'
+import type { AppWindowApi } from '@shared/ipc'
 
 // Windows' own sizes (46×40) and thin glyphs, so the buttons feel native although the UI draws them.
 const button =

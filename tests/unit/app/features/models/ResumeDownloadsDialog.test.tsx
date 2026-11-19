@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
 import type { DownloadItem } from '@app/core/types'
@@ -36,7 +36,7 @@ const paused = (id: string): DownloadItem => ({
 })
 
 function start(downloads: DownloadItem[]): ReturnType<typeof renderWithStore> {
-  return renderWithStore(<App />, {}, { coreState: ready, setup: { catalog, downloads } })
+  return renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog, downloads } })
 }
 
 describe('offer to resume unfinished downloads', () => {
@@ -95,7 +95,7 @@ describe('offer to resume unfinished downloads', () => {
 
   it('waits for core to be ready', async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       { coreState: { status: 'starting' }, setup: { catalog, downloads: [paused('qwen3-8b')] } }
     )

@@ -4,6 +4,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@app": ["src/app/index.ts"],
       "@app/*": ["src/app/*"],
       "@shared/*": ["src/shared/*"],
       "@renderer/*": ["src/renderer/src/*"]

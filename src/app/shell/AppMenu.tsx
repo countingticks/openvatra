@@ -13,7 +13,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger
 } from '@app/ui/dropdown-menu'
-import { useAltMenu, type MenuName } from '@renderer/hooks/useAltMenu'
+import { useAltMenu, type MenuName } from './useAltMenu'
 import { usePlatform } from '@app/platform/usePlatform'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import {
@@ -26,8 +26,8 @@ import {
   wentBack,
   wentForward
 } from '@app/store/uiSlice'
-import { tabs } from '@renderer/tabs'
-import type { EditCommand } from '../../../shared/ipc'
+import { tabs } from './tabs'
+import type { EditCommand } from '@shared/ipc'
 
 const allMenus: readonly MenuName[] = ['File', 'Edit', 'View', 'Go', 'Help']
 

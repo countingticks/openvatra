@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import { exampleLocations, renderWithStore } from '../../../renderWithStore'
 
 const gear = (): HTMLElement => screen.getByRole('button', { name: 'Settings' })
@@ -15,7 +15,7 @@ async function openSettings(): Promise<HTMLElement> {
 describe('Settings dialog', () => {
   describe('opening and closing', () => {
     it('opens from the gear at the bottom of the sidebar, over the current tab', async () => {
-      renderWithStore(<App />, { lastTab: 'code' })
+      renderWithStore(<Shell />, { lastTab: 'code' })
       expect(gear()).toHaveAttribute('aria-haspopup', 'dialog')
 
       await openSettings()
@@ -26,7 +26,7 @@ describe('Settings dialog', () => {
     })
 
     it('opens with Ctrl+,', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
 
       fireEvent.keyDown(window, { key: ',', ctrlKey: true })
 
@@ -34,7 +34,7 @@ describe('Settings dialog', () => {
     })
 
     it('closes with its ✕, and gives focus back to the gear', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       gear().focus()
       const open = await openSettings()
 
@@ -45,7 +45,7 @@ describe('Settings dialog', () => {
     })
 
     it('closes with Esc', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       const open = await openSettings()
 
       fireEvent.keyDown(open, { key: 'Escape' })
@@ -54,7 +54,7 @@ describe('Settings dialog', () => {
     })
 
     it('opens on General, switches to Models, and shows where later sections will go', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       const open = await openSettings()
       const sections = within(open).getByRole('navigation', { name: 'Settings sections' })
 
@@ -75,7 +75,7 @@ describe('Settings dialog', () => {
 
   describe('Theme', () => {
     it('offers System, Light and Dark, showing the saved one', async () => {
-      renderWithStore(<App />, { theme: 'light' })
+      renderWithStore(<Shell />, { theme: 'light' })
       await openSettings()
 
       const names = within(group('Theme'))
@@ -86,7 +86,7 @@ describe('Settings dialog', () => {
     })
 
     it('saves the theme the user picks', async () => {
-      const { saveSettings } = renderWithStore(<App />)
+      const { saveSettings } = renderWithStore(<Shell />)
       await openSettings()
 
       fireEvent.click(within(group('Theme')).getByRole('radio', { name: 'Dark' }))
@@ -98,14 +98,14 @@ describe('Settings dialog', () => {
 
   describe('Animations', () => {
     it('follows Windows by default', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       await openSettings()
 
       expect(within(group('Animations')).getByRole('radio', { name: 'System' })).toBeChecked()
     })
 
     it('Off saves the choice and turns motion off for the whole app at once', async () => {
-      const { saveSettings } = renderWithStore(<App />)
+      const { saveSettings } = renderWithStore(<Shell />)
       await openSettings()
       expect(document.documentElement).toHaveAttribute('data-motion', 'full')
 
@@ -118,7 +118,7 @@ describe('Settings dialog', () => {
 
   describe('Start with Windows', () => {
     it('is a switch, off by default, explained by its hint', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       await openSettings()
       const toggle = within(dialog()).getByRole('switch', { name: 'Start with Windows' })
 
@@ -127,7 +127,7 @@ describe('Settings dialog', () => {
     })
 
     it('saves the change when switched on', async () => {
-      const { saveSettings } = renderWithStore(<App />)
+      const { saveSettings } = renderWithStore(<Shell />)
       await openSettings()
 
       fireEvent.click(within(dialog()).getByRole('switch', { name: 'Start with Windows' }))
@@ -138,7 +138,7 @@ describe('Settings dialog', () => {
 
   describe('When I close the window', () => {
     it('keeps running in the tray by default, and saves the choice to quit', async () => {
-      const { saveSettings } = renderWithStore(<App />)
+      const { saveSettings } = renderWithStore(<Shell />)
       await openSettings()
       const close = group('When I close the window')
 
@@ -151,7 +151,7 @@ describe('Settings dialog', () => {
 
   describe('File locations', () => {
     it('are not shown on a host without files', async () => {
-      renderWithStore(<App />, {}, { omit: ['files'] })
+      renderWithStore(<Shell />, {}, { omit: ['files'] })
       await openSettings()
 
       expect(within(dialog()).queryByText('File locations')).toBeNull()
@@ -159,7 +159,7 @@ describe('Settings dialog', () => {
     })
 
     it('shows where the settings file and the logs are', async () => {
-      renderWithStore(<App />)
+      renderWithStore(<Shell />)
       await openSettings()
 
       expect(await within(dialog()).findByText(exampleLocations.settingsFile)).toBeInTheDocument()
@@ -167,7 +167,7 @@ describe('Settings dialog', () => {
     })
 
     it('opens each folder by name, never by path', async () => {
-      const { openFolder } = renderWithStore(<App />)
+      const { openFolder } = renderWithStore(<Shell />)
       await openSettings()
 
       fireEvent.click(within(dialog()).getByRole('button', { name: 'Open the settings file folder' }))
@@ -177,7 +177,7 @@ describe('Settings dialog', () => {
     })
 
     it('says so when a folder cannot be opened', async () => {
-      const { openFolder } = renderWithStore(<App />)
+      const { openFolder } = renderWithStore(<Shell />)
       openFolder.mockRejectedValueOnce(new Error('gone'))
       await openSettings()
 

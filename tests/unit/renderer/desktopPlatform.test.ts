@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { desktopPlatform } from '@renderer/desktopPlatform'
-import type { Api } from '../../src/shared/ipc'
-import type { CoreState } from '../../src/shared/core'
-import { defaultSettings } from '../../src/shared/settings'
+import type { Api } from '@shared/ipc'
+import type { CoreState } from '@shared/core'
+import { defaultSettings } from '@shared/settings'
 
 function buildApi(): Api {
   return {

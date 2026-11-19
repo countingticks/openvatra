@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { App } from '@renderer/App'
+import { Shell } from '@app/shell/Shell'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
 import type { ModelInfo } from '@app/core/types'
@@ -46,7 +46,7 @@ const chatModel: ModelInfo = {
 
 describe('welcome card', () => {
   it('recommends a model with its size and fit, and downloads it on click', async () => {
-    const { coreHttp } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
+    const { coreHttp } = renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog } })
 
     expect(await screen.findByRole('heading', { name: "Let's get you a model" })).toBeInTheDocument()
     expect(screen.getByText(/RTX 4070 · 12 GB graphics memory · 32 GB memory/)).toBeInTheDocument()
@@ -63,7 +63,7 @@ describe('welcome card', () => {
 
   it('shows progress with time left while downloading, and cancels', async () => {
     const { coreHttp } = renderWithStore(
-      <App />,
+      <Shell />,
       {},
       { coreState: ready, setup: { catalog, downloads: [item()] } }
     )
@@ -81,7 +81,7 @@ describe('welcome card', () => {
 
   it('offers Resume when paused and Try again after an error', async () => {
     const { coreHttp, setup } = renderWithStore(
-      <App />,
+      <Shell />,
       {},
       { coreState: ready, setup: { catalog, downloads: [item({ state: 'paused' })] } }
     )
@@ -107,7 +107,7 @@ describe('welcome card', () => {
 
   it('says so when no model fits, without a Download button', async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       {
         coreState: ready,
@@ -121,7 +121,7 @@ describe('welcome card', () => {
 
   it('disables Download and explains when the disk is too full', async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       {
         coreState: ready,
@@ -134,7 +134,7 @@ describe('welcome card', () => {
   })
 
   it('shows the reason when core refuses the download', async () => {
-    const { coreHttp } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
+    const { coreHttp } = renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog } })
     coreHttp.respond('POST', '/api/downloads', () => ({
       status: 409,
       body: { error: 'not_enough_space', message: 'no space' }
@@ -147,7 +147,7 @@ describe('welcome card', () => {
 
   it("shows core's models folder", async () => {
     renderWithStore(
-      <App />,
+      <Shell />,
       {},
       { coreState: ready, setup: { catalog }, llamacppSettings: { modelsDir: 'D:\\AI' } }
     )
@@ -156,7 +156,7 @@ describe('welcome card', () => {
   })
 
   it('changes the folder through the system dialog', async () => {
-    const { pick } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
+    const { pick } = renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog } })
     expect(await screen.findByText(/OpenVatra\\Models folder/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Change…' }))
@@ -165,7 +165,7 @@ describe('welcome card', () => {
   })
 
   it('shows no alert when the folder was saved, and the reason when it was not', async () => {
-    const { pick } = renderWithStore(<App />, {}, { coreState: ready, setup: { catalog } })
+    const { pick } = renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog } })
     expect(await screen.findByText(/OpenVatra\\Models folder/)).toBeInTheDocument()
     pick.mockResolvedValueOnce(true)
 
@@ -179,7 +179,7 @@ describe('welcome card', () => {
   })
 
   it('is not shown once there is a chat model, or while the service is starting', async () => {
-    renderWithStore(<App />, {}, { coreState: ready, models: [chatModel], setup: { catalog } })
+    renderWithStore(<Shell />, {}, { coreState: ready, models: [chatModel], setup: { catalog } })
     expect(await screen.findByRole('heading', { name: 'Chat' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: "Let's get you a model" })).not.toBeInTheDocument()
   })
@@ -187,7 +187,7 @@ describe('welcome card', () => {
 
 describe('welcome card on a host without files', () => {
   it('has no Change… link but still says where models are saved', async () => {
-    renderWithStore(<App />, {}, { coreState: ready, setup: { catalog }, omit: ['files'] })
+    renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog }, omit: ['files'] })
 
     expect(await screen.findByText(/Models are saved in/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Change…' })).toBeNull()
