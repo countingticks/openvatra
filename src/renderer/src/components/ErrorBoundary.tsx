@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
-import { Button } from '@renderer/components/ui/button'
+import { Button } from '@app/ui/button'
 
 interface ErrorBoundaryProps {
   children: ReactNode

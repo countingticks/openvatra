@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { contextMax, contextMin, parseContext } from '@renderer/lib/modelText'
-import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
+import { SegmentedControl } from '@app/ui/SegmentedControl'
 
 const suggestions = [8192, 16384, 32768, 65536, 131072, 262144]
 const modes = [

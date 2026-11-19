@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
 import { coreWrites } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
-import type { DownloadItem } from '@renderer/core/types'
+import type { DownloadItem } from '@app/core/types'
 import type { CatalogEntry, CatalogView } from '@renderer/core/catalogView'
 
 const GB = 1024 ** 3

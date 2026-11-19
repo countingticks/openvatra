@@ -1,14 +1,14 @@
 import { useId, useState } from 'react'
 import { ModelRow } from '@renderer/components/settings/ModelRow'
-import { Button } from '@renderer/components/ui/button'
-import { Label } from '@renderer/components/ui/label'
-import { usePlatform } from '@renderer/platform/usePlatform'
-import { useCoreState } from '@renderer/hooks/useCoreState'
+import { Button } from '@app/ui/button'
+import { Label } from '@app/ui/label'
+import { usePlatform } from '@app/platform/usePlatform'
+import { useCoreState } from '@app/core/useCoreState'
 import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
 import { useModels } from '@renderer/hooks/useModels'
-import type { ModelInfo } from '@renderer/core/types'
+import type { ModelInfo } from '@app/core/types'
 import type { LlamacppChange } from '@renderer/core/modelSettings'
-import type { ModelOptions } from '@renderer/core/generated'
+import type { ModelOptions } from '@app/core/generated'
 
 /** A failed action has nothing useful to show here; log it (main copies page errors into main.log). */
 function run(action: () => Promise<void>): void {

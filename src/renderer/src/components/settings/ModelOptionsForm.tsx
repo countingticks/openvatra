@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { ArgsField } from '@renderer/components/settings/ArgsField'
 import { ContextField } from '@renderer/components/settings/ContextField'
 import { PlacementSelect } from '@renderer/components/settings/PlacementSelect'
-import { useGetHardwareQuery, useGetModelFitQuery, type ModelOptions } from '@renderer/core/generated'
+import { useGetHardwareQuery, useGetModelFitQuery, type ModelOptions } from '@app/core/generated'
 import { fitHint } from '@renderer/lib/modelText'
-import type { ModelInfo } from '@renderer/core/types'
+import type { ModelInfo } from '@app/core/types'
 
 interface ModelOptionsFormProps {
   id: string

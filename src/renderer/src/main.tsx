@@ -1,7 +1,7 @@
 import '@fontsource-variable/geist'
 import '@fontsource-variable/geist-mono'
 import '@fontsource-variable/source-serif-4/opsz.css'
-import './styles/globals.css'
+import '@app/ui/styles/globals.css'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -9,9 +9,9 @@ import { Provider } from 'react-redux'
 import type { Settings } from '../../shared/settings'
 import { App } from './App'
 import { desktopPlatform } from './desktopPlatform'
-import { PlatformProvider } from './platform/PlatformProvider'
-import { createAppStore } from './store/store'
-import { followColorScheme } from './theme'
+import { PlatformProvider } from '@app/platform/PlatformProvider'
+import { createAppStore } from '@app/store/store'
+import { followColorScheme } from '@app/ui/theme'
 
 // Before anything renders, so the first frame is already in the right theme.
 followColorScheme()

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo } from 'react'
 import { parseCatalogView, type CatalogView } from '@renderer/core/catalogView'
-import type { DownloadItem, HardwareReport } from '@renderer/core/types'
-import { selectConnection } from '../core/connectionSlice'
-import { coreApi } from '../core/coreApi'
-import { useGetCatalogQuery, useGetHardwareQuery, useListDownloadsQuery } from '../core/generated'
-import { useAppDispatch, useAppSelector } from '../store/hooks'
+import type { DownloadItem, HardwareReport } from '@app/core/types'
+import { selectConnection } from '@app/core/connectionSlice'
+import { coreApi } from '@app/core/coreApi'
+import { useGetCatalogQuery, useGetHardwareQuery, useListDownloadsQuery } from '@app/core/generated'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 
 const noDownloads: DownloadItem[] = []
 

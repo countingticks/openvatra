@@ -1,12 +1,12 @@
-import { ComingSoon } from '@renderer/components/ComingSoon'
-import { Ember } from '@renderer/components/Ember'
+import { ComingSoon } from '@app/ui/ComingSoon'
+import { Ember } from '@app/ui/Ember'
 import { ModelButton } from '@renderer/components/ModelButton'
-import { PixelBackdrop } from '@renderer/components/PixelBackdrop'
+import { PixelBackdrop } from '@app/ui/PixelBackdrop'
 import { WelcomeCard } from '@renderer/components/WelcomeCard'
-import { useCoreState } from '@renderer/hooks/useCoreState'
+import { useCoreState } from '@app/core/useCoreState'
 import { useModels } from '@renderer/hooks/useModels'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { modelsDialogOpened, selectActiveTab } from '@renderer/store/uiSlice'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
+import { modelsDialogOpened, selectActiveTab } from '@app/store/uiSlice'
 
 /** The open tab's content. Each module replaces its placeholder when it arrives. */
 export function TabView(): React.JSX.Element {

@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { DownloadControls } from '@renderer/components/DownloadControls'
-import { Button } from '@renderer/components/ui/button'
+import { Button } from '@app/ui/button'
 import {
   useCancelDownloadMutation,
   useResumeDownloadMutation,
   useStartDownloadMutation
-} from '@renderer/core/generated'
+} from '@app/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
 import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
 import { failureReason } from '@renderer/lib/modelText'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
+import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
 
 // Two files of about 280 and 370 MB; round up, since sizes here are promises.
 const size = 'about 700 MB'

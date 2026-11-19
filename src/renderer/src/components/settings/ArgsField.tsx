@@ -1,5 +1,5 @@
 import { useId, useState } from 'react'
-import { Label } from '@renderer/components/ui/label'
+import { Label } from '@app/ui/label'
 import { splitArgs } from '../../../../shared/args'
 
 interface ArgsFieldProps {

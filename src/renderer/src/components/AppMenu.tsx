@@ -12,10 +12,10 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger
-} from '@renderer/components/ui/dropdown-menu'
+} from '@app/ui/dropdown-menu'
 import { useAltMenu, type MenuName } from '@renderer/hooks/useAltMenu'
-import { usePlatform } from '@renderer/platform/usePlatform'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
+import { usePlatform } from '@app/platform/usePlatform'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import {
   selectActiveTab,
   selectCanGoBack,
@@ -25,7 +25,7 @@ import {
   tabSelected,
   wentBack,
   wentForward
-} from '@renderer/store/uiSlice'
+} from '@app/store/uiSlice'
 import { tabs } from '@renderer/tabs'
 import type { EditCommand } from '../../../shared/ipc'
 

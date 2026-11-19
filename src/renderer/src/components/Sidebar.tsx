@@ -1,7 +1,7 @@
 import { Settings } from 'lucide-react'
-import { cn } from '@renderer/lib/utils'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectActiveTab, selectSidebarOpen, settingsOpened, tabSelected } from '@renderer/store/uiSlice'
+import { cn } from '@app/lib/utils'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
+import { selectActiveTab, selectSidebarOpen, settingsOpened, tabSelected } from '@app/store/uiSlice'
 import { settingsShortcut, sidebarId, tabs } from '@renderer/tabs'
 
 const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring'

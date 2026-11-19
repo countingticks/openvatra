@@ -1,17 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button } from '@renderer/components/ui/button'
-import { useResumeDownloadMutation } from '@renderer/core/generated'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogTitle
-} from '@renderer/components/ui/dialog'
-import { useCoreState } from '@renderer/hooks/useCoreState'
+import { Button } from '@app/ui/button'
+import { useResumeDownloadMutation } from '@app/core/generated'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } from '@app/ui/dialog'
+import { useCoreState } from '@app/core/useCoreState'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { progressText } from '@renderer/lib/setupText'
-import type { DownloadItem } from '@renderer/core/types'
+import type { DownloadItem } from '@app/core/types'
 
 /**
  * Once per start: if downloads were left unfinished by the last run, offers to continue them. "Left over" means

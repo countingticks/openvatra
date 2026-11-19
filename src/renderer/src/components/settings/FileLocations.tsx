@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { FolderOpen } from 'lucide-react'
-import { usePlatform } from '@renderer/platform/usePlatform'
-import { Button } from '@renderer/components/ui/button'
+import { usePlatform } from '@app/platform/usePlatform'
+import { Button } from '@app/ui/button'
 import type { AppFolder, FileLocations as Locations } from '../../../../shared/ipc'
 
 const rows: { folder: AppFolder; label: string; path: (locations: Locations) => string }[] = [

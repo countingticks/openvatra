@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Check, LoaderCircle } from 'lucide-react'
-import { Button } from '@renderer/components/ui/button'
-import { useLoadModelMutation, useUnloadModelMutation } from '@renderer/core/generated'
+import { Button } from '@app/ui/button'
+import { useLoadModelMutation, useUnloadModelMutation } from '@app/core/generated'
 import { useCudaEngine } from '@renderer/hooks/useCudaEngine'
 import { useEngineSettings } from '@renderer/hooks/useEngineSettings'
 import { failureReason } from '@renderer/lib/modelText'
-import { cn } from '@renderer/lib/utils'
-import type { ModelInfo } from '@renderer/core/types'
+import { cn } from '@app/lib/utils'
+import type { ModelInfo } from '@app/core/types'
 
 /** The whole row is the button: clicking a model loads it, clicking the loaded one unloads it. */
 function PickerRow({

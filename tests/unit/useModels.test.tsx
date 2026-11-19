@@ -1,7 +1,7 @@
 import { screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { useModels } from '@renderer/hooks/useModels'
-import type { ModelInfo } from '@renderer/core/types'
+import type { ModelInfo } from '@app/core/types'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 
 const model = (id: string): ModelInfo => ({

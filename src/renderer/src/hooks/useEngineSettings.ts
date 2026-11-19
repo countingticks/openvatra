@@ -5,9 +5,9 @@ import {
   type EngineChange,
   type SectionSettings
 } from '../core/modelSettings'
-import { useGetConfigEngineLlamaserverQuery } from '../core/generated'
-import type { LlamaServerEffective, LlamaServerSettings } from '../core/generated'
-import { useAppDispatch } from '../store/hooks'
+import { useGetConfigEngineLlamaserverQuery } from '@app/core/generated'
+import type { LlamaServerEffective, LlamaServerSettings } from '@app/core/generated'
+import { useAppDispatch } from '@app/store/hooks'
 
 /** engine.llamaserver and the one way to change it. The query is never skipped, so the last answer stays on screen. */
 export function useEngineSettings(): SectionSettings<

@@ -1,9 +1,9 @@
 // App-wide shortcuts from the menu: Ctrl+, (Settings), Ctrl+W (close window), Ctrl+Q (quit),
 // Alt+← / Alt+→ (back / forward).
 import { useEffect } from 'react'
-import { usePlatform } from '@renderer/platform/usePlatform'
-import { useAppDispatch } from '@renderer/store/hooks'
-import { settingsOpened, wentBack, wentForward } from '@renderer/store/uiSlice'
+import { usePlatform } from '@app/platform/usePlatform'
+import { useAppDispatch } from '@app/store/hooks'
+import { settingsOpened, wentBack, wentForward } from '@app/store/uiSlice'
 
 export function useAppShortcuts(): void {
   const dispatch = useAppDispatch()

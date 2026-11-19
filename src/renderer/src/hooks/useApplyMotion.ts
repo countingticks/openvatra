@@ -1,9 +1,9 @@
 // Keeps <html data-motion> in step with Settings → Animations and Windows' preference, both live.
 import { useEffect, useRef } from 'react'
-import { usePrefersReducedMotion } from '@renderer/hooks/usePrefersReducedMotion'
-import { applyMotion, shouldReduceMotion } from '@renderer/motion'
-import { useAppSelector } from '@renderer/store/hooks'
-import { selectSettings } from '@renderer/store/settingsSlice'
+import { usePrefersReducedMotion } from '@app/ui/usePrefersReducedMotion'
+import { applyMotion, shouldReduceMotion } from '@app/ui/motion'
+import { useAppSelector } from '@app/store/hooks'
+import { selectSettings } from '@app/store/settingsSlice'
 
 /** Longer than the segmented control's slide (200 ms), so the click that turns animations off still animates. */
 const switchOffDelayMs = 250

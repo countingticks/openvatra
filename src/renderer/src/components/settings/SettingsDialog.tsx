@@ -2,16 +2,16 @@ import { useId } from 'react'
 import { X } from 'lucide-react'
 import { GeneralSection } from '@renderer/components/settings/GeneralSection'
 import { ModelsSection } from '@renderer/components/settings/ModelsSection'
-import { Dialog, DialogClose, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
-import { cn } from '@renderer/lib/utils'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@app/ui/dialog'
+import { cn } from '@app/lib/utils'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import {
   selectSettingsOpen,
   selectSettingsSection,
   settingsClosed,
   settingsSectionSelected,
   type SettingsSection
-} from '@renderer/store/uiSlice'
+} from '@app/store/uiSlice'
 
 const sections: { id: SettingsSection; title: string; content: () => React.JSX.Element }[] = [
   { id: 'general', title: 'General', content: GeneralSection },

@@ -2,14 +2,14 @@
 // store and section, each PUT with the rev it last saw, and the screen changes only when core answers (no optimistic
 // update): a failure leaves the cached value as it was.
 import { failureReason } from '../lib/modelText'
-import type { AppDispatch, RootState } from '../store/store'
-import { coreApi } from './coreApi'
+import type { AppDispatch, RootState } from '@app/store/store'
+import { coreApi } from '@app/core/coreApi'
 import type {
   GetConfigEngineLlamaserverApiResponse,
   GetConfigProviderLlamacppApiResponse,
   LlamaCppSettings,
   LlamaServerSettings
-} from './generated'
+} from '@app/core/generated'
 
 /** core's defaults for engine.llamaserver (llamaserver.DefaultSettings). */
 export const defaultEngineSettings: Readonly<LlamaServerSettings> = { build: 'bundled', path: null }

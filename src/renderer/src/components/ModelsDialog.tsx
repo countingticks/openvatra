@@ -1,10 +1,10 @@
 import { X } from 'lucide-react'
 import { ModelCatalogRow } from '@renderer/components/ModelCatalogRow'
-import { Dialog, DialogClose, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
+import { Dialog, DialogClose, DialogContent, DialogTitle } from '@app/ui/dialog'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { formatSize } from '@renderer/lib/modelText'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { modelsDialogClosed, selectModelsDialogOpen } from '@renderer/store/uiSlice'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
+import { modelsDialogClosed, selectModelsDialogOpen } from '@app/store/uiSlice'
 
 /** The models we offer. Its own component so the catalog is read when the dialog opens, not while it is shut. */
 function CatalogList(): React.JSX.Element {

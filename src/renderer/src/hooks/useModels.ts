@@ -1,7 +1,7 @@
-import type { ModelInfo } from '@renderer/core/types'
-import { selectConnection } from '../core/connectionSlice'
-import { useListModelsQuery } from '../core/generated'
-import { useAppSelector } from '../store/hooks'
+import type { ModelInfo } from '@app/core/types'
+import { selectConnection } from '@app/core/connectionSlice'
+import { useListModelsQuery } from '@app/core/generated'
+import { useAppSelector } from '@app/store/hooks'
 
 const none: ModelInfo[] = []
 

@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Gauge } from 'lucide-react'
 import { DownloadControls } from '@renderer/components/DownloadControls'
-import { Button } from '@renderer/components/ui/button'
+import { Button } from '@app/ui/button'
 import {
   useCancelDownloadMutation,
   useRemoveCatalogEntryMutation,
   useResumeDownloadMutation,
   useStartDownloadMutation
-} from '@renderer/core/generated'
+} from '@app/core/generated'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText } from '@renderer/lib/setupText'
-import type { DownloadItem } from '@renderer/core/types'
+import type { DownloadItem } from '@app/core/types'
 import type { CatalogEntry } from '@renderer/core/catalogView'
 
 const fitIcons = { fits: CheckCircle2, slower: Gauge, tooBig: AlertTriangle }

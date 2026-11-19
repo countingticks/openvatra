@@ -1,11 +1,11 @@
 import { useId } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { ModelOptionsForm } from '@renderer/components/settings/ModelOptionsForm'
-import { Button } from '@renderer/components/ui/button'
+import { Button } from '@app/ui/button'
 import { formatContext, formatSize } from '@renderer/lib/modelText'
-import { cn } from '@renderer/lib/utils'
-import type { ModelInfo } from '@renderer/core/types'
-import type { ModelOptions } from '@renderer/core/generated'
+import { cn } from '@app/lib/utils'
+import type { ModelInfo } from '@app/core/types'
+import type { ModelOptions } from '@app/core/generated'
 
 interface ModelRowProps {
   model: ModelInfo

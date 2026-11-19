@@ -1,7 +1,7 @@
 import { useId } from 'react'
 import { Select } from '@base-ui/react/select'
 import { Check, ChevronDown } from 'lucide-react'
-import type { ModelOptions } from '@renderer/core/generated'
+import type { ModelOptions } from '@app/core/generated'
 
 type Placement = NonNullable<ModelOptions['placement']>
 

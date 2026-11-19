@@ -1,6 +1,6 @@
 // Words and the status dot for models, used by the model button and its popover.
-import type { Choice } from '@renderer/core/generated'
-import type { ModelInfo } from '@renderer/core/types'
+import type { Choice } from '@app/core/generated'
+import type { ModelInfo } from '@app/core/types'
 
 export function formatSize(bytes: number): string {
   const gigabytes = bytes / 1024 ** 3

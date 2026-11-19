@@ -1,6 +1,6 @@
 // Plain-language words for the welcome card and (later) the Models dialog. No technical terms: see the copy rules
 // in SPEC-setup.md.
-import type { DownloadItem, HardwareReport } from '@renderer/core/types'
+import type { DownloadItem, HardwareReport } from '@app/core/types'
 import type { CatalogEntry } from '@renderer/core/catalogView'
 
 const gigabytes = (bytes: number): string => (bytes / 1024 ** 3).toFixed(1)

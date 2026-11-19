@@ -1,7 +1,7 @@
 import { ArrowLeft, ArrowRight, PanelLeft } from 'lucide-react'
 import { AppMenu } from '@renderer/components/AppMenu'
 import { WindowControls } from '@renderer/components/WindowControls'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import {
   selectCanGoBack,
   selectCanGoForward,
@@ -9,7 +9,7 @@ import {
   sidebarToggled,
   wentBack,
   wentForward
-} from '@renderer/store/uiSlice'
+} from '@app/store/uiSlice'
 import { sidebarId, sidebarShortcut } from '@renderer/tabs'
 
 /** The bar's square icon buttons: same size and highlight as a selected chat (design decision). */

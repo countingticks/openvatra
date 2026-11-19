@@ -1,7 +1,7 @@
 // Ctrl+B opens or closes the sidebar from anywhere, as in VS Code and Claude.
 import { useEffect } from 'react'
-import { useAppDispatch } from '@renderer/store/hooks'
-import { sidebarToggled } from '@renderer/store/uiSlice'
+import { useAppDispatch } from '@app/store/hooks'
+import { sidebarToggled } from '@app/store/uiSlice'
 
 export function useSidebarShortcut(): void {
   const dispatch = useAppDispatch()

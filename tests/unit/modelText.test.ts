@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Choice } from '@renderer/core/generated'
+import type { Choice } from '@app/core/generated'
 import { failureReason, fitHint, formatContext } from '@renderer/lib/modelText'
 
 describe('failureReason', () => {

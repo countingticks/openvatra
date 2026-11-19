@@ -4,6 +4,7 @@
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.tsx",
+    "src/app/**/*",
     "src/preload/*.d.ts",
     "src/shared/**/*",
     "tests/setup.ts",
@@ -15,6 +16,8 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
+      "@app/*": ["src/app/*"],
+      "@shared/*": ["src/shared/*"],
       "@renderer/*": [
         "src/renderer/src/*"
       ]

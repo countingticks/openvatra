@@ -1,11 +1,11 @@
 import { useId } from 'react'
 import { FileLocations } from '@renderer/components/settings/FileLocations'
-import { SegmentedControl } from '@renderer/components/settings/SegmentedControl'
+import { SegmentedControl } from '@app/ui/SegmentedControl'
 import { SettingRow } from '@renderer/components/settings/SettingRow'
-import { Switch } from '@renderer/components/ui/switch'
-import { usePlatform } from '@renderer/platform/usePlatform'
-import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
-import { selectSettings, settingsChanged } from '@renderer/store/settingsSlice'
+import { Switch } from '@app/ui/switch'
+import { usePlatform } from '@app/platform/usePlatform'
+import { useAppDispatch, useAppSelector } from '@app/store/hooks'
+import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
 import type { SettingsPatch } from '../../../../shared/settings'
 
 const themeOptions = [

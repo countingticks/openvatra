@@ -1,4 +1,4 @@
-import { Label } from '@renderer/components/ui/label'
+import { Label } from '@app/ui/label'
 
 interface SettingRowProps {
   label: string

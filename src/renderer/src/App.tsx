@@ -10,8 +10,8 @@ import { useAppShortcuts } from '@renderer/hooks/useAppShortcuts'
 import { useApplyMotion } from '@renderer/hooks/useApplyMotion'
 import { useSidebarShortcut } from '@renderer/hooks/useSidebarShortcut'
 import { useTabShortcuts } from '@renderer/hooks/useTabShortcuts'
-import { useAppSelector } from '@renderer/store/hooks'
-import { selectActiveTab, selectSidebarOpen } from '@renderer/store/uiSlice'
+import { useAppSelector } from '@app/store/hooks'
+import { selectActiveTab, selectSidebarOpen } from '@app/store/uiSlice'
 import { sidebarId } from '@renderer/tabs'
 
 export function App(): React.JSX.Element {

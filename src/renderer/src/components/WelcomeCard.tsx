@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { Ember } from '@renderer/components/Ember'
+import { Ember } from '@app/ui/Ember'
 import { DownloadControls } from '@renderer/components/DownloadControls'
-import { Button } from '@renderer/components/ui/button'
+import { Button } from '@app/ui/button'
 import {
   useCancelDownloadMutation,
   useResumeDownloadMutation,
   useStartDownloadMutation
-} from '@renderer/core/generated'
+} from '@app/core/generated'
 import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
-import { usePlatform } from '@renderer/platform/usePlatform'
+import { usePlatform } from '@app/platform/usePlatform'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText, hardwareLine } from '@renderer/lib/setupText'

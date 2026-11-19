@@ -1,6 +1,6 @@
 import { useId } from 'react'
-import { Button } from '@renderer/components/ui/button'
-import { cn } from '@renderer/lib/utils'
+import { Button } from '@app/ui/button'
+import { cn } from '@app/lib/utils'
 
 interface PathRowProps {
   label: string

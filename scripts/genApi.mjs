@@ -1,4 +1,4 @@
-// Generates src/renderer/src/core/generated.ts (the RTK Query client) from core's OpenAPI document.
+// Generates src/app/core/generated.ts (the RTK Query client) from core's OpenAPI document.
 //
 //   node scripts/genApi.mjs          ask core.exe for the document, write core/api/openapi.json and the client
 //   node scripts/genApi.mjs --check  no Go: generate from the committed document and compare with the committed client
@@ -12,7 +12,7 @@ import { generateEndpoints } from '@rtk-query/codegen-openapi'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const specFile = path.join(root, 'core/api/openapi.json')
-const coreDir = path.join(root, 'src/renderer/src/core')
+const coreDir = path.join(root, 'src/app/core')
 const outFile = path.join(coreDir, 'generated.ts')
 
 const normalize = (text) => text.replaceAll('\r\n', '\n')
@@ -64,7 +64,7 @@ if (process.argv.includes('--check')) {
   const fresh = await generateClient()
   const committed = fs.existsSync(outFile) ? fs.readFileSync(outFile, 'utf8') : ''
   if (normalize(fresh) !== normalize(committed)) {
-    console.log('src/renderer/src/core/generated.ts is stale: run npm run gen:api')
+    console.log('src/app/core/generated.ts is stale: run npm run gen:api')
     process.exit(1)
   }
 } else {

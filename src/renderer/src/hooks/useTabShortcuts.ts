@@ -1,7 +1,7 @@
 // Ctrl+1 … Ctrl+4 switch tabs from anywhere in the window.
 import { useEffect } from 'react'
-import { useAppDispatch } from '@renderer/store/hooks'
-import { tabSelected } from '@renderer/store/uiSlice'
+import { useAppDispatch } from '@app/store/hooks'
+import { tabSelected } from '@app/store/uiSlice'
 import { tabs } from '@renderer/tabs'
 
 export function useTabShortcuts(): void {

@@ -1,9 +1,9 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { App } from '@renderer/App'
-import type { LlamaServerSettings } from '@renderer/core/generated'
-import { settingsOpened } from '@renderer/store/uiSlice'
-import type { ModelInfo } from '@renderer/core/types'
+import type { LlamaServerSettings } from '@app/core/generated'
+import { settingsOpened } from '@app/store/uiSlice'
+import type { ModelInfo } from '@app/core/types'
 import { coreWrites, type FakeCoreHttp } from './fakeCoreHttp'
 import { exampleConnection, renderWithStore } from './renderWithStore'
 
