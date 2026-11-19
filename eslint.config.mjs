@@ -26,7 +26,7 @@ const featureEdges = { settings: ['models'], chat: ['models'] }
 
 // A new feature folder gets its block without editing this file.
 const featureNames = fs
-  .readdirSync('src/app/features', { withFileTypes: true })
+  .readdirSync(new URL('src/app/features', import.meta.url), { withFileTypes: true })
   .filter((d) => d.isDirectory())
   .map((d) => d.name)
 
