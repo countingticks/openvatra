@@ -8,6 +8,7 @@ import {
   useStartDownloadMutation
 } from '@renderer/core/generated'
 import { useLlamacppSettings } from '@renderer/hooks/useLlamacppSettings'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useSetup } from '@renderer/hooks/useSetup'
 import { failureReason, formatSize } from '@renderer/lib/modelText'
 import { fitText, hardwareLine } from '@renderer/lib/setupText'
@@ -22,6 +23,7 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
   const { hardware, catalog, downloads } = useSetup()
   const { modelsDir } = useLlamacppSettings().value
   const [problem, setProblem] = useState<string | null>(null)
+  const { files } = usePlatform()
   const [startDownload] = useStartDownloadMutation()
   const [cancelDownload] = useCancelDownloadMutation()
   const [resumeDownload] = useResumeDownloadMutation()
@@ -36,7 +38,7 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
     action().catch((error) => setProblem(failureReason(error)))
   }
   // Main shows the dialog and saves the choice in core; the new folder arrives through core's config.changed.
-  const change = (): void => act(() => window.api.files.pick('modelsDir'))
+  const change = (): void => act(async () => files?.pick('modelsDir'))
 
   return (
     <section

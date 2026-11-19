@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger
 } from '@renderer/components/ui/dropdown-menu'
 import { useAltMenu, type MenuName } from '@renderer/hooks/useAltMenu'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useAppDispatch, useAppSelector } from '@renderer/store/hooks'
 import {
   selectActiveTab,
@@ -58,6 +59,7 @@ function AccessKey({ label }: { label: string }): React.JSX.Element {
 /** The ≡ app menu in the title bar: File, Edit, View, Go and Help, each a submenu. */
 export function AppMenu(): React.JSX.Element {
   const dispatch = useAppDispatch()
+  const platform = usePlatform()
   const activeTab = useAppSelector(selectActiveTab)
   const canGoBack = useAppSelector(selectCanGoBack)
   const canGoForward = useAppSelector(selectCanGoForward)
@@ -86,7 +88,7 @@ export function AppMenu(): React.JSX.Element {
   }
 
   function edit(command: EditCommand): void {
-    const send = (): void => run(() => window.api.appWindow.edit(command))
+    const send = (): void => run(async () => platform.window?.edit(command))
     const target = lastFocused.current
     if (!target?.isConnected) return send()
     // Chromium runs the command on whatever is focused when it arrives. Closing the menu first drops focus to the
@@ -144,10 +146,10 @@ export function AppMenu(): React.JSX.Element {
                     Settings… <DropdownMenuShortcut>Ctrl+,</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => run(window.api.appWindow.close)}>
+                  <DropdownMenuItem onClick={() => run(async () => platform.window?.close())}>
                     Close window <DropdownMenuShortcut>Ctrl+W</DropdownMenuShortcut>
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => run(window.api.app.quit)}>
+                  <DropdownMenuItem onClick={() => run(async () => platform.quit?.())}>
                     Quit OpenVatra <DropdownMenuShortcut>Ctrl+Q</DropdownMenuShortcut>
                   </DropdownMenuItem>
                 </>
@@ -194,7 +196,7 @@ export function AppMenu(): React.JSX.Element {
               )}
               {name === 'Help' && (
                 <>
-                  <DropdownMenuItem onClick={() => run(() => window.api.files.openFolder('logs'))}>
+                  <DropdownMenuItem onClick={() => run(async () => platform.files?.openFolder('logs'))}>
                     Open logs folder
                   </DropdownMenuItem>
                   <DropdownMenuItem disabled>About OpenVatra</DropdownMenuItem>

@@ -7,6 +7,7 @@ import { useCoreState } from '@renderer/hooks/useCoreState'
 import { useModels } from '@renderer/hooks/useModels'
 import { stateDot } from '@renderer/lib/modelText'
 import { cn } from '@renderer/lib/utils'
+import { usePlatform } from '@renderer/platform/usePlatform'
 import { useAppDispatch } from '@renderer/store/hooks'
 import { modelsDialogOpened, settingsOpened } from '@renderer/store/uiSlice'
 import type { CoreState } from '../../../shared/core'
@@ -49,6 +50,7 @@ function run(action: () => Promise<void>): void {
  * The name is the model that is loaded or loading (the first, if several), else "No model".
  */
 export function ModelButton(): React.JSX.Element {
+  const { core } = usePlatform()
   const state = useCoreState()
   const dispatch = useAppDispatch()
   const [open, setOpen] = useState(false)
@@ -73,10 +75,10 @@ export function ModelButton(): React.JSX.Element {
         {state?.status === 'ready' && <ModelPicker models={models} />}
         <CudaEngineOffer variant="card" />
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={() => run(window.api.core.restart)}>
+          <Button variant="outline" size="sm" onClick={() => run(async () => core.restart?.())}>
             Restart
           </Button>
-          <Button variant="outline" size="sm" onClick={() => run(window.api.core.openLog)}>
+          <Button variant="outline" size="sm" onClick={() => run(async () => core.openLog?.())}>
             Open log
           </Button>
           <Button
