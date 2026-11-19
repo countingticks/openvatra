@@ -3,7 +3,7 @@ import { vi, type Mock } from 'vitest'
 import type { CoreState } from '../../src/shared/core'
 import type { AppWindowApi, FileLocations, FilesApi, SettingsApi } from '../../src/shared/ipc'
 import { applyPatch, defaultSettings, type Settings } from '../../src/shared/settings'
-import type { Platform } from '@renderer/platform/platform'
+import type { Platform } from '@app/platform/platform'
 
 export const exampleLocations: FileLocations = {
   settingsFile: 'C:\\Users\\ana\\AppData\\Roaming\\OpenVatra\\settings.json',

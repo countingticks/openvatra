@@ -3,7 +3,7 @@
   "include": [
     "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
-    "src/renderer/src/**/*.tsx",
+    "src/app/**/*",
     "src/preload/*.d.ts",
     "src/shared/**/*",
     "tests/setup.ts",
@@ -15,9 +15,9 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@renderer/*": [
-        "src/renderer/src/*"
-      ]
+      "@app": ["src/app/index.ts"],
+      "@app/*": ["src/app/*"],
+      "@shared/*": ["src/shared/*"]
     }
   }
 }

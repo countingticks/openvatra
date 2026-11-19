@@ -1,17 +1,8 @@
-import '@fontsource-variable/geist'
-import '@fontsource-variable/geist-mono'
-import '@fontsource-variable/source-serif-4/opsz.css'
-import './styles/globals.css'
-
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Provider } from 'react-redux'
-import type { Settings } from '../../shared/settings'
-import { App } from './App'
+import { App, createApp, followColorScheme } from '@app'
+import type { Settings } from '@shared/settings'
 import { desktopPlatform } from './desktopPlatform'
-import { PlatformProvider } from './platform/PlatformProvider'
-import { createAppStore } from './store/store'
-import { followColorScheme } from './theme'
 
 // Before anything renders, so the first frame is already in the right theme.
 followColorScheme()
@@ -33,14 +24,10 @@ if (!root) throw new Error('Root element #root not found')
 
 // Read settings before the first render, so the window opens on the saved tab and sidebar state instead of
 // flashing the defaults first.
-const store = createAppStore({ platform, initialSettings: await loadSettings() })
+const store = createApp({ platform, initialSettings: await loadSettings() })
 
 createRoot(root).render(
   <StrictMode>
-    <PlatformProvider platform={platform}>
-      <Provider store={store}>
-        <App />
-      </Provider>
-    </PlatformProvider>
+    <App platform={platform} store={store} />
   </StrictMode>
 )

@@ -2,10 +2,10 @@
 // the two model config sections with their revs, and /api/events streams the test pushes frames into. Stubbed in as fetch,
 // so the real base query and event stream run against it.
 
-import { defaultEngineSettings, defaultLlamacppSettings } from '../../src/renderer/src/core/modelSettings'
-import type { Choice } from '@renderer/core/generated'
-import type { ModelInfo } from '@renderer/core/types'
-import type { DownloadItem } from '@renderer/core/types'
+import { defaultEngineSettings, defaultLlamacppSettings } from '@app/features/models/modelSettings'
+import type { Choice } from '@app/core/generated'
+import type { ModelInfo } from '@app/core/types'
+import type { DownloadItem } from '@app/core/types'
 
 export interface CoreRequest {
   url: string

@@ -47,7 +47,7 @@ npm run build:core   # stop a core running on the default data folder, then go b
                      # (dev and build run it; needs Go, see core/go.mod)
 npm run build        # build core, typecheck, production build to out/
 npm run build:win    # build + Windows installer (electron-builder)
-npm run gen:api      # regenerate core/api/openapi.json and src/renderer/src/core/generated.ts from core's routes
+npm run gen:api      # regenerate core/api/openapi.json and src/app/core/generated.ts from core's routes
 npm run test:e2e     # build, then launch the real app with Playwright (tests/e2e); full output
                      # (quiet: npm run check -- --e2e, or -- tests/e2e/<name>.spec.ts for some specs)
 ```
@@ -55,16 +55,24 @@ npm run test:e2e     # build, then launch the real app with Playwright (tests/e2
 Run `npm run check` before every commit: it covers typecheck, lint, format check and the tests in one short report.
 
 UI components come from shadcn/ui: add them with `npx shadcn@latest add <name>` (config in `components.json`);
-they land in `src/renderer/src/components/ui/` and are ours to edit.
+they land in `src/app/ui/` and are ours to edit.
 
 ## Structure
 
 ```
 src/main/        Electron main process: windows, tray, settings, starting services, IPC handlers
 src/preload/     the only bridge between UI and main; exposes a typed window.api
-src/shared/      types shared by main and renderer (IPC contract, settings schema)
-src/renderer/    React UI
-  src/core/      generated core client (RTK Query), base query and the event stream
+src/shared/      types shared by main and the UI (IPC contract, settings schema)
+src/renderer/    the desktop host: main.tsx and desktopPlatform.ts (the only code that reads window.api)
+src/app/         the UI, host-independent; imported as @app/* (and @shared/* for src/shared)
+  lib/           small helpers (cn)
+  ui/            shadcn components, shared widgets, theme, motion, mascot and assets
+  platform/      the Platform type (what the UI needs from its host) and its provider
+  core/          generated core client (RTK Query), base query and the event stream
+  store/         the Redux store and its slices
+  features/<name>/  one folder per feature (models, settings, chat, code, automations), flat, imported only
+                 through its index.ts
+  shell/         title bar, sidebar, tab routing, dialog host and shortcuts
 core/api/        openapi.json, the committed contract of core's HTTP API
 core/            Go module (`core.exe`): listens on 127.0.0.1 only, every request needs a per-run token and a
                  matching Host header; bundled into the app as an extra resource, built by `npm run build:core`;
@@ -73,7 +81,8 @@ core/            Go module (`core.exe`): listens on 127.0.0.1 only, every reques
 core/internal/   engine/ and provider/ are seams with one package per implementation below them;
                  layers_test.go fails when a package imports across its layer
 tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, setup: tests/setup.ts);
-                 query by role or label, the way a user finds things — not by class names
+                 query by role or label, the way a user finds things — not by class names;
+                 tests/unit/app/ mirrors src/app
 tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one
 resources/llama/ pinned llama.cpp release (llama.json, licence); the Vulkan build is fetched into bin/ (git-ignored)
 vendor/          git submodules (Open WebUI); never edit files here

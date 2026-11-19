@@ -7,7 +7,7 @@ import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 import eslintPluginJsxA11y from 'eslint-plugin-jsx-a11y'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'src/renderer/src/core/generated.ts'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', 'src/app/core/generated.ts'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],
@@ -43,7 +43,7 @@ export default defineConfig(
   },
   {
     // The Label wrapper itself only passes props through; its uses are checked by the rule above.
-    files: ['src/renderer/src/components/ui/label.tsx'],
+    files: ['src/app/ui/label.tsx'],
     rules: {
       'jsx-a11y/label-has-associated-control': 'off'
     }
@@ -51,14 +51,14 @@ export default defineConfig(
   {
     // shadcn/ui components export their style helpers (e.g. buttonVariants) next to the component.
     // Keeping upstream's file layout makes future shadcn updates easy to merge.
-    files: ['src/renderer/src/components/ui/**/*.tsx'],
+    files: ['src/app/ui/[a-z]*.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off'
     }
   },
   {
     // The host is reached through Platform, so the UI runs unchanged on another host and tests fake one object.
-    files: ['src/renderer/src/**/*.{ts,tsx}', 'tests/unit/**/*.{ts,tsx}'],
+    files: ['src/app/**/*.{ts,tsx}', 'src/renderer/src/**/*.{ts,tsx}', 'tests/unit/**/*.{ts,tsx}'],
     ignores: ['src/renderer/src/main.tsx', 'src/renderer/src/desktopPlatform.ts'],
     rules: {
       'no-restricted-properties': [
