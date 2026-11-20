@@ -27,8 +27,11 @@ test.describe('a version-7 settings file', () => {
   })
 
   test('opens on its last tab and saves lastRoute from then on', async () => {
-    await expect(mainWindow.getByRole('heading', { level: 1, name: 'Code' })).toBeVisible()
+    const heading = mainWindow.getByRole('heading', { level: 1, name: 'Code' })
+    await expect(heading).toBeVisible()
 
+    // A freshly launched window has no keyboard focus yet; click into the page so the shortcut reaches it.
+    await heading.click()
     await mainWindow.keyboard.press('Control+3')
 
     await expect
