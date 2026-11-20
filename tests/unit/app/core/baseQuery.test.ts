@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { coreApi } from '@app/core/coreApi'
-import { createAppStore, type AppStore } from '@app/store/store'
+import { createApp } from '@app/createApp'
+import type { AppStore } from '@app/store/store'
 import type { CoreConnection, CoreState } from '@shared/core'
 import { fakePlatform } from '../../fakePlatform'
 
@@ -15,7 +16,7 @@ const ready = (to: CoreConnection): CoreState => ({
 /** A store whose core state is set by the test through push. */
 function storeWithCore(): { store: AppStore; push(state: CoreState): void } {
   const fake = fakePlatform()
-  const store = createAppStore({ platform: fake.platform })
+  const store = createApp({ platform: fake.platform })
   return { store, push: fake.core.emit }
 }
 

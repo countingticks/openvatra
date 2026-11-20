@@ -5,7 +5,8 @@
 import { act, render, type RenderResult } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { vi, type Mock } from 'vitest'
-import { createAppStore, type AppStore } from '@app/store/store'
+import { createApp } from '@app/createApp'
+import type { AppStore } from '@app/store/store'
 import type { CoreConnection, CoreState } from '../../src/shared/core'
 import type { ModelInfo } from '@app/core/types'
 import type { AppApi, AppWindowApi, CoreApi, FilesApi, SettingsApi } from '../../src/shared/ipc'
@@ -173,7 +174,7 @@ export function renderWithStore(
     maximized: options.maximized,
     omit: options.omit
   })
-  const store = createAppStore({ platform: fake.platform, initialSettings: { ...defaultSettings, ...saved } })
+  const store = createApp({ platform: fake.platform, initialSettings: { ...defaultSettings, ...saved } })
   return {
     platform: fake,
     store,

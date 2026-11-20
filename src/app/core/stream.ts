@@ -1,4 +1,4 @@
-// Runs streamMachine for this window: one GET /api/events?stream=system while core is reachable, its frames fed to
+// Runs streamMachine for this window: one GET /api/events while core is reachable, its frames fed to
 // the machine and the machine's effects carried out against the network, the timers and the cache.
 import type { CoreConnection } from '@shared/core'
 import type { AppDispatch, RootState } from '@app/store/store'
@@ -12,7 +12,8 @@ import {
   type StreamInput,
   type StreamState
 } from './streamMachine'
-import { applyEvent, invalidateAll } from './streamSync'
+import { allTags, coreApi } from './coreApi'
+import { coreEvent } from './events'
 
 export interface StreamDeps {
   dispatch: AppDispatch
@@ -40,14 +41,21 @@ function parseJson(text: string): unknown {
   }
 }
 
-function eventsUrl(connection: CoreConnection, after: number | null, log: string | null): string {
-  const query = ['stream=system']
-  if (after !== null) query.push(`after=${encodeURIComponent(String(after))}`)
-  if (log !== null) query.push(`log=${encodeURIComponent(log)}`)
-  return `${connection.baseUrl}/api/events?${query.join('&')}`
+/** Every cached answer may be stale after a gap in the stream (or a reset), so all of them are refetched. */
+function invalidateAll(dispatch: AppDispatch): void {
+  dispatch(coreApi.util.invalidateTags([...allTags]))
 }
 
-/** Runs streamMachine for this window: one GET /api/events?stream=system while a connection exists. Returns stop. */
+function eventsUrl(connection: CoreConnection, after: number | null, log: string | null): string {
+  const query: string[] = []
+  if (after !== null) query.push(`after=${encodeURIComponent(String(after))}`)
+  if (log !== null) query.push(`log=${encodeURIComponent(log)}`)
+  return query.length === 0
+    ? `${connection.baseUrl}/api/events`
+    : `${connection.baseUrl}/api/events?${query.join('&')}`
+}
+
+/** Runs streamMachine for this window: one GET /api/events while a connection exists. Returns stop. */
 export function followCoreStream({ dispatch, getState, subscribe }: StreamDeps): () => void {
   let state: StreamState = initialStreamState
   let request: AbortController | null = null
@@ -83,7 +91,7 @@ export function followCoreStream({ dispatch, getState, subscribe }: StreamDeps):
         invalidateAll(dispatch)
         return
       case 'apply':
-        applyEvent(effect.event, dispatch, getState)
+        dispatch(coreEvent(effect.event))
         return
     }
   }

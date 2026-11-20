@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { coreApi } from '@app/core/coreApi'
 import { Shell } from '@app/shell/Shell'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
@@ -179,8 +180,17 @@ describe('welcome card', () => {
   })
 
   it('is not shown once there is a chat model, or while the service is starting', async () => {
-    renderWithStore(<Shell />, {}, { coreState: ready, models: [chatModel], setup: { catalog } })
-    expect(await screen.findByRole('heading', { name: 'Chat' })).toBeInTheDocument()
+    const { store } = renderWithStore(
+      <Shell />,
+      {},
+      { coreState: ready, models: [chatModel], setup: { catalog } }
+    )
+    // The welcome card may show until the models arrive; only then does the page say anything about them.
+    await waitFor(() =>
+      expect(coreApi.endpoints.listModels.select()(store.getState()).data?.models).toHaveLength(1)
+    )
+    // Then the page settles on Chat, the welcome card gone.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: "Let's get you a model" })).not.toBeInTheDocument()
   })
 })

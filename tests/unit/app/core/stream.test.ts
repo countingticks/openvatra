@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { coreApi } from '@app/core/coreApi'
 import type { Event, Model } from '@app/core/generated'
+import { coreEvent } from '@app/core/events'
+import { followCoreState } from '@app/core/followCoreState'
+import { followCoreStream } from '@app/core/stream'
+import { createApp } from '@app/createApp'
 import { createAppStore, type AppStore } from '@app/store/store'
 import type { CoreConnection, CoreState } from '@shared/core'
 import { fakePlatform } from '../../fakePlatform'
@@ -48,7 +52,7 @@ function setup(): Harness {
   const http = createFakeCoreHttp()
   vi.stubGlobal('fetch', http.fetch)
   const fake = fakePlatform()
-  const store = createAppStore({ platform: fake.platform })
+  const store = createApp({ platform: fake.platform })
   harness = {
     store,
     http,
@@ -88,7 +92,7 @@ afterEach(() => {
 })
 
 describe('followCoreStream', () => {
-  it('opens one stream on a ready state, with the bearer header, stream=system and no after the first time', async () => {
+  it('opens one stream on a ready state, with the bearer header and no query the first time', async () => {
     const { http, push, streamRequests } = setup()
 
     push(ready(first))
@@ -96,25 +100,11 @@ describe('followCoreStream', () => {
 
     expect(streamRequests()).toEqual([
       expect.objectContaining({
-        url: 'http://127.0.0.1:53121/api/events?stream=system',
+        url: 'http://127.0.0.1:53121/api/events',
         authorization: `Bearer ${first.token}`
       })
     ])
-  })
-
-  it('fills listModels from a model.state frame and listDownloads from a download.progress frame', async () => {
-    const { store, http, push } = setup()
-    push(ready(first))
-    await until(() => http.openStreams() === 1)
-    const downloads = { items: [{ id: 'qwen3-8b', state: 'downloading', bytes: 1, total: 2, speed: 1 }] }
-
-    http.push({ data: modelState })
-    http.push({ data: { time: 2, stream: 'system', type: 'download.progress', v: 1, data: downloads } })
-
-    await until(() => cachedModels(store) !== undefined)
-    expect(cachedModels(store)).toEqual({ models: [model] })
-    await until(() => coreApi.endpoints.listDownloads.select()(store.getState()).data !== undefined)
-    expect(coreApi.endpoints.listDownloads.select()(store.getState()).data).toEqual(downloads)
+    expect(streamRequests().every((request) => !new URL(request.url).searchParams.has('stream'))).toBe(true)
   })
 
   it("sends a durable event's seq and the hello's log as after and log on the next connection", async () => {
@@ -138,7 +128,7 @@ describe('followCoreStream', () => {
     await vi.advanceTimersByTimeAsync(500)
     await until(() => streamRequests().length === 2)
 
-    expect(streamRequests()[1].url).toBe('http://127.0.0.1:53121/api/events?stream=system&after=7&log=log-1')
+    expect(streamRequests()[1].url).toBe('http://127.0.0.1:53121/api/events?after=7&log=log-1')
   })
 
   it('reconnects 0.5 s after core ends the stream, then 1 s later if that fails, with the bookmark', async () => {
@@ -162,7 +152,7 @@ describe('followCoreStream', () => {
     await vi.advanceTimersByTimeAsync(1)
     await until(() => streamRequests().length === 3)
 
-    const bookmarked = 'http://127.0.0.1:53121/api/events?stream=system&after=0&log=log-1'
+    const bookmarked = 'http://127.0.0.1:53121/api/events?after=0&log=log-1'
     expect(
       streamRequests()
         .map((request) => request.url)
@@ -183,7 +173,7 @@ describe('followCoreStream', () => {
     expect(http.openStreams()).toBe(1)
     expect(streamRequests()[1]).toEqual(
       expect.objectContaining({
-        url: 'http://127.0.0.1:53999/api/events?stream=system&after=0&log=log-1',
+        url: 'http://127.0.0.1:53999/api/events?after=0&log=log-1',
         authorization: `Bearer ${second.token}`
       })
     )
@@ -230,5 +220,39 @@ describe('followCoreStream', () => {
     await until(() => version() !== undefined)
     expect(version()).toEqual({ api: 1, version: '1.0.0' })
     query.unsubscribe()
+  })
+
+  it('dispatches each event frame as one coreEvent action, in order', async () => {
+    const http = createFakeCoreHttp()
+    vi.stubGlobal('fetch', http.fetch)
+    const fake = fakePlatform()
+    const { store, startListening } = createAppStore({ platform: fake.platform })
+    const seen: Event[] = []
+    startListening({ actionCreator: coreEvent, effect: (action) => void seen.push(action.payload) })
+    const stop = followCoreStream({
+      dispatch: store.dispatch,
+      getState: store.getState,
+      subscribe: store.subscribe
+    })
+    followCoreState(fake.platform.core, store.dispatch)
+    const durable = (seq: number): Event => ({
+      seq,
+      time: 1,
+      stream: 'system',
+      type: 'config.changed',
+      v: 1,
+      data: { section: 'models', rev: seq }
+    })
+    fake.core.emit(ready(first))
+    await until(() => http.openStreams() === 1)
+
+    http.push({ data: durable(1) })
+    http.push({ data: durable(2) })
+
+    // The fake core also sends its retained events when the stream opens; only the two durable ones matter here.
+    const changes = (): Event[] => seen.filter((event) => event.type === 'config.changed')
+    await until(() => changes().length === 2)
+    expect(changes()).toEqual([durable(1), durable(2)])
+    stop()
   })
 })
