@@ -16,7 +16,7 @@ import { connectionSlice } from '@app/core/connectionSlice'
 import { coreApi } from '@app/core/coreApi'
 import type { Platform } from '@app/platform/platform'
 import { settingsChanged, settingsReplaced, settingsSlice } from './settingsSlice'
-import { routePath, type Route } from './route'
+import { parseRoute, routePath } from './route'
 import {
   initialUiState,
   navigated,
@@ -72,8 +72,7 @@ export function createAppStore({ platform, initialSettings }: AppStoreOptions): 
       // Selecting the open tab, or Back with no history, changes nothing, so there's nothing to save.
       if (routePath(api.getOriginalState().ui.route) === routePath(route)) return
       try {
-        // Temporary bridge until settings save a route path (lastRoute).
-        await save({ lastTab: route.tab }, api.dispatch)
+        await save({ lastRoute: routePath(route) }, api.dispatch)
       } catch (error) {
         // The tab still switches; only remembering it for next launch failed.
         console.error('Could not save the last open tab', error)
@@ -108,7 +107,8 @@ export function createAppStore({ platform, initialSettings }: AppStoreOptions): 
   })
 
   const startup = initialSettings ?? structuredClone(defaultSettings)
-  const route: Route = { tab: startup.lastTab }
+  // A saved path that names nothing (an old or edited file) opens on Chat.
+  const route = parseRoute(startup.lastRoute) ?? { tab: 'chat' }
   const store = configureStore({
     reducer: rootReducer,
     preloadedState: {

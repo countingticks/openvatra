@@ -17,7 +17,7 @@ describe('App', () => {
 
   it('starts from the initial settings it is given', () => {
     const { platform } = fakePlatform()
-    const store = createApp({ platform, initialSettings: { ...defaultSettings, lastTab: 'code' } })
+    const store = createApp({ platform, initialSettings: { ...defaultSettings, lastRoute: 'code' } })
     render(<App platform={platform} store={store} />)
 
     const sidebar = screen.getByRole('navigation', { name: 'Main' })

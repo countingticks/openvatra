@@ -70,6 +70,11 @@ const migrations: Readonly<Record<number, Migration>> = {
       ...('cudaOfferDismissed' in models && { cudaOfferDismissed: models['cudaOfferDismissed'] }),
       legacyModels
     }
+  },
+  // 7 → 8: `lastTab` became `lastRoute`, a route path. A tab id is already a valid path.
+  7: (old) => {
+    const { lastTab, ...rest } = old
+    return 'lastTab' in old ? { ...rest, lastRoute: lastTab } : rest
   }
 }
 

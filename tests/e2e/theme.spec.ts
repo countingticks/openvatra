@@ -69,7 +69,7 @@ test('the last tab, the theme and the sidebar survive a restart', async () => {
   await mainWindow.getByRole('button', { name: 'Sidebar' }).click()
   await expect
     .poll(settingsOnDisk)
-    .toMatchObject({ lastTab: 'automations', theme: 'dark', sidebarOpen: false })
+    .toMatchObject({ lastRoute: 'automations', theme: 'dark', sidebarOpen: false })
 
   await app.close()
   await launch()

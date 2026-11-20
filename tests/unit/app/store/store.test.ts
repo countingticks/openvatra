@@ -1,7 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createAppStore } from '@app/store/store'
 import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
-import { selectActiveTab, selectSidebarOpen, sidebarToggled, tabSelected, wentBack } from '@app/store/uiSlice'
+import {
+  navigated,
+  selectActiveTab,
+  selectRoute,
+  selectSidebarOpen,
+  sidebarToggled,
+  tabSelected,
+  wentBack
+} from '@app/store/uiSlice'
 import { selectConnection } from '@app/core/connectionSlice'
 import { defaultSettings, type Settings } from '@shared/settings'
 import { fakePlatform } from '../../fakePlatform'
@@ -17,10 +25,38 @@ describe('app store', () => {
   it('opens on the tab saved in settings', () => {
     const { store } = createAppStore({
       platform: fakePlatform().platform,
-      initialSettings: { ...defaultSettings, lastTab: 'code' }
+      initialSettings: { ...defaultSettings, lastRoute: 'code' }
     })
 
     expect(selectActiveTab(store.getState())).toBe('code')
+  })
+
+  it('opens on the chat that was saved', () => {
+    const { store } = createAppStore({
+      platform: fakePlatform().platform,
+      initialSettings: { ...defaultSettings, lastRoute: 'chat/a' }
+    })
+
+    expect(selectRoute(store.getState())).toEqual({ tab: 'chat', chatId: 'a' })
+  })
+
+  it('opens on Chat when the saved path names no route', () => {
+    const { store } = createAppStore({
+      platform: fakePlatform().platform,
+      initialSettings: { ...defaultSettings, lastRoute: 'chat/' }
+    })
+
+    expect(selectRoute(store.getState())).toEqual({ tab: 'chat' })
+  })
+
+  it('saves the route path when a route is navigated to', async () => {
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform }).store
+
+    store.dispatch(navigated({ tab: 'chat', chatId: 'a' }))
+    await settle()
+
+    expect(fake.prefs.update).toHaveBeenCalledWith({ lastRoute: 'chat/a' })
   })
 
   it('opens on Chat when nothing was saved', () => {
@@ -29,7 +65,7 @@ describe('app store', () => {
     expect(selectActiveTab(store.getState())).toBe('chat')
   })
 
-  it('saves the new tab as lastTab when the tab changes', async () => {
+  it('saves the new tab as lastRoute when the tab changes', async () => {
     const fake = fakePlatform()
     const store = createAppStore({ platform: fake.platform }).store
 
@@ -37,7 +73,7 @@ describe('app store', () => {
     await settle()
 
     expect(fake.prefs.update).toHaveBeenCalledOnce()
-    expect(fake.prefs.update).toHaveBeenCalledWith({ lastTab: 'automations' })
+    expect(fake.prefs.update).toHaveBeenCalledWith({ lastRoute: 'automations' })
   })
 
   it('does not save when the open tab is selected again', async () => {
@@ -143,7 +179,7 @@ describe('settings pushed by main', () => {
     store.dispatch(tabSelected('code'))
     store.dispatch(sidebarToggled())
 
-    fake.prefs.emit({ ...defaultSettings, lastTab: 'automations', sidebarOpen: true })
+    fake.prefs.emit({ ...defaultSettings, lastRoute: 'automations', sidebarOpen: true })
 
     expect(selectActiveTab(store.getState())).toBe('code')
     expect(selectSidebarOpen(store.getState())).toBe(false)
@@ -160,7 +196,7 @@ describe('back and forward', () => {
     store.dispatch(wentBack())
     await settle()
 
-    expect(fake.prefs.update.mock.calls).toEqual([[{ lastTab: 'code' }], [{ lastTab: 'chat' }]])
+    expect(fake.prefs.update.mock.calls).toEqual([[{ lastRoute: 'code' }], [{ lastRoute: 'chat' }]])
   })
 
   it('saves nothing when there is nowhere to go back to', async () => {
@@ -176,7 +212,7 @@ describe('back and forward', () => {
   it('starts each launch with an empty history', () => {
     const { store } = createAppStore({
       platform: fakePlatform().platform,
-      initialSettings: { ...defaultSettings, lastTab: 'code' }
+      initialSettings: { ...defaultSettings, lastRoute: 'code' }
     })
 
     expect(store.getState().ui).toMatchObject({ route: { tab: 'code' }, back: [], forward: [] })

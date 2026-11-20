@@ -63,7 +63,7 @@ describe('collapsible sidebar', () => {
   })
 
   it('keeps the tabs: closing the sidebar does not change the open tab', () => {
-    const { store } = renderWithStore(<Shell />, { lastTab: 'code' })
+    const { store } = renderWithStore(<Shell />, { lastRoute: 'code' })
 
     pressCtrlB()
 
