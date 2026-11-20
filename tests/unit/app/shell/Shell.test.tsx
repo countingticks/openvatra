@@ -1,6 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Shell } from '@app/shell/Shell'
+import { selectActiveTab } from '@app/store/uiSlice'
 import { renderWithStore } from '../../renderWithStore'
 
 const sidebar = (): HTMLElement => screen.getByRole('navigation', { name: 'Main' })
@@ -87,6 +88,6 @@ describe('Shell', () => {
     unmount()
     fireEvent.keyDown(window, { key: '3', ctrlKey: true })
 
-    expect(store.getState().ui.activeTab).toBe('chat')
+    expect(selectActiveTab(store.getState())).toBe('chat')
   })
 })

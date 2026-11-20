@@ -179,7 +179,7 @@ describe('back and forward', () => {
       initialSettings: { ...defaultSettings, lastTab: 'code' }
     })
 
-    expect(store.getState().ui).toMatchObject({ activeTab: 'code', back: [], forward: [] })
+    expect(store.getState().ui).toMatchObject({ route: { tab: 'code' }, back: [], forward: [] })
   })
 })
 
