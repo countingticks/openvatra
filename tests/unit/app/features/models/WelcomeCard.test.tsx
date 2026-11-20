@@ -180,7 +180,8 @@ describe('welcome card', () => {
 
   it('is not shown once there is a chat model, or while the service is starting', async () => {
     renderWithStore(<Shell />, {}, { coreState: ready, models: [chatModel], setup: { catalog } })
-    expect(await screen.findByRole('heading', { name: 'Chat' })).toBeInTheDocument()
+    // The welcome card may show for a moment until the models arrive; wait for the settled page.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: "Let's get you a model" })).not.toBeInTheDocument()
   })
 })

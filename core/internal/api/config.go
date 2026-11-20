@@ -109,7 +109,7 @@ func sectionRoutes(cfg Config, sec config.SectionType) []Route {
 }
 
 // operationTitle is the section name as an operationId suffix: each dot-separated part with its first rune
-// upper-cased, joined ("engine.llamaserver" -> "EngineLlamaserver"). streamSync.ts builds the same name.
+// upper-cased, joined ("engine.llamaserver" -> "EngineLlamaserver"). configSync.ts builds the same name.
 func operationTitle(name string) string {
 	parts := strings.Split(name, ".")
 	for i, p := range parts {

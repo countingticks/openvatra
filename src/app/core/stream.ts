@@ -12,7 +12,8 @@ import {
   type StreamInput,
   type StreamState
 } from './streamMachine'
-import { applyEvent, invalidateAll } from './streamSync'
+import { allTags, coreApi } from './coreApi'
+import { coreEvent } from './events'
 
 export interface StreamDeps {
   dispatch: AppDispatch
@@ -38,6 +39,11 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined
   }
+}
+
+/** Every cached answer may be stale after a gap in the stream (or a reset), so all of them are refetched. */
+function invalidateAll(dispatch: AppDispatch): void {
+  dispatch(coreApi.util.invalidateTags([...allTags]))
 }
 
 function eventsUrl(connection: CoreConnection, after: number | null, log: string | null): string {
@@ -83,7 +89,7 @@ export function followCoreStream({ dispatch, getState, subscribe }: StreamDeps):
         invalidateAll(dispatch)
         return
       case 'apply':
-        applyEvent(effect.event, dispatch, getState)
+        dispatch(coreEvent(effect.event))
         return
     }
   }

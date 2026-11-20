@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '@app/createApp'
 import { selectConnection } from '@app/core/connectionSlice'
+import { coreApi } from '@app/core/coreApi'
+import { coreEvent } from '@app/core/events'
+import type { Event, Model } from '@app/core/generated'
 import type { CoreConnection, CoreState } from '@shared/core'
 import { fakePlatform } from '../fakePlatform'
+import { createFakeCoreHttp } from '../fakeCoreHttp'
 
 // Listener effects and promises run after dispatch returns; one macrotask lets them finish.
 const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
@@ -47,5 +51,64 @@ describe("core's connection", () => {
     fake.core.emit(ready({ ...connection }))
 
     expect(selectConnection(store.getState())).toBe(first)
+  })
+})
+
+describe('core events', () => {
+  it('an event type no feature knows leaves the state as it was', () => {
+    const store = createApp({ platform: fakePlatform().platform })
+    const unknown = { time: 1, stream: 'system', type: 'run.started', v: 1, data: {} }
+
+    // The first action of any kind registers the query middleware in the state; compare from the second.
+    store.dispatch(coreEvent(unknown as unknown as Event))
+    const before = store.getState()
+    store.dispatch(coreEvent(unknown as unknown as Event))
+
+    expect(store.getState()).toBe(before)
+  })
+
+  describe('on the stream', () => {
+    beforeEach(() => {
+      vi.useFakeTimers()
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+    })
+
+    /** Lets pending promises and stream reads run, without moving the clock, until the condition holds. */
+    async function until(condition: () => boolean): Promise<void> {
+      for (let turn = 0; turn < 100; turn++) {
+        if (condition()) return
+        await vi.advanceTimersByTimeAsync(0)
+      }
+      throw new Error('condition not met after 100 turns')
+    }
+
+    it('a model.state frame on the stream fills listModels', async () => {
+      const http = createFakeCoreHttp()
+      vi.stubGlobal('fetch', http.fetch)
+      const fake = fakePlatform()
+      const store = createApp({ platform: fake.platform })
+      fake.core.emit(ready(connection))
+      await until(() => http.openStreams() === 1)
+      const model: Model = {
+        id: 'qwen3-8b',
+        state: 'ready',
+        busy: false,
+        kind: 'chat',
+        sizeBytes: 5_000_000_000,
+        context: null,
+        moe: false
+      }
+
+      http.push({ data: { time: 1, stream: 'system', type: 'model.state', v: 1, data: { models: [model] } } })
+
+      const cached = (): unknown => coreApi.endpoints.listModels.select()(store.getState()).data
+      await until(() => cached() !== undefined)
+      expect(cached()).toEqual({ models: [model] })
+      fake.core.emit({ status: 'starting' })
+    })
   })
 })
