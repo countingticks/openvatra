@@ -24,7 +24,7 @@ async function storeWithConfig(): Promise<{ store: AppStore; http: FakeCoreHttp;
   const http = createFakeCoreHttp()
   vi.stubGlobal('fetch', http.fetch)
   http.answer('/api/config/provider.llamacpp', { rev: 3, value: llamacpp })
-  const store = createAppStore({ platform: fakePlatform().platform })
+  const store = createAppStore({ platform: fakePlatform().platform }).store
   store.dispatch(connectionChanged({ baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }))
   await store.dispatch(coreApi.endpoints.getConfigProviderLlamacpp.initiate())
   const configFetches = (): number =>

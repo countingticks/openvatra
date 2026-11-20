@@ -3,7 +3,6 @@ import { createAppStore } from '@app/store/store'
 import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
 import { selectActiveTab, selectSidebarOpen, sidebarToggled, tabSelected, wentBack } from '@app/store/uiSlice'
 import { selectConnection } from '@app/core/connectionSlice'
-import type { CoreConnection, CoreState } from '@shared/core'
 import { defaultSettings, type Settings } from '@shared/settings'
 import { fakePlatform } from '../../fakePlatform'
 
@@ -16,7 +15,7 @@ afterEach(() => {
 
 describe('app store', () => {
   it('opens on the tab saved in settings', () => {
-    const store = createAppStore({
+    const { store } = createAppStore({
       platform: fakePlatform().platform,
       initialSettings: { ...defaultSettings, lastTab: 'code' }
     })
@@ -25,14 +24,14 @@ describe('app store', () => {
   })
 
   it('opens on Chat when nothing was saved', () => {
-    const store = createAppStore({ platform: fakePlatform().platform })
+    const store = createAppStore({ platform: fakePlatform().platform }).store
 
     expect(selectActiveTab(store.getState())).toBe('chat')
   })
 
   it('saves the new tab as lastTab when the tab changes', async () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(tabSelected('automations'))
     await settle()
@@ -43,7 +42,7 @@ describe('app store', () => {
 
   it('does not save when the open tab is selected again', async () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(tabSelected('chat'))
     await settle()
@@ -55,7 +54,7 @@ describe('app store', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const fake = fakePlatform()
     fake.prefs.update.mockRejectedValue(new Error('disk full'))
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(tabSelected('automations'))
     await settle()
@@ -67,7 +66,7 @@ describe('app store', () => {
 
 describe('sidebar state', () => {
   it('opens the way it was left', () => {
-    const store = createAppStore({
+    const { store } = createAppStore({
       platform: fakePlatform().platform,
       initialSettings: { ...defaultSettings, sidebarOpen: false }
     })
@@ -77,7 +76,7 @@ describe('sidebar state', () => {
 
   it('saves whether the sidebar is open each time it is toggled', async () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(sidebarToggled())
     await settle()
@@ -93,7 +92,7 @@ describe('changing settings', () => {
     // A save that never finishes: whatever the page shows now came from the optimistic update alone.
     const fake = fakePlatform()
     fake.prefs.update.mockReturnValue(new Promise(() => {}))
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(settingsChanged({ closeAction: 'quit' }))
 
@@ -105,7 +104,7 @@ describe('changing settings', () => {
     const saved = { ...defaultSettings, theme: 'dark' as const, startWithWindows: true }
     const fake = fakePlatform()
     fake.prefs.update.mockResolvedValue(saved)
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(settingsChanged({ theme: 'dark' }))
     await settle()
@@ -117,7 +116,7 @@ describe('changing settings', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const fake = fakePlatform()
     fake.prefs.update.mockRejectedValue(new Error('disk full'))
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(settingsChanged({ startWithWindows: true }))
     expect(selectSettings(store.getState()).startWithWindows).toBe(true)
@@ -130,7 +129,7 @@ describe('changing settings', () => {
 describe('settings pushed by main', () => {
   it('a push from main replaces the settings slice', () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
     const pushed: Settings = { ...defaultSettings, cudaOfferDismissed: true }
 
     fake.prefs.emit(pushed)
@@ -140,7 +139,7 @@ describe('settings pushed by main', () => {
 
   it('a push leaves the open tab and the sidebar as they are', () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
     store.dispatch(tabSelected('code'))
     store.dispatch(sidebarToggled())
 
@@ -154,7 +153,7 @@ describe('settings pushed by main', () => {
 describe('back and forward', () => {
   it('remembers the tab Back lands on as the last tab, so the app reopens there', async () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
     store.dispatch(tabSelected('code'))
     await settle()
 
@@ -166,7 +165,7 @@ describe('back and forward', () => {
 
   it('saves nothing when there is nowhere to go back to', async () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const store = createAppStore({ platform: fake.platform }).store
 
     store.dispatch(wentBack())
     await settle()
@@ -175,7 +174,7 @@ describe('back and forward', () => {
   })
 
   it('starts each launch with an empty history', () => {
-    const store = createAppStore({
+    const { store } = createAppStore({
       platform: fakePlatform().platform,
       initialSettings: { ...defaultSettings, lastTab: 'code' }
     })
@@ -184,45 +183,18 @@ describe('back and forward', () => {
   })
 })
 
-const connection: CoreConnection = { baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }
-const ready = (to: CoreConnection): CoreState => ({
-  status: 'ready',
-  port: 53121,
-  version: '1.0.0',
-  connection: to
-})
-
-describe("core's connection", () => {
-  it('a ready state pushed by main sets the connection; a starting state clears it', () => {
+describe('core', () => {
+  it('a store alone does not follow core: a ready push leaves the connection null', () => {
     const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
+    const { store } = createAppStore({ platform: fake.platform })
 
-    fake.core.emit(ready(connection))
-    expect(selectConnection(store.getState())).toEqual(connection)
+    fake.core.emit({
+      status: 'ready',
+      port: 53121,
+      version: '1.0.0',
+      connection: { baseUrl: 'http://127.0.0.1:53121', token: 'a'.repeat(64) }
+    })
 
-    fake.core.emit({ status: 'starting' })
     expect(selectConnection(store.getState())).toBeNull()
-  })
-
-  it("ignores getState's answer when a newer state was already pushed", async () => {
-    const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
-
-    fake.core.emit(ready(connection))
-    fake.core.answer({ status: 'starting' })
-    await settle()
-
-    expect(selectConnection(store.getState())).toEqual(connection)
-  })
-
-  it('keeps the same object when an equal connection is pushed twice', () => {
-    const fake = fakePlatform()
-    const store = createAppStore({ platform: fake.platform })
-
-    fake.core.emit(ready(connection))
-    const first = selectConnection(store.getState())
-    fake.core.emit(ready({ ...connection }))
-
-    expect(selectConnection(store.getState())).toBe(first)
   })
 })

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { coreApi } from '@app/core/coreApi'
 import type { Event, Model } from '@app/core/generated'
-import { createAppStore, type AppStore } from '@app/store/store'
+import { createApp } from '@app/createApp'
+import type { AppStore } from '@app/store/store'
 import type { CoreConnection, CoreState } from '@shared/core'
 import { fakePlatform } from '../../fakePlatform'
 import { createFakeCoreHttp, type FakeCoreHttp } from '../../fakeCoreHttp'
@@ -48,7 +49,7 @@ function setup(): Harness {
   const http = createFakeCoreHttp()
   vi.stubGlobal('fetch', http.fetch)
   const fake = fakePlatform()
-  const store = createAppStore({ platform: fake.platform })
+  const store = createApp({ platform: fake.platform })
   harness = {
     store,
     http,
