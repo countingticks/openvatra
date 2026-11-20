@@ -92,7 +92,7 @@ afterEach(() => {
 })
 
 describe('followCoreStream', () => {
-  it('opens one stream on a ready state, with the bearer header, stream=system and no after the first time', async () => {
+  it('opens one stream on a ready state, with the bearer header and no query the first time', async () => {
     const { http, push, streamRequests } = setup()
 
     push(ready(first))
@@ -100,10 +100,11 @@ describe('followCoreStream', () => {
 
     expect(streamRequests()).toEqual([
       expect.objectContaining({
-        url: 'http://127.0.0.1:53121/api/events?stream=system',
+        url: 'http://127.0.0.1:53121/api/events',
         authorization: `Bearer ${first.token}`
       })
     ])
+    expect(streamRequests().every((request) => !new URL(request.url).searchParams.has('stream'))).toBe(true)
   })
 
   it("sends a durable event's seq and the hello's log as after and log on the next connection", async () => {
@@ -127,7 +128,7 @@ describe('followCoreStream', () => {
     await vi.advanceTimersByTimeAsync(500)
     await until(() => streamRequests().length === 2)
 
-    expect(streamRequests()[1].url).toBe('http://127.0.0.1:53121/api/events?stream=system&after=7&log=log-1')
+    expect(streamRequests()[1].url).toBe('http://127.0.0.1:53121/api/events?after=7&log=log-1')
   })
 
   it('reconnects 0.5 s after core ends the stream, then 1 s later if that fails, with the bookmark', async () => {
@@ -151,7 +152,7 @@ describe('followCoreStream', () => {
     await vi.advanceTimersByTimeAsync(1)
     await until(() => streamRequests().length === 3)
 
-    const bookmarked = 'http://127.0.0.1:53121/api/events?stream=system&after=0&log=log-1'
+    const bookmarked = 'http://127.0.0.1:53121/api/events?after=0&log=log-1'
     expect(
       streamRequests()
         .map((request) => request.url)
@@ -172,7 +173,7 @@ describe('followCoreStream', () => {
     expect(http.openStreams()).toBe(1)
     expect(streamRequests()[1]).toEqual(
       expect.objectContaining({
-        url: 'http://127.0.0.1:53999/api/events?stream=system&after=0&log=log-1',
+        url: 'http://127.0.0.1:53999/api/events?after=0&log=log-1',
         authorization: `Bearer ${second.token}`
       })
     )

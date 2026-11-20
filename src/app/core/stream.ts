@@ -1,4 +1,4 @@
-// Runs streamMachine for this window: one GET /api/events?stream=system while core is reachable, its frames fed to
+// Runs streamMachine for this window: one GET /api/events while core is reachable, its frames fed to
 // the machine and the machine's effects carried out against the network, the timers and the cache.
 import type { CoreConnection } from '@shared/core'
 import type { AppDispatch, RootState } from '@app/store/store'
@@ -47,13 +47,15 @@ function invalidateAll(dispatch: AppDispatch): void {
 }
 
 function eventsUrl(connection: CoreConnection, after: number | null, log: string | null): string {
-  const query = ['stream=system']
+  const query: string[] = []
   if (after !== null) query.push(`after=${encodeURIComponent(String(after))}`)
   if (log !== null) query.push(`log=${encodeURIComponent(log)}`)
-  return `${connection.baseUrl}/api/events?${query.join('&')}`
+  return query.length === 0
+    ? `${connection.baseUrl}/api/events`
+    : `${connection.baseUrl}/api/events?${query.join('&')}`
 }
 
-/** Runs streamMachine for this window: one GET /api/events?stream=system while a connection exists. Returns stop. */
+/** Runs streamMachine for this window: one GET /api/events while a connection exists. Returns stop. */
 export function followCoreStream({ dispatch, getState, subscribe }: StreamDeps): () => void {
   let state: StreamState = initialStreamState
   let request: AbortController | null = null
