@@ -29,7 +29,8 @@ function buildApi(): Api {
     files: {
       locations: vi.fn().mockResolvedValue('locations'),
       openFolder: vi.fn().mockResolvedValue('opened'),
-      pick: vi.fn().mockResolvedValue(true)
+      pick: vi.fn().mockResolvedValue(true),
+      exportChat: vi.fn().mockResolvedValue(true)
     }
   } as unknown as Api
 }
@@ -70,6 +71,8 @@ describe('desktopPlatform', () => {
     expect(api.files.openFolder).toHaveBeenCalledWith('logs')
     expect(await platform.files?.pick('modelsDir')).toBe(true)
     expect(api.files.pick).toHaveBeenCalledWith('modelsDir')
+    expect(await platform.files?.exportChat('c1')).toBe(true)
+    expect(api.files.exportChat).toHaveBeenCalledWith('c1')
 
     expect(await platform.quit?.()).toBe('quit')
   })

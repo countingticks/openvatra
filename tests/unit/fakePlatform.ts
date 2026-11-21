@@ -54,6 +54,7 @@ export interface FakePlatform {
     locations: Mock<FilesApi['locations']>
     openFolder: Mock<FilesApi['openFolder']>
     pick: Mock<FilesApi['pick']>
+    exportChat: Mock<FilesApi['exportChat']>
   }
   quit: Mock<() => Promise<void>>
   /** A Map-backed storage: `values` is what it holds now. */
@@ -121,7 +122,8 @@ export function fakePlatform(options: FakePlatformOptions = {}): FakePlatform {
   const files: FakePlatform['files'] = {
     locations: vi.fn<FilesApi['locations']>().mockResolvedValue(exampleLocations),
     openFolder: vi.fn<FilesApi['openFolder']>().mockResolvedValue(undefined),
-    pick: vi.fn<FilesApi['pick']>().mockResolvedValue(false)
+    pick: vi.fn<FilesApi['pick']>().mockResolvedValue(false),
+    exportChat: vi.fn<FilesApi['exportChat']>().mockResolvedValue(false)
   }
   const quit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 

@@ -1,5 +1,6 @@
-import { dialog, ipcMain, shell } from 'electron'
-import { dirname } from 'path'
+import { app, dialog, ipcMain, shell } from 'electron'
+import { writeFile } from 'fs/promises'
+import { dirname, join } from 'path'
 import { z } from 'zod'
 import { appFolders, ipcChannels, pickTargets, type AppFolder, type FileLocations } from '../../shared/ipc'
 import { log } from '../logger'
@@ -8,9 +9,10 @@ import type { SenderCheck } from './sender'
 
 const appFolderSchema = z.enum(appFolders)
 const pickTargetSchema = z.enum(pickTargets)
+const chatIdSchema = z.string().regex(/^[0-9a-f-]{36}$/)
 
 export function registerFilesIpc(
-  { locations, config }: Pick<IpcDeps, 'locations' | 'config'>,
+  { locations, config, chats }: Pick<IpcDeps, 'locations' | 'config' | 'chats'>,
   sender: SenderCheck
 ): void {
   const folders: Record<AppFolder, string> = {
@@ -60,6 +62,30 @@ export function registerFilesIpc(
       log.warn(`Could not set the ${chosen === 'llamaServer' ? 'llama-server path' : 'models folder'}`, error)
       // Electron sends only the message to the UI; the cause stays in main.
       throw new Error(error instanceof Error ? error.message : String(error), { cause: error })
+    }
+  })
+
+  // The UI names only the chat: main reads its text from core and the path comes from Windows' own Save dialog.
+  ipcMain.handle(ipcChannels.filesExportChat, async (event, chatId: unknown): Promise<boolean> => {
+    const window = sender.senderWindow(event)
+    const parsed = chatIdSchema.safeParse(chatId)
+    if (!parsed.success) {
+      log.warn('Refused to export an unknown chat', chatId)
+      throw new Error('Unknown chat')
+    }
+    const { fileName, markdown } = await chats.read(parsed.data)
+    const result = await dialog.showSaveDialog(window, {
+      title: 'Export chat',
+      defaultPath: join(app.getPath('documents'), fileName),
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    })
+    if (result.canceled || !result.filePath) return false
+    try {
+      await writeFile(result.filePath, markdown, 'utf8')
+      return true
+    } catch (error) {
+      log.warn('Could not save the chat export', error)
+      throw new Error('The file could not be saved', { cause: error })
     }
   })
 

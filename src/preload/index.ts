@@ -32,7 +32,8 @@ const api: Api = {
   files: Object.freeze({
     locations: () => ipcRenderer.invoke(ipcChannels.filesLocations),
     openFolder: (folder) => ipcRenderer.invoke(ipcChannels.filesOpenFolder, folder),
-    pick: (target) => ipcRenderer.invoke(ipcChannels.filesPick, target)
+    pick: (target) => ipcRenderer.invoke(ipcChannels.filesPick, target),
+    exportChat: (chatId) => ipcRenderer.invoke(ipcChannels.filesExportChat, chatId)
   }),
   appWindow: Object.freeze({
     minimize: () => ipcRenderer.invoke(ipcChannels.windowMinimize),

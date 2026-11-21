@@ -1,5 +1,6 @@
 // IPC handlers: main's side of the contract in src/shared/ipc.ts. Every request is treated as untrusted.
 import type { FileLocations } from '../../shared/ipc'
+import type { ChatExport } from '../core/chatExport'
 import type { ConfigClient } from '../core/configClient'
 import type { SettingsService } from '../settingsService'
 import { registerAppIpc } from './app'
@@ -17,6 +18,7 @@ export interface IpcDeps {
   locations: FileLocations
   config: Pick<ConfigClient, 'getEngine' | 'getLlamacpp' | 'setModelPath'>
   core: CoreControl
+  chats: ChatExport
 }
 
 export function registerIpc(deps: IpcDeps): void {
