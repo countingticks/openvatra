@@ -44,6 +44,12 @@ export function registerRuns(startListening: AppStartListening): void {
             case 'chat.model':
               draft.chat.model = event.data.model
               return
+            case 'chat.titled':
+              // A model-made title never replaces one the user chose.
+              if (event.data.source === 'auto' && draft.chat.titleSource === 'user') return
+              draft.chat.title = event.data.title
+              draft.chat.titleSource = event.data.source
+              return
             case 'run.queued':
               if (runId !== null) draft.chat.activeRun = { id: runId, state: 'queued' }
               return

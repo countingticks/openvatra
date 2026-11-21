@@ -1,6 +1,7 @@
 import { registerConfigSync } from './core/configSync'
 import { followCoreState } from './core/followCoreState'
 import { followCoreStream } from './core/stream'
+import { registerChatList } from './features/chat'
 import { registerModels } from './features/models'
 import { registerRuns } from './features/runs'
 import { createAppStore, type AppStore, type AppStoreOptions } from './store/store'
@@ -13,6 +14,7 @@ export function createApp(options: AppStoreOptions): AppStore {
   registerConfigSync(startListening)
   registerModels(startListening)
   registerRuns(startListening)
+  registerChatList(startListening)
   followCoreStream({ dispatch: store.dispatch, getState: store.getState, subscribe: store.subscribe })
   followCoreState(options.platform.core, store.dispatch)
   return store
