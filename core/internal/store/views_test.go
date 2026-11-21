@@ -1,0 +1,327 @@
+package store
+
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/countingticks/openvatra/core/internal/event"
+)
+
+func appendTo(t *testing.T, s *Store, stream string, ps ...event.Payload) []event.Event {
+	t.Helper()
+	events, err := s.Log().Append(ctx, stream, ps...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return events
+}
+
+// newChat starts a chat whose first run is queued with text as its input; both share one request id.
+func newChat(t *testing.T, s *Store, text string) (chatID, runID string) {
+	t.Helper()
+	chatID, runID = NewID(), NewID()
+	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
+	queueRun(t, s, chatID, runID, text)
+	return chatID, runID
+}
+
+// queueRun opens run runID in chatID with text as its input.
+func queueRun(t *testing.T, s *Store, chatID, runID, text string) string {
+	t.Helper()
+	req := NewID()
+	appendTo(t, s, "run:"+runID,
+		event.RunQueued{ChatID: chatID, Profile: "chat", Model: "m1", Origin: "user", RequestID: req},
+		event.InputReceived{ChatID: chatID, Text: text, RequestID: req})
+	return req
+}
+
+func answer(chatID, text string, partial bool) event.MessageCompleted {
+	return event.MessageCompleted{
+		ChatID: chatID, Parts: []event.MessagePart{{Kind: "text", Text: text}}, Partial: partial, Model: "m1",
+		Stats: event.MessageStats{PromptTokens: 12, AnswerTokens: 3, Exact: true},
+	}
+}
+
+// tableRows runs query and prints each row as "[v1 v2 …]", with <nil> for NULL.
+func tableRows(t *testing.T, s *Store, query string, args ...any) []string {
+	t.Helper()
+	rows, err := s.reader().Query(query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	cols, err := rows.Columns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := []string{}
+	for rows.Next() {
+		vals := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, fmt.Sprintf("%v", vals))
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// row is the one row query returns.
+func row(t *testing.T, s *Store, query string, args ...any) string {
+	t.Helper()
+	got := tableRows(t, s, query, args...)
+	if len(got) != 1 {
+		t.Fatalf("%s: %d rows, want 1: %v", query, len(got), got)
+	}
+	return got[0]
+}
+
+var viewTables = []string{"chats", "runs", "messages", "requests"}
+
+func TestChatWithRunAndAnswerHasOneRowPerTableAndTheCutTitle(t *testing.T) {
+	s, _ := newEventStore(t)
+	text := "Please explain how the Rust borrow checker decides when a reference is still alive in a loop"
+	chatID, runID := newChat(t, s, text)
+	appendTo(t, s, "run:"+runID, answer(chatID, "It tracks lifetimes.", false), event.RunFinished{ChatID: chatID, State: "done"})
+
+	for table, want := range map[string]int{"chats": 1, "runs": 1, "requests": 1, "messages": 2} {
+		if got := len(tableRows(t, s, "SELECT * FROM "+table)); got != want {
+			t.Errorf("%s has %d rows, want %d", table, got, want)
+		}
+	}
+	if got := row(t, s, "SELECT title, title_source, model, profile FROM chats"); got != "["+CutTitle(text)+" auto m1 chat]" {
+		t.Errorf("chat = %s", got)
+	}
+	msgs := tableRows(t, s, "SELECT role, run_id, parts, partial, failed, retracted FROM messages ORDER BY seq")
+	want := []string{
+		fmt.Sprintf(`[user %s [{"kind":"text","text":%q}] 0 0 0]`, runID, text),
+		fmt.Sprintf(`[assistant %s [{"kind":"text","text":"It tracks lifetimes."}] 0 0 0]`, runID),
+	}
+	if !slices.Equal(msgs, want) {
+		t.Errorf("messages = %v\nwant %v", msgs, want)
+	}
+	var stats event.MessageStats
+	if err := json.Unmarshal([]byte(strings.Trim(row(t, s, "SELECT stats FROM messages WHERE role = 'assistant'"), "[]")), &stats); err != nil {
+		t.Fatal(err)
+	}
+	if stats.PromptTokens != 12 || stats.AnswerTokens != 3 || !stats.Exact {
+		t.Errorf("stats = %+v", stats)
+	}
+}
+
+func TestRunStatesFollowEventsAndChatActiveFieldsClearOnFinish(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, runID := newChat(t, s, "hi")
+	states := func() string {
+		return row(t, s, "SELECT r.state, c.active_run, c.active_state FROM runs r JOIN chats c ON c.id = r.chat_id")
+	}
+	steps := []struct {
+		p    event.Payload
+		want string
+	}{
+		{nil, "[queued " + runID + " queued]"},
+		{event.RunStarted{ChatID: chatID}, "[running " + runID + " running]"},
+		{event.RunPaused{ChatID: chatID, Reason: "interrupted"}, "[interrupted " + runID + " interrupted]"},
+		{event.RunResumed{ChatID: chatID}, "[queued " + runID + " queued]"},
+		{event.RunStarted{ChatID: chatID}, "[running " + runID + " running]"},
+		{event.RunFinished{ChatID: chatID, State: "done"}, "[done <nil> <nil>]"},
+	}
+	for _, st := range steps {
+		if st.p != nil {
+			appendTo(t, s, "run:"+runID, st.p)
+		}
+		if got := states(); got != st.want {
+			t.Fatalf("after %v: %s, want %s", st.p, got, st.want)
+		}
+	}
+	finished := row(t, s, "SELECT finished_at IS NOT NULL, last_seq = (SELECT max(seq) FROM events) FROM runs")
+	if finished != "[1 1]" {
+		t.Errorf("finished_at set, last_seq = head: %s", finished)
+	}
+}
+
+func TestFailedRunMarksItsPartialAnswerFailedAndStoppedDoesNot(t *testing.T) {
+	s, _ := newEventStore(t)
+	failedChat, failedRun := newChat(t, s, "one")
+	appendTo(t, s, "run:"+failedRun, answer(failedChat, "half", true),
+		event.RunFinished{ChatID: failedChat, State: "failed", Error: &event.RunError{Code: "backend_failed", Message: "it broke"}})
+	stoppedChat, stoppedRun := newChat(t, s, "two")
+	appendTo(t, s, "run:"+stoppedRun, answer(stoppedChat, "half", true), event.RunFinished{ChatID: stoppedChat, State: "stopped"})
+
+	if got := row(t, s, "SELECT partial, failed FROM messages WHERE run_id = ? AND role = 'assistant'", failedRun); got != "[1 1]" {
+		t.Errorf("failed run's answer = %s", got)
+	}
+	if got := row(t, s, "SELECT partial, failed FROM messages WHERE run_id = ? AND role = 'assistant'", stoppedRun); got != "[1 0]" {
+		t.Errorf("stopped run's answer = %s", got)
+	}
+	if got := row(t, s, "SELECT state, error_code, error_message FROM runs WHERE id = ?", failedRun); got != "[failed backend_failed it broke]" {
+		t.Errorf("failed run = %s", got)
+	}
+	if got := row(t, s, "SELECT state, error_code, error_message FROM runs WHERE id = ?", stoppedRun); got != "[stopped <nil> <nil>]" {
+		t.Errorf("stopped run = %s", got)
+	}
+}
+
+func TestUserTitleIsNotReplacedByAutoTitleAndAutoReplacesCutOne(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, _ := newChat(t, s, "hello there")
+	title := func() string { return row(t, s, "SELECT title, title_source FROM chats") }
+	if got := title(); got != "[hello there auto]" {
+		t.Fatalf("cut title = %s", got)
+	}
+	steps := []struct {
+		p    event.ChatTitled
+		want string
+	}{
+		{event.ChatTitled{Title: "Greeting", Source: "auto"}, "[Greeting auto]"},
+		{event.ChatTitled{Title: "Mine", Source: "user"}, "[Mine user]"},
+		{event.ChatTitled{Title: "Later", Source: "auto"}, "[Mine user]"},
+	}
+	for _, st := range steps {
+		appendTo(t, s, "chat:"+chatID, st.p)
+		if got := title(); got != st.want {
+			t.Errorf("after %+v: %s, want %s", st.p, got, st.want)
+		}
+	}
+}
+
+func TestRetractedRunsMessagesAreMarked(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, first := newChat(t, s, "one")
+	appendTo(t, s, "run:"+first, answer(chatID, "a", false), event.RunFinished{ChatID: chatID, State: "done"})
+	second := NewID()
+	queueRun(t, s, chatID, second, "two")
+	appendTo(t, s, "run:"+second, answer(chatID, "b", false), event.RunFinished{ChatID: chatID, State: "done"})
+
+	appendTo(t, s, "chat:"+chatID, event.TurnRetracted{RunID: first})
+
+	got := tableRows(t, s, "SELECT run_id, retracted FROM messages ORDER BY seq")
+	want := []string{"[" + first + " 1]", "[" + first + " 1]", "[" + second + " 0]", "[" + second + " 0]"}
+	if !slices.Equal(got, want) {
+		t.Errorf("messages = %v, want %v", got, want)
+	}
+}
+
+func TestInputRequestIDAndRunFirstRequestIDMapToRunOnce(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, runID := newChat(t, s, "one")
+	first := strings.Fields(strings.Trim(row(t, s, "SELECT request_id FROM requests"), "[]"))[0]
+	appendTo(t, s, "run:"+runID, event.InputReceived{ChatID: chatID, Text: "more", RequestID: "later-req"})
+
+	got := tableRows(t, s, "SELECT request_id, run_id, chat_id FROM requests ORDER BY request_id = 'later-req'")
+	want := []string{"[" + first + " " + runID + " " + chatID + "]", "[later-req " + runID + " " + chatID + "]"}
+	if !slices.Equal(got, want) {
+		t.Errorf("requests = %v, want %v", got, want)
+	}
+}
+
+func TestEventsForUnknownChatChangeNothing(t *testing.T) {
+	s, _ := newEventStore(t)
+	appendTo(t, s, "chat:ghost", event.ChatModel{Model: "m2"}, event.ChatTitled{Title: "x", Source: "user"},
+		event.TurnRetracted{RunID: "r1"})
+	appendTo(t, s, "run:r1",
+		event.RunQueued{ChatID: "ghost", Profile: "chat", Model: "m1", Origin: "user", RequestID: "q"},
+		event.InputReceived{ChatID: "ghost", Text: "hi", RequestID: "q"},
+		event.RunStarted{ChatID: "ghost"},
+		answer("ghost", "a", false),
+		event.CompactionCompleted{ChatID: "ghost", Summary: "s"},
+		event.RunFinished{ChatID: "ghost", State: "failed"})
+
+	for _, table := range viewTables {
+		if got := tableRows(t, s, "SELECT * FROM "+table); len(got) != 0 {
+			t.Errorf("%s = %v, want empty", table, got)
+		}
+	}
+}
+
+// payloadOf turns a stored event back into its typed payload.
+func payloadOf(t *testing.T, e event.Event) event.Payload {
+	t.Helper()
+	for _, p := range event.Types {
+		if p.EventType().Name != e.Type {
+			continue
+		}
+		v := reflect.New(reflect.TypeOf(p))
+		if err := json.Unmarshal(e.Data, v.Interface()); err != nil {
+			t.Fatal(err)
+		}
+		return v.Elem().Interface().(event.Payload)
+	}
+	t.Fatalf("unknown event type %q", e.Type)
+	return nil
+}
+
+func TestViewsRebuiltByReplayEqualTheLiveOnes(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, first := newChat(t, s, "one")
+	appendTo(t, s, "run:"+first, event.RunStarted{ChatID: chatID}, answer(chatID, "a", false),
+		event.RunFinished{ChatID: chatID, State: "done"})
+	appendTo(t, s, "chat:"+chatID, event.ChatTitled{Title: "T", Source: "user"}, event.ChatModel{Model: "m2"})
+	second := NewID()
+	queueRun(t, s, chatID, second, "two")
+	appendTo(t, s, "run:"+second, event.RunStarted{ChatID: chatID}, event.RunPaused{ChatID: chatID, Reason: "interrupted"},
+		event.RunResumed{ChatID: chatID}, event.CompactionCompleted{ChatID: chatID, Summary: "sum", FirstKeptSeq: 3},
+		answer(chatID, "half", true),
+		event.RunFinished{ChatID: chatID, State: "failed", Error: &event.RunError{Code: "backend_failed", Message: "x"}})
+	appendTo(t, s, "chat:"+chatID, event.TurnRetracted{RunID: first})
+	newChat(t, s, "another chat")
+
+	events, err := s.Log().Read(ctx, 0, event.Filter{}, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ := newEventStore(t)
+	var at int64
+	fresh.now = func() time.Time { return time.UnixMilli(at) }
+	for _, e := range events {
+		at = e.Time
+		got := appendTo(t, fresh, e.Stream, payloadOf(t, e))
+		if got[0].Seq != e.Seq {
+			t.Fatalf("replayed seq %d, want %d", got[0].Seq, e.Seq)
+		}
+	}
+
+	for _, table := range viewTables {
+		q := "SELECT * FROM " + table + " ORDER BY 1"
+		if live, rebuilt := tableRows(t, s, q), tableRows(t, fresh, q); !slices.Equal(live, rebuilt) {
+			t.Errorf("%s differs:\nlive    %v\nrebuilt %v", table, live, rebuilt)
+		}
+	}
+}
+
+func TestVersion5DatabaseWithOldChatsMigratesTo6AndHasNoChats(t *testing.T) {
+	dir := t.TempDir()
+	old, err := open(dir, event.NewBus(16), embeddedMigrations(t, 5), "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := old.writer().Exec(`INSERT INTO chats (id, created_at, updated_at) VALUES ('old', 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	old.Close()
+
+	s, err := Open(dir, event.NewBus(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v, _ := s.Version(); v != 6 {
+		t.Fatalf("version = %d", v)
+	}
+	for _, table := range viewTables {
+		if got := tableRows(t, s, "SELECT * FROM "+table); len(got) != 0 {
+			t.Errorf("%s = %v, want empty", table, got)
+		}
+	}
+}

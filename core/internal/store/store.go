@@ -96,6 +96,9 @@ func open(dir string, bus *event.Bus, migrations fs.FS, root string) (*Store, er
 	}
 	s.w.SetMaxOpenConns(1)
 	s.r.SetMaxOpenConns(4)
+	if s.readOnly == nil {
+		s.AddProjector(chatViews{})
+	}
 	return s, nil
 }
 
