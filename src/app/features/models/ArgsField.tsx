@@ -18,6 +18,13 @@ interface ArgsFieldProps {
  */
 export function ArgsField({ label, value, placeholder, hint, onCommit }: ArgsFieldProps): React.JSX.Element {
   const [draft, setDraft] = useState(value)
+  // The saved text can arrive after the box mounted (the row is always mounted, the config may answer late): follow
+  // it while the box still shows the old one, never over what the user typed.
+  const [shown, setShown] = useState(value)
+  if (shown !== value) {
+    setShown(value)
+    if (draft === shown) setDraft(value)
+  }
   const [error, setError] = useState<string>()
   const inputId = useId()
   const hintId = `${inputId}-hint`
