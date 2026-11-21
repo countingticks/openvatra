@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
+import { selectRoute } from '@app/store/uiSlice'
 import { renderWithStore } from '../../renderWithStore'
 
 const menuButton = (): HTMLElement => screen.getByRole('button', { name: 'Menu' })
@@ -75,10 +76,12 @@ describe('app menu', () => {
       expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
     })
 
-    it('shows New chat as not available yet', async () => {
-      renderWithStore(<Shell />)
+    it('New chat opens a new chat', async () => {
+      const { store } = renderWithStore(<Shell />, { lastRoute: 'code' })
 
-      expect(item(await openSubmenu('File'), /New chat/)).toHaveAttribute('aria-disabled', 'true')
+      fireEvent.click(item(await openSubmenu('File'), /New chat/))
+
+      expect(selectRoute(store.getState())).toEqual({ tab: 'chat' })
     })
   })
 

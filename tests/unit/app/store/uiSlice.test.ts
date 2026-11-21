@@ -3,6 +3,7 @@ import {
   historyLimit,
   initialUiState,
   navigated,
+  routeReplaced,
   selectActiveTab,
   selectCanGoBack,
   selectCanGoForward,
@@ -178,5 +179,13 @@ describe('back and forward', () => {
     const many = Array.from({ length: historyLimit + 10 }, (_, i) => chat(String(i)))
 
     expect(go(...many).back).toHaveLength(historyLimit)
+  })
+
+  it('replaces a new chat with its id without a Back entry', () => {
+    const state = reduce(initialUiState, routeReplaced(chat('c1')))
+
+    expect(selectRoute({ ui: state })).toEqual(chat('c1'))
+    expect(selectCanGoBack({ ui: state })).toBe(false)
+    expect(state.tabRoutes.chat).toEqual(chat('c1'))
   })
 })

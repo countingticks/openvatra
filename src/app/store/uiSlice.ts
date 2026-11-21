@@ -62,6 +62,12 @@ export const uiSlice = createSlice({
     navigated(state, action: PayloadAction<Route>) {
       navigate(state, action.payload)
     },
+    /** Changes what is open without a history entry: a new chat that got its id is still the same place. */
+    routeReplaced(state, action: PayloadAction<Route>) {
+      if (sameRoute(action.payload, state.route)) return
+      state.route = action.payload
+      state.tabRoutes[action.payload.tab] = action.payload
+    },
     tabSelected(state, action: PayloadAction<TabId>) {
       navigate(state, state.tabRoutes[action.payload])
     },
@@ -114,6 +120,7 @@ export const uiSlice = createSlice({
 
 export const {
   navigated,
+  routeReplaced,
   tabSelected,
   wentBack,
   wentForward,
