@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -323,5 +324,215 @@ func TestVersion5DatabaseWithOldChatsMigratesTo6AndHasNoChats(t *testing.T) {
 		if got := tableRows(t, s, "SELECT * FROM "+table); len(got) != 0 {
 			t.Errorf("%s = %v, want empty", table, got)
 		}
+	}
+}
+
+func head(t *testing.T, s *Store) int64 {
+	t.Helper()
+	info, err := s.Log().Info(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info.Head
+}
+
+func chatIDs(rows []ChatRow) []string {
+	ids := []string{}
+	for _, c := range rows {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+func TestChatsListsNewestFirstAndLeavesOutChatWithNoMessages(t *testing.T) {
+	s, _ := newEventStore(t)
+	older, olderRun := newChat(t, s, "older")
+	newer, _ := newChat(t, s, "newer")
+	appendTo(t, s, "chat:"+NewID(), event.ChatCreated{Model: "m1", Profile: "chat"})
+
+	rows, seq, err := s.Chats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := chatIDs(rows); !slices.Equal(got, []string{newer, older}) {
+		t.Errorf("chats = %v, want [newer older]", got)
+	}
+	if seq != head(t, s) {
+		t.Errorf("seq = %d, want head %d", seq, head(t, s))
+	}
+	if rows[1].Title != "older" || rows[1].ActiveRun != olderRun || rows[1].ActiveState != "queued" {
+		t.Errorf("older = %+v", rows[1])
+	}
+
+	appendTo(t, s, "run:"+olderRun, event.RunFinished{ChatID: older, State: "done"})
+	rows, _, err = s.Chats(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := chatIDs(rows); !slices.Equal(got, []string{older, newer}) {
+		t.Errorf("after finishing older: %v, want [older newer]", got)
+	}
+}
+
+func TestChatTranscriptAndRunReturnErrNotFoundForUnknownIDs(t *testing.T) {
+	s, _ := newEventStore(t)
+	newChat(t, s, "hi")
+	if _, _, err := s.Chat(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Chat: %v", err)
+	}
+	if _, _, _, err := s.Transcript(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Transcript: %v", err)
+	}
+	if _, _, err := s.Run(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Run: %v", err)
+	}
+}
+
+func TestTranscriptReturnsMessagesAndRunsOldestFirstWithSeqAtOrAboveNewestMessage(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, first := newChat(t, s, "one")
+	appendTo(t, s, "run:"+first, answer(chatID, "a", false), event.RunFinished{ChatID: chatID, State: "done"})
+	second := NewID()
+	queueRun(t, s, chatID, second, "two")
+	appendTo(t, s, "run:"+second, answer(chatID, "b", true))
+
+	msgs, runs, seq, err := s.Transcript(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for i, m := range msgs {
+		if i > 0 && m.Seq <= msgs[i-1].Seq {
+			t.Errorf("message %d seq %d not after %d", i, m.Seq, msgs[i-1].Seq)
+		}
+		got = append(got, m.Role+" "+m.RunID+" "+string(m.Parts))
+	}
+	want := []string{
+		"user " + first + ` [{"kind":"text","text":"one"}]`,
+		"assistant " + first + ` [{"kind":"text","text":"a"}]`,
+		"user " + second + ` [{"kind":"text","text":"two"}]`,
+		"assistant " + second + ` [{"kind":"text","text":"b"}]`,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("messages = %v\nwant %v", got, want)
+	}
+	if !msgs[3].Partial || msgs[3].Failed || msgs[3].Retracted {
+		t.Errorf("last message flags = %+v", msgs[3])
+	}
+	if len(runs) != 2 || runs[0].ID != first || runs[1].ID != second || runs[0].State != "done" || runs[0].FinishedAt == 0 ||
+		runs[1].FinishedAt != 0 {
+		t.Errorf("runs = %+v", runs)
+	}
+	if seq < msgs[3].Seq {
+		t.Errorf("seq %d below the newest message's %d", seq, msgs[3].Seq)
+	}
+	if r, rseq, err := s.Run(ctx, second); err != nil || r.ChatID != chatID || r.State != "queued" || rseq < r.LastSeq {
+		t.Errorf("Run = %+v, %d, %v", r, rseq, err)
+	}
+}
+
+func TestOpenRunsReturnsOnlyQueuedAndRunningRuns(t *testing.T) {
+	s, _ := newEventStore(t)
+	_, queued := newChat(t, s, "queued")
+	runningChat, running := newChat(t, s, "running")
+	appendTo(t, s, "run:"+running, event.RunStarted{ChatID: runningChat})
+	pausedChat, paused := newChat(t, s, "paused")
+	appendTo(t, s, "run:"+paused, event.RunStarted{ChatID: pausedChat}, event.RunPaused{ChatID: pausedChat, Reason: "interrupted"})
+	doneChat, done := newChat(t, s, "done")
+	appendTo(t, s, "run:"+done, event.RunFinished{ChatID: doneChat, State: "done"})
+
+	rows, err := s.OpenRuns(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.ID)
+	}
+	if !slices.Equal(got, []string{queued, running}) {
+		t.Errorf("open runs = %v, want [queued running]", got)
+	}
+}
+
+func TestRequestFindsRunByItsRequestIDAndByQueuedInputs(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, runID := NewID(), NewID()
+	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
+	first := queueRun(t, s, chatID, runID, "one")
+	appendTo(t, s, "run:"+runID, event.InputReceived{ChatID: chatID, Text: "more", RequestID: "req-2"})
+
+	for _, id := range []string{first, "req-2"} {
+		ref, ok, err := s.Request(ctx, id)
+		if err != nil || !ok || ref != (RequestRef{RunID: runID, ChatID: chatID}) {
+			t.Errorf("Request(%s) = %+v, %v, %v", id, ref, ok, err)
+		}
+	}
+	if _, ok, err := s.Request(ctx, "unknown"); ok || err != nil {
+		t.Errorf("unknown request: ok %v, err %v", ok, err)
+	}
+}
+
+func TestDeleteChatRemovesItsAndItsRunsEventsAndRowsKeepsOthersAndPublishes(t *testing.T) {
+	s, bus := newEventStore(t)
+	gone, goneRun := newChat(t, s, "gone")
+	appendTo(t, s, "run:"+goneRun, answer(gone, "a", false), event.RunFinished{ChatID: gone, State: "done"})
+	goneSecond := NewID()
+	queueRun(t, s, gone, goneSecond, "again")
+	kept, keptRun := newChat(t, s, "kept")
+	_, live, cancel := bus.Subscribe(event.Filter{Streams: []string{"system"}})
+	defer cancel()
+
+	if err := s.DeleteChat(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case e := <-live:
+		if e.Type != "chat.deleted" || e.Stream != "system" || string(e.Data) != `{"chatId":"`+gone+`"}` {
+			t.Errorf("published %+v", e)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no chat.deleted published")
+	}
+	events, err := s.Log().Read(ctx, 0, event.Filter{}, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streams []string
+	for _, e := range events {
+		streams = append(streams, e.Stream+" "+e.Type)
+	}
+	want := []string{
+		"chat:" + kept + " chat.created", "run:" + keptRun + " run.queued", "run:" + keptRun + " input.received",
+		"system chat.deleted",
+	}
+	if !slices.Equal(streams, want) {
+		t.Errorf("events = %v\nwant %v", streams, want)
+	}
+	for table, column := range map[string]string{"chats": "id", "runs": "chat_id", "messages": "chat_id", "requests": "chat_id"} {
+		if got := tableRows(t, s, "SELECT * FROM "+table+" WHERE "+column+" = ?", gone); len(got) != 0 {
+			t.Errorf("%s still has %v", table, got)
+		}
+	}
+	if got := row(t, s, "SELECT count(*) FROM runs WHERE id IN (?, ?)", goneRun, goneSecond); got != "[0]" {
+		t.Errorf("gone runs left: %s", got)
+	}
+	if rows, _, err := s.Chats(ctx); err != nil || !slices.Equal(chatIDs(rows), []string{kept}) {
+		t.Errorf("chats = %v, %v", chatIDs(rows), err)
+	}
+	if _, runs, _, err := s.Transcript(ctx, kept); err != nil || len(runs) != 1 {
+		t.Errorf("kept transcript runs = %+v, %v", runs, err)
+	}
+}
+
+func TestDeleteChatOfUnknownChatIsErrNotFoundAndAppendsNothing(t *testing.T) {
+	s, _ := newEventStore(t)
+	newChat(t, s, "hi")
+	before := head(t, s)
+	if err := s.DeleteChat(ctx, "nope"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v", err)
+	}
+	if after := head(t, s); after != before {
+		t.Errorf("head moved from %d to %d", before, after)
 	}
 }
