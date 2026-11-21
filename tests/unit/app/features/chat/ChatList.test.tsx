@@ -255,4 +255,105 @@ describe('chat actions', () => {
       expect(deletes()).toEqual([{ method: 'DELETE', path: '/api/chats/c1', body: undefined }])
     )
   })
+
+  describe('search', () => {
+    const hit = (id: string, title: string, snippet: ChatItem['snippet']): ChatItem =>
+      chat(id, title, { snippet })
+
+    function showSearch(): ReturnType<typeof renderWithStore> {
+      const rendered = show([chat('c2', 'Rust lifetimes, again'), chat('c1', 'Trip to Cluj')])
+      rendered.coreHttp.respond('GET', '/api/chats', (request) => {
+        const q = new URL(request.url).searchParams.get('q')
+        if (q === null) return { body: { seq: 1, chats: [chat('c2', 'Rust lifetimes, again')] } }
+        if (q === 'quant') {
+          return {
+            body: {
+              seq: 1,
+              chats: [
+                hit('c1', 'Models', [
+                  { text: 'GGUF ', match: false },
+                  { text: 'quant', match: true },
+                  { text: 'ization', match: false }
+                ]),
+                hit('c3', 'Escapes', [{ text: 'use <b>x</b> here', match: false }])
+              ]
+            }
+          }
+        }
+        return { body: { seq: 1, chats: [] } }
+      })
+      return rendered
+    }
+
+    const searches = (rendered: ReturnType<typeof renderWithStore>): (string | null)[] =>
+      rendered.coreHttp.requests
+        .map((request) => new URL(request.url))
+        .filter((url) => url.pathname === '/api/chats')
+        .map((url) => url.searchParams.get('q'))
+    const field = (): HTMLElement => screen.getByRole('textbox', { name: 'Search chats' })
+    const typeQuery = (text: string): void => {
+      fireEvent.click(screen.getByRole('button', { name: 'Search chats' }))
+      fireEvent.change(field(), { target: { value: text } })
+    }
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('asks core once, 200 ms after typing, and marks the match in each hit', async () => {
+      const rendered = showSearch()
+      await screen.findByRole('list', { name: 'Chats' })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      typeQuery('qua')
+      fireEvent.change(field(), { target: { value: 'quant' } })
+      act(() => vi.advanceTimersByTime(199))
+      expect(searches(rendered)).not.toContain('quant')
+      act(() => vi.advanceTimersByTime(1))
+
+      // vi.waitFor, not findBy: Testing Library's async helpers wait on a timer that is faked here.
+      await vi.waitFor(() => expect(screen.getByText('quant', { selector: 'mark' })).toBeInTheDocument())
+      expect(searches(rendered).filter((q) => q === 'quant')).toHaveLength(1)
+      expect(searches(rendered)).not.toContain('qua')
+    })
+
+    it('shows markup in a snippet as typed text', async () => {
+      showSearch()
+      await screen.findByRole('list', { name: 'Chats' })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      typeQuery('quant')
+      act(() => vi.advanceTimersByTime(200))
+
+      await vi.waitFor(() => expect(screen.getByText('use <b>x</b> here')).toBeInTheDocument())
+    })
+
+    it('says so when nothing matches, and shows the full list again once cleared', async () => {
+      const rendered = showSearch()
+      await screen.findByRole('list', { name: 'Chats' })
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+
+      typeQuery('zzz')
+      act(() => vi.advanceTimersByTime(200))
+      await vi.waitFor(() => expect(screen.getByText('No chats found')).toBeInTheDocument())
+
+      const before = searches(rendered).length
+      fireEvent.change(field(), { target: { value: '' } })
+      act(() => vi.advanceTimersByTime(200))
+      await vi.waitFor(() => expect(rowNames()).toEqual(['Rust lifetimes, again']))
+      expect(searches(rendered).slice(before)).not.toContain('')
+    })
+
+    it('closes with Esc and returns focus to the search button', async () => {
+      showSearch()
+      await screen.findByRole('list', { name: 'Chats' })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Search chats' }))
+      expect(field()).toHaveFocus()
+      fireEvent.keyDown(field(), { key: 'Escape' })
+
+      expect(screen.queryByRole('textbox', { name: 'Search chats' })).toBeNull()
+      expect(screen.getByRole('button', { name: 'Search chats' })).toHaveFocus()
+    })
+  })
 })

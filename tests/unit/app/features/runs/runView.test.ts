@@ -154,6 +154,25 @@ describe('runView', () => {
       'input C (queued)'
     ])
   })
+
+  it('regenerate: the retracted run leaves the transcript and the new run shows', () => {
+    const view = runView(fold(fixture('regenerate')))
+
+    expect(shown(view.entries)).toEqual(['input q1', 'answer a1', 'input q2', 'answer a2 again'])
+    expect(view.entries.map((entry) => entry.runId)).toEqual(['run1', 'run1', 'run3', 'run3'])
+  })
+
+  it('title: after the answer and before run.finished there is no live entry', () => {
+    const events = fixture('title')
+    const beforeFinish = events.slice(
+      0,
+      events.findIndex((e) => e.type === 'run.finished')
+    )
+    const view = runView(fold(beforeFinish))
+
+    expect(view.activeRun).not.toBeNull()
+    expect(shown(view.entries)).toEqual(['input Ho', 'answer Lifetimes are scopes.'])
+  })
 })
 
 describe('applyRunEvent', () => {
@@ -183,6 +202,19 @@ describe('applyRunEvent', () => {
       { kind: 'answer', failed: false },
       { kind: 'notice', notice: 'failed' }
     ])
+  })
+
+  it('a turn.retracted at or below the transcript seq changes nothing', () => {
+    const stale: Event = {
+      type: 'turn.retracted',
+      stream: 'chat:c1',
+      seq: 3,
+      v: 1,
+      time: 0,
+      data: { runId: 'r1' }
+    }
+
+    expect(applyRunEvent(started, stale)).toBe(started)
   })
 
   it('an ephemeral message.delta returns the very same object', () => {
@@ -240,5 +272,10 @@ describe('answerState and waitingLine', () => {
   ])('%s', (_name, activeRun, answer, sched, modelLoading, state, line) => {
     expect(answerState(activeRun, answer)).toBe(state)
     expect(waitingLine({ activeRun, live: answer, sched, model: 'tiny', modelLoading })).toBe(line)
+  })
+
+  it('a running run without a live entry is idle', () => {
+    expect(answerState(run(), live('Hi', ''), false)).toBe('idle')
+    expect(answerState(run(), undefined, false)).toBe('idle')
   })
 })

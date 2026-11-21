@@ -53,6 +53,7 @@ function ChatView(): React.JSX.Element {
   const activeRun = view?.activeRun ?? null
   const live = useLiveAnswer(activeRun?.id)
   const answering = activeRun !== null && (activeRun.state === 'queued' || activeRun.state === 'running')
+  const hasLiveEntry = view?.entries.some((entry) => entry.kind === 'live') ?? false
   const [startRun] = useStartRunMutation()
   const [stopRun] = useStopRunMutation()
   const [resumeRun] = useResumeRunMutation()
@@ -76,6 +77,23 @@ function ChatView(): React.JSX.Element {
     stopRun({ id: activeRun.id })
       .unwrap()
       .catch((error: unknown) => console.error('Could not stop the answer', error))
+  }
+
+  function regenerate(): void {
+    if (chatId === undefined) return
+    startRun({ startRun: { requestId: crypto.randomUUID(), chatId, replace: 'last' } })
+      .unwrap()
+      .catch((error: unknown) => console.error('Could not regenerate the answer', error))
+  }
+
+  async function edit(text: string): Promise<void> {
+    if (chatId === undefined) return
+    try {
+      await startRun({ startRun: { requestId: crypto.randomUUID(), chatId, text, replace: 'last' } }).unwrap()
+    } catch (error) {
+      console.error('Could not send the edited message', error)
+      throw error
+    }
   }
 
   function resume(runId: string): void {
@@ -111,6 +129,8 @@ function ChatView(): React.JSX.Element {
                 modelLoading={loading}
                 onContinue={resume}
                 onOpenModelSettings={() => dispatch(settingsOpened('models'))}
+                onRegenerate={regenerate}
+                onEdit={edit}
               />
             )}
           </div>
@@ -119,7 +139,7 @@ function ChatView(): React.JSX.Element {
         <div className="px-7 pb-4">
           <div className="relative mx-auto w-full max-w-[720px]">
             <div className="absolute -top-[30px] left-[18px]">
-              <Ember state={answerState(activeRun, live)} scale={2} />
+              <Ember state={answerState(activeRun, live, hasLiveEntry)} scale={2} />
             </div>
             {!following && (
               <Button
