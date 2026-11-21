@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { MoreHorizontal } from 'lucide-react'
-import { useDeleteChatMutation, useUpdateChatMutation, type ChatItem } from '@app/core/generated'
+import {
+  useDeleteChatMutation,
+  useUpdateChatMutation,
+  type ChatItem,
+  type SnippetPart
+} from '@app/core/generated'
 import { cn } from '@app/lib/utils'
 import { usePlatform } from '@app/platform/usePlatform'
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@app/ui/context-menu'
@@ -14,10 +19,13 @@ import { useReducedMotion } from '@app/ui/useReducedMotion'
 import { useAppDispatch } from '@app/store/hooks'
 import { navigated } from '@app/store/uiSlice'
 import { DeleteChatDialog } from './DeleteChatDialog'
+import { Snippet } from './Snippet'
 
 interface ChatRowProps {
   chat: ChatItem
   current: boolean
+  /** Where a search matched this chat's messages. */
+  snippet?: SnippetPart[]
 }
 
 interface Action {
@@ -27,7 +35,7 @@ interface Action {
 }
 
 /** One chat in the sidebar: opens it, shows whether it is answering or was cut off, and holds its actions. */
-export function ChatRow({ chat, current }: ChatRowProps): React.JSX.Element {
+export function ChatRow({ chat, current, snippet }: ChatRowProps): React.JSX.Element {
   const dispatch = useAppDispatch()
   const platform = usePlatform()
   const reducedMotion = useReducedMotion()
@@ -131,7 +139,14 @@ export function ChatRow({ chat, current }: ChatRowProps): React.JSX.Element {
                   : 'text-muted-foreground group-hover:bg-sidebar-accent/60 group-hover:text-sidebar-foreground'
               )}
             >
-              <span className="min-w-0 flex-1 truncate">{title}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate">{title}</span>
+                {snippet && snippet.length > 0 && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    <Snippet parts={snippet} />
+                  </span>
+                )}
+              </span>
               {/* Keeps "answering" and "cut off" a separate word in the button's name. */}{' '}
               {(state === 'queued' || state === 'running') && (
                 <span className="grid size-3 shrink-0 place-items-center">
