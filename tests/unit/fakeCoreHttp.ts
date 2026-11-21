@@ -17,7 +17,7 @@ export interface CoreRequest {
 
 type Handler = (request: CoreRequest) => { status?: number; body?: unknown }
 
-export type ConfigSection = 'engine.llamaserver' | 'provider.llamacpp'
+export type ConfigSection = 'engine.llamaserver' | 'provider.llamacpp' | 'chat'
 
 export interface ConfigEntry {
   rev: number

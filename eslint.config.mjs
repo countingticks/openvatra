@@ -22,7 +22,7 @@ function banRoot(who) {
 }
 
 // Features are reached through their index.ts only, and only along these edges (SPEC-app decision 12).
-const featureEdges = { settings: ['models'], chat: ['models'] }
+const featureEdges = { settings: ['models'], chat: ['models', 'runs'] }
 
 // A new feature folder gets its block without editing this file.
 const featureNames = fs

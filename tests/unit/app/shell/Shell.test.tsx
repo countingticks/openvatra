@@ -21,7 +21,7 @@ describe('Shell', () => {
     renderWithStore(<Shell />)
 
     expect(tabButton('Chat')).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('heading', { level: 1, name: 'Chat' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'New chat' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Ember, idle' })).toBeInTheDocument()
   })
 

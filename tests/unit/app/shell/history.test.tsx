@@ -28,7 +28,7 @@ describe('back and forward', () => {
     openTab('Code')
 
     fireEvent.click(back())
-    expect(heading('Chat')).toBeInTheDocument()
+    expect(heading('New chat')).toBeInTheDocument()
     expect(forward()).toBeEnabled()
 
     fireEvent.click(forward())
@@ -41,7 +41,7 @@ describe('back and forward', () => {
     openTab('Automations')
 
     fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true })
-    expect(heading('Chat')).toBeInTheDocument()
+    expect(heading('New chat')).toBeInTheDocument()
 
     fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true })
     expect(heading('Automations')).toBeInTheDocument()
@@ -66,6 +66,6 @@ describe('back and forward', () => {
     const go = await screen.findByRole('menu', { name: 'Go' })
     fireEvent.click(within(go).getByRole('menuitem', { name: /Back/ }))
 
-    expect(await screen.findByRole('heading', { level: 1, name: 'Chat' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'New chat' })).toBeInTheDocument()
   })
 })

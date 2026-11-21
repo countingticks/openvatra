@@ -69,7 +69,10 @@ describe('welcome card', () => {
       { coreState: ready, setup: { catalog, downloads: [item()] } }
     )
 
-    expect(await screen.findByRole('status')).toHaveTextContent('4.1 of 5.0 GB · less than a minute left')
+    // Before core answers, the Chat tab (with its own, empty status region) shows; wait for the card's.
+    await waitFor(() =>
+      expect(screen.getByRole('status')).toHaveTextContent('4.1 of 5.0 GB · less than a minute left')
+    )
     expect(screen.getByRole('progressbar', { name: 'Download progress' })).toHaveValue(82)
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -190,7 +193,7 @@ describe('welcome card', () => {
       expect(coreApi.endpoints.listModels.select()(store.getState()).data?.models).toHaveLength(1)
     )
     // Then the page settles on Chat, the welcome card gone.
-    await waitFor(() => expect(screen.getByRole('heading', { name: 'Chat' })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'New chat' })).toBeInTheDocument())
     expect(screen.queryByRole('heading', { name: "Let's get you a model" })).not.toBeInTheDocument()
   })
 })

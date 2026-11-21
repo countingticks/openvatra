@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
+import { ModelButton } from '@app/features/models'
 import { defaultEngineSettings } from '@app/features/models/modelSettings'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
@@ -29,7 +30,10 @@ describe('model button', () => {
     renderWithStore(
       <Shell />,
       {},
-      { coreState: { status: 'ready', port: 1234, version: '1', connection: exampleConnection } }
+      {
+        coreState: { status: 'ready', port: 1234, version: '1', connection: exampleConnection },
+        models: [qwen]
+      }
     )
 
     expect(button()).toHaveTextContent('No model')
@@ -48,7 +52,7 @@ describe('model button', () => {
   })
 
   it('restarts the service and opens the log', async () => {
-    const { core } = renderWithStore(<Shell />)
+    const { core } = renderWithStore(<Shell />, {}, { models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Restart' }))
@@ -59,7 +63,7 @@ describe('model button', () => {
   })
 
   it('opens Settings on Models from "Model settings…" and closes the popover', async () => {
-    renderWithStore(<Shell />)
+    renderWithStore(<Shell />, {}, { models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Model settings…' }))
@@ -69,7 +73,7 @@ describe('model button', () => {
   })
 
   it('closes with Esc', async () => {
-    renderWithStore(<Shell />)
+    renderWithStore(<Shell />, {}, { models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.keyDown(popover, { key: 'Escape' })
@@ -205,7 +209,8 @@ describe('model button', () => {
   })
 
   it('explains an empty list, and lists nothing while core is not ready', async () => {
-    const { core } = renderWithStore(<Shell />, {}, { coreState: ready })
+    // In the Chat tab the welcome card stands in for an empty list; the button on its own still explains one.
+    const { core } = renderWithStore(<ModelButton />, {}, { coreState: ready })
     const popover = await openPopover()
     expect(popover).toHaveTextContent('No models found')
 
@@ -216,7 +221,8 @@ describe('model button', () => {
 
 describe('model button on a host without service actions', () => {
   it('has no Restart and no Open log without restart and openLog', async () => {
-    renderWithStore(<Shell />, {}, { omit: ['restart', 'openLog'] })
+    // With no chat model, the welcome card replaces the Chat tab, button and all.
+    renderWithStore(<Shell />, {}, { omit: ['restart', 'openLog'], models: [qwen] })
     const popover = await openPopover()
 
     expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()
@@ -224,7 +230,7 @@ describe('model button on a host without service actions', () => {
   })
 
   it('keeps Open log when only restart is missing', async () => {
-    renderWithStore(<Shell />, {}, { omit: ['restart'] })
+    renderWithStore(<Shell />, {}, { omit: ['restart'], models: [qwen] })
     const popover = await openPopover()
 
     expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()
