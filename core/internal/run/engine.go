@@ -49,6 +49,8 @@ type Spec struct {
 	Profile   string // "" = "chat"
 	Text      string
 	RequestID string
+	// Replace true: retract the chat's last turn and send its inputs again; Text, when set, replaces the last of them.
+	Replace bool
 }
 
 // Ref names the run a send went to; Seq is the log position a client reads the run from.
@@ -61,6 +63,7 @@ var (
 	ErrBadInput       = errors.New("bad input")
 	ErrRunNotFound    = errors.New("run not found")
 	ErrNotInterrupted = errors.New("run is not interrupted")
+	ErrChatBusy       = errors.New("chat has an active run")
 )
 
 const (
@@ -130,8 +133,12 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	if s.Profile == "" {
 		s.Profile = defaultProfile
 	}
-	if s.RequestID == "" || strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes ||
-		(s.ChatID == "" && s.Model == "") {
+	bad := strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes
+	if s.Replace {
+		// The text is optional: without it the last turn's inputs are sent again as they were.
+		bad = (s.Text != "" && bad) || s.ChatID == ""
+	}
+	if s.RequestID == "" || bad || (s.ChatID == "" && s.Model == "") {
 		return Ref{}, ErrBadInput
 	}
 	if _, ok := e.c.Profiles.Get(s.Profile); !ok {
@@ -148,6 +155,9 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 			return Ref{}, err
 		}
 		return Ref{RunID: ref.RunID, ChatID: ref.ChatID, Seq: row.LastSeq}, nil
+	}
+	if s.Replace {
+		return e.replaceLocked(ctx, s)
 	}
 
 	chatID, model := s.ChatID, s.Model
@@ -178,6 +188,74 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	e.log.Info("run queued", "run", runID, "chat", chatID)
 	e.startLocked(runID)
 	return Ref{RunID: runID, ChatID: chatID, Seq: events[1].Seq}, nil
+}
+
+// replaceLocked retracts the chat's last turn and starts a run with that turn's inputs, the last one replaced by
+// s.Text when set (regenerate, retry and edit). The caller holds mu.
+func (e *Engine) replaceLocked(ctx context.Context, s Spec) (Ref, error) {
+	chat, _, err := e.c.Views.Chat(ctx, s.ChatID)
+	if err != nil {
+		return Ref{}, err
+	}
+	if chat.ActiveRun != "" {
+		return Ref{}, ErrChatBusy
+	}
+	msgs, runs, _, err := e.c.Views.Transcript(ctx, chat.ID)
+	if err != nil {
+		return Ref{}, err
+	}
+	// The last turn is the newest run with a message left; its inputs are its user rows, by seq.
+	last := ""
+	var inputs []string
+	for i := len(runs) - 1; i >= 0 && last == ""; i-- {
+		inputs = inputs[:0]
+		kept := false
+		for _, m := range msgs {
+			if m.RunID != runs[i].ID || m.Retracted {
+				continue
+			}
+			kept = true
+			if m.Role == "user" {
+				var parts []event.MessagePart
+				if err := json.Unmarshal(m.Parts, &parts); err != nil {
+					return Ref{}, fmt.Errorf("message %d: %w", m.Seq, err)
+				}
+				inputs = append(inputs, textOf(parts))
+			}
+		}
+		if kept {
+			last = runs[i].ID
+		}
+	}
+	if last == "" || len(inputs) == 0 {
+		return Ref{}, ErrBadInput
+	}
+	if s.Text != "" {
+		inputs[len(inputs)-1] = s.Text
+	}
+
+	if _, err := e.c.Log.Append(ctx, "chat:"+chat.ID, event.TurnRetracted{RunID: last}); err != nil {
+		return Ref{}, err
+	}
+	runID := store.NewID()
+	payloads := []event.Payload{
+		event.RunQueued{ChatID: chat.ID, Profile: s.Profile, Model: chat.Model, Origin: "user", RequestID: s.RequestID},
+	}
+	for i, text := range inputs {
+		req := s.RequestID
+		if i > 0 {
+			req = fmt.Sprintf("%s:%d", s.RequestID, i+1)
+		}
+		payloads = append(payloads, event.InputReceived{ChatID: chat.ID, Text: text, RequestID: req})
+	}
+	// If this append fails, the retraction stays: the turn is gone and the user can send again.
+	events, err := e.c.Log.Append(ctx, "run:"+runID, payloads...)
+	if err != nil {
+		return Ref{}, err
+	}
+	e.log.Info("run queued to replace the last turn", "run", runID, "chat", chat.ID, "retracted", last)
+	e.startLocked(runID)
+	return Ref{RunID: runID, ChatID: chat.ID, Seq: events[len(events)-1].Seq}, nil
 }
 
 // sendLocked adds an input to the chat's active run; a cut-off run is resumed by it. The caller holds mu.
@@ -378,6 +456,7 @@ func (e *Engine) work(w *worker) {
 		e.exit(w, State{ID: w.runID}, nil, err)
 		return
 	}
+	e.decideTitle(w, &st)
 	for {
 		if w.ctx.Err() != nil { // stopped or closed between steps
 			e.exit(w, st, nil, nil)
@@ -388,14 +467,18 @@ func (e *Engine) work(w *worker) {
 			e.exit(w, st, nil, fmt.Errorf("unknown profile %q", st.Profile))
 			return
 		}
-		if Next(st, p) != AskModel {
+		var out stepOutcome
+		switch Next(st, p) {
+		case AskModel:
+			st, out = e.ask(w, st, p)
+		case Title: // ask titles right after the first answer; this is only reached if it could not
+			st, out = e.titleStep(w, st)
+		default:
 			if e.settle(w, &st, p) {
 				return
 			}
 			continue
 		}
-		var out stepOutcome
-		st, out = e.ask(w, st, p)
 		if out.end {
 			e.exit(w, st, out.partial, out.err)
 			return
@@ -544,13 +627,131 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	}
 	e.log.Info("run answered", "run", st.ID, "chat", st.ChatID, "promptTokens", stats.PromptTokens,
 		"answerTokens", stats.AnswerTokens, "exact", stats.Exact, "durationMs", stats.DurationMs)
-	lease.Release()
 
 	next, err := e.catchUp(w.ctx, st, st.ID)
 	if err != nil {
 		return st, stepOutcome{end: true, err: w.ctxErr(err)}
 	}
+	// The title is asked under this answer's lease, before any input queued behind it (decision 27).
+	if Next(next, p) == Title {
+		e.title(w, lease, next)
+		next.WantTitle = false
+	}
 	return next, stepOutcome{}
+}
+
+// decideTitle sets st.WantTitle once, when the worker starts: a run titles its chat when its profile asks for
+// titles, it is the chat's first run, it has no answer yet and the user has not named the chat. A run resumed after
+// its answer gets no title.
+func (e *Engine) decideTitle(w *worker, st *State) {
+	p, ok := e.c.Profiles.Get(st.Profile)
+	if !ok || !p.Title || st.Answers > 0 {
+		return
+	}
+	want, err := e.firstUntitledRun(w.ctx, *st)
+	if err != nil {
+		if w.ctx.Err() == nil {
+			e.log.Warn("run title check failed", "run", st.ID, "chat", st.ChatID, "err", err)
+		}
+		return
+	}
+	st.WantTitle = want
+}
+
+// firstUntitledRun reports whether st is its chat's first run and the chat's title is not the user's.
+func (e *Engine) firstUntitledRun(ctx context.Context, st State) (bool, error) {
+	chat, _, err := e.c.Views.Chat(ctx, st.ChatID)
+	if err != nil || chat.TitleSource == "user" {
+		return false, err
+	}
+	_, runs, _, err := e.c.Views.Transcript(ctx, st.ChatID)
+	if err != nil {
+		return false, err
+	}
+	return len(runs) > 0 && runs[0].ID == st.ID, nil
+}
+
+// titleStep asks for the title under a lease of its own.
+func (e *Engine) titleStep(w *worker, st State) (State, stepOutcome) {
+	lease, err := e.c.Sched.Acquire(w.ctx, sched.Request{RunID: st.ID, Model: st.Model, Class: sched.Interactive, Why: waitWhy})
+	if err != nil {
+		return st, stepOutcome{end: true} // only a cancelled ctx ends Acquire
+	}
+	defer lease.Release()
+	e.title(w, lease, st)
+	st.WantTitle = false
+	return st, stepOutcome{}
+}
+
+var (
+	errEmptyTitle = errors.New("empty title")
+	errUserTitled = errors.New("the user named the chat")
+)
+
+// title asks the model for a short title from the run's first input and stores it as the chat's auto title.
+// Nothing streams. On any failure nothing is written and the title cut from the first message stays.
+func (e *Engine) title(w *worker, lease sched.Lease, st State) {
+	title, err := e.askTitle(w, lease, st)
+	if err == nil && title == "" {
+		err = errEmptyTitle
+	}
+	if err == nil {
+		_, err = e.c.Log.Append(w.ctx, "chat:"+st.ChatID, event.ChatTitled{Title: title, Source: "auto"})
+	}
+	switch {
+	case errors.Is(err, errUserTitled):
+	case err != nil:
+		e.log.Warn("chat title not made", "run", st.ID, "chat", st.ChatID, "err", err)
+	default:
+		e.log.Info("chat titled", "run", st.ID, "chat", st.ChatID)
+	}
+}
+
+func (e *Engine) askTitle(w *worker, lease sched.Lease, st State) (string, error) {
+	// Checked again here: the user may have renamed the chat while its first answer was being written.
+	chat, _, err := e.c.Views.Chat(w.ctx, st.ChatID)
+	if err != nil {
+		return "", err
+	}
+	if chat.TitleSource == "user" {
+		return "", errUserTitled
+	}
+	msgs, _, _, err := e.c.Views.Transcript(w.ctx, st.ChatID)
+	if err != nil {
+		return "", err
+	}
+	first := ""
+	for _, m := range msgs { // by seq: the run's first user row is its first input
+		if m.RunID == st.ID && m.Role == "user" {
+			var parts []event.MessagePart
+			if err := json.Unmarshal(m.Parts, &parts); err != nil {
+				return "", fmt.Errorf("message %d: %w", m.Seq, err)
+			}
+			first = textOf(parts)
+			break
+		}
+	}
+	if first == "" {
+		return "", errors.New("no first input")
+	}
+	ctx, cancel := context.WithTimeout(lease.Context(), titleTimeout)
+	defer cancel()
+	res, err := e.c.Chat.Complete(ctx, provider.Request{
+		Model: st.Model,
+		Messages: []provider.Message{
+			provider.TextMessage("system", titlePrompt),
+			provider.TextMessage("user", firstRunes(first, titleInputRunes)),
+		},
+		MaxOut:     titleMaxOut,
+		NoThinking: true,
+	}, func(provider.Delta) {})
+	if err == nil {
+		err = ctx.Err() // a cancelled or timed-out call returns what it had without an error
+	}
+	if err != nil {
+		return "", err
+	}
+	return cleanTitle(textOf(messageParts(res.Parts))), nil
 }
 
 // ctxErr hides an error caused by the step being cancelled: the run then ends as stopped or closed, not failed.
@@ -775,7 +976,8 @@ func (e *Engine) input(ctx context.Context, st State, system string) (budget.Inp
 	}
 	var latest *store.MessageRow
 	for i, m := range msgs {
-		if m.Role == "summary" && (latest == nil || m.Seq > latest.Seq) {
+		// A retracted run's summary no longer applies; the one before it, if any, does.
+		if m.Role == "summary" && !m.Retracted && (latest == nil || m.Seq > latest.Seq) {
 			latest = &msgs[i]
 		}
 	}
@@ -788,7 +990,7 @@ func (e *Engine) input(ctx context.Context, st State, system string) (budget.Inp
 	}
 
 	var rows []store.MessageRow
-	for _, m := range conversation(msgs, st.ID) {
+	for _, m := range Conversation(msgs, st.ID) {
 		if m.Role != "summary" {
 			rows = append(rows, m)
 		}
@@ -842,13 +1044,14 @@ func known(m store.MessageRow) (budget.Known, bool) {
 	return budget.Known{PromptTokens: s.PromptTokens, Seq: m.Seq}, true
 }
 
-// conversation puts msgs (by seq) in the order the model reads them, ending with the input runID answers now.
+// Conversation puts msgs (by seq) in the order the model reads them, ending with the input runID answers now (every
+// message when runID is "": the order a person reads the chat in).
 //
 // A run answers its inputs one at a time and in order (Steps: 1), so its n-th answer belongs to its n-th input. By
 // seq, an input sent mid-answer lands before that answer; here each answer follows its own input instead. The
 // input being answered is the run's first one without an answer; the inputs queued behind it are left out. Runs of
 // one chat never overlap, so each run's messages stay together.
-func conversation(msgs []store.MessageRow, runID string) []store.MessageRow {
+func Conversation(msgs []store.MessageRow, runID string) []store.MessageRow {
 	var order []string
 	byRun := map[string][]store.MessageRow{}
 	for _, m := range msgs {

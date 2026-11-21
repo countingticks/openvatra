@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ type fixture struct {
 	store  *store.Store
 	cfg    *config.Store
 	model  *providertest.Scripted
+	eng    *run.Engine
 	svc    *Service
 	events <-chan event.Event
 }
@@ -51,7 +53,7 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 	model := providertest.NewScripted(turns...)
 	models := func(context.Context) ([]provider.Model, error) { return list, nil }
 	eng := run.New(run.Config{
-		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: profile.Builtin(),
+		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: noTitles(),
 		Model: func(_ context.Context, id string) (provider.Model, error) {
 			return provider.Model{ID: id, Kind: provider.ModelChat, Context: 8192}, nil
 		},
@@ -62,10 +64,17 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 		st.Close()
 	})
 	svc := New(Config{Store: st, Engine: eng, Config: cfg, Models: models})
-	return &fixture{t: t, store: st, cfg: cfg, model: model, svc: svc, events: events}
+	return &fixture{t: t, store: st, cfg: cfg, model: model, eng: eng, svc: svc, events: events}
 }
 
 var answer = providertest.Turn{Text: []string{"hi"}}
+
+// noTitles is the built-in profiles with chat titles off, so a scripted turn is never spent on a title.
+func noTitles() *profile.Registry {
+	chat, _ := profile.Builtin().Get("chat")
+	chat.Title = false
+	return profile.Builtin().With(chat)
+}
 
 func (f *fixture) send(in SendInput) run.Ref {
 	f.t.Helper()
@@ -220,6 +229,71 @@ func TestChangingTheModelOnSendAppendsChatModelBeforeTheRun(t *testing.T) {
 	}
 	if row.Model != "m2" {
 		t.Errorf("run model = %q, want m2", row.Model)
+	}
+}
+
+func TestReplaceNeedsAChatAndAppendsANewModelBeforeTheRun(t *testing.T) {
+	f := newFixture(t, installed, answer, answer)
+	for _, in := range []SendInput{
+		{RequestID: "r0", Replace: true},
+		{RequestID: "r0", Replace: true, Text: "hello"},
+	} {
+		if _, err := f.svc.Send(bg, in); !errors.Is(err, run.ErrBadInput) {
+			t.Errorf("Send(%+v) = %v, want ErrBadInput", in, err)
+		}
+	}
+	first := f.send(SendInput{RequestID: "r1", Model: "m1", Text: "hello"})
+	f.waitFor("run.finished", "run:"+first.RunID)
+
+	second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Model: "m2", Replace: true})
+	if second.RunID == first.RunID {
+		t.Fatal("replace went to the old run")
+	}
+	f.waitFor("run.finished", "run:"+second.RunID)
+	events, err := f.store.Log().Read(bg, 0, event.Filter{}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, e := range events {
+		switch {
+		case e.Type == "chat.model" && string(e.Data) == `{"model":"m2"}`, e.Type == "turn.retracted",
+			e.Type == "run.queued" && e.Stream == "run:"+second.RunID:
+			order = append(order, e.Type)
+		case e.Type == "input.received" && e.Stream == "run:"+second.RunID:
+			var p event.InputReceived
+			if err := json.Unmarshal(e.Data, &p); err != nil {
+				t.Fatal(err)
+			}
+			order = append(order, "input "+p.Text)
+		}
+	}
+	if want := []string{"chat.model", "turn.retracted", "run.queued", "input hello"}; !slices.Equal(order, want) {
+		t.Fatalf("events %v, want %v", order, want)
+	}
+	if row, _, err := f.store.Run(bg, second.RunID); err != nil || row.Model != "m2" {
+		t.Errorf("run = %+v, %v; want model m2", row, err)
+	}
+}
+
+func TestExportPutsAQueuedInputAfterTheAnswerItWasSentDuring(t *testing.T) {
+	f := newFixture(t, installed, providertest.Turn{Text: []string{"so far"}, Hang: true})
+	ref := f.send(SendInput{RequestID: "r1", Model: "m1", Text: "one"})
+	f.waitFor("message.delta", "run:"+ref.RunID)
+	f.send(SendInput{RequestID: "r2", ChatID: ref.ChatID, Text: "two"})
+	if err := f.eng.Stop(bg, ref.RunID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.svc.Export(bg, ref.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "# one\n\n## You\n\none\n\n## m1\n\nso far\n\n_(stopped)_\n\n## You\n\ntwo\n"; got != want {
+		t.Errorf("export =\n%s\nwant\n%s", got, want)
+	}
+	if _, err := f.svc.Export(bg, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Export(nope) = %v, want ErrNotFound", err)
 	}
 }
 

@@ -163,7 +163,21 @@
           "model": {
             "type": "string"
           },
+          "snippet": {
+            "description": "search only: the best matching message",
+            "items": {
+              "$ref": "#/components/schemas/SnippetPart"
+            },
+            "type": "array"
+          },
           "title": {
+            "type": "string"
+          },
+          "titleSource": {
+            "enum": [
+              "auto",
+              "user"
+            ],
             "type": "string"
           },
           "updatedAt": {
@@ -174,6 +188,7 @@
         "required": [
           "id",
           "title",
+          "titleSource",
           "model",
           "updatedAt"
         ],
@@ -1812,6 +1827,21 @@
         ],
         "type": "object"
       },
+      "SnippetPart": {
+        "properties": {
+          "match": {
+            "type": "boolean"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "match"
+        ],
+        "type": "object"
+      },
       "StartDownload": {
         "properties": {
           "catalogId": {
@@ -1836,6 +1866,13 @@
             "description": "omit for the chat's model, or for a new chat the last one named",
             "type": "string"
           },
+          "replace": {
+            "description": "last: retract the chat's last turn and send it again (with text: edited)",
+            "enum": [
+              "last"
+            ],
+            "type": "string"
+          },
           "requestId": {
             "description": "the client's id for this send; the same id again answers the same run",
             "type": "string"
@@ -1845,8 +1882,7 @@
           }
         },
         "required": [
-          "requestId",
-          "text"
+          "requestId"
         ],
         "type": "object"
       },
@@ -2158,6 +2194,17 @@
     "/api/chats": {
       "get": {
         "operationId": "listChats",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "words to find in titles and messages",
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2180,7 +2227,7 @@
             "description": "Error. Codes: chat_unavailable."
           }
         },
-        "summary": "List the chats, most recently updated first",
+        "summary": "List the chats, most recently updated first; with q, the ones that match it",
         "tags": [
           "chats"
         ],
@@ -2320,6 +2367,48 @@
           }
         },
         "summary": "Rename a chat or change its model",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}/export": {
+      "get": {
+        "operationId": "exportChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_not_found, chat_unavailable."
+          }
+        },
+        "summary": "A chat as Markdown",
         "tags": [
           "chats"
         ],
@@ -3324,7 +3413,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, model_not_found, no_chat_model, chat_unavailable."
+            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, model_not_found, no_chat_model, chat_busy, chat_unavailable."
           }
         },
         "summary": "Send a message: to a new chat, or to a chat by id",

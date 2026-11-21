@@ -35,6 +35,28 @@ func TestBuiltin(t *testing.T) {
 		}
 	})
 
+	t.Run("With replaces a profile of the same name in a copy and adds a new one", func(t *testing.T) {
+		base := Builtin()
+		chat, _ := base.Get("chat")
+		chat.Title = false
+		r := base.With(chat).With(Profile{Name: "extra", Steps: 2})
+		if got, _ := r.Get("chat"); got.Title || got.System != chat.System {
+			t.Fatalf("replaced chat = %+v", got)
+		}
+		if got, ok := r.Get("extra"); !ok || got.Steps != 2 {
+			t.Fatalf("added = %+v, %v", got, ok)
+		}
+		if _, ok := r.Get("compaction"); !ok {
+			t.Fatal("compaction lost")
+		}
+		if got, _ := base.Get("chat"); !got.Title {
+			t.Fatal("With changed the original")
+		}
+		if _, ok := base.Get("extra"); ok {
+			t.Fatal("With added to the original")
+		}
+	})
+
 	t.Run("an unknown name is not found", func(t *testing.T) {
 		if _, ok := Builtin().Get("nope"); ok {
 			t.Fatal("found a profile that does not exist")

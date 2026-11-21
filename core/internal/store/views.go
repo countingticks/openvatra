@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/countingticks/openvatra/core/internal/event"
 )
@@ -124,6 +125,118 @@ func (s *Store) Chats(ctx context.Context) (rows []ChatRow, seq int64, err error
 	return rows, seq, nil
 }
 
+// SnippetPart is one piece of a search snippet; Match marks the words the query found.
+type SnippetPart struct {
+	Text  string
+	Match bool
+}
+
+// ChatHit is a chat that search found, with a snippet of its best matching message (nil when only its title
+// matched).
+type ChatHit struct {
+	Chat    ChatRow
+	Snippet []SnippetPart
+}
+
+const (
+	searchTerms = 10
+	searchHits  = 50
+	matchStart  = "\x02"
+	matchEnd    = "\x03"
+)
+
+// searchQuery turns what a user typed into an FTS5 query: every word as a prefix term, all required. "" when q has
+// no words.
+func searchQuery(q string) string {
+	words := strings.FieldsFunc(q, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	if len(words) > searchTerms {
+		words = words[:searchTerms]
+	}
+	terms := make([]string, len(words))
+	for i, w := range words {
+		terms[i] = `"` + w + `"*`
+	}
+	return strings.Join(terms, " ")
+}
+
+// splitSnippet cuts a snippet marked with matchStart and matchEnd into parts.
+func splitSnippet(s string) []SnippetPart {
+	parts := []SnippetPart{}
+	match := false
+	for s != "" {
+		marker := matchStart
+		if match {
+			marker = matchEnd
+		}
+		text, rest, found := strings.Cut(s, marker)
+		if text != "" {
+			parts = append(parts, SnippetPart{Text: text, Match: match})
+		}
+		s = rest
+		if found {
+			match = !match
+		}
+	}
+	return parts
+}
+
+// SearchChats finds the chats whose title or message text holds every word of q (each as a prefix, diacritics
+// ignored), most recently updated first, at most 50. Like Chats, a chat with no messages is never a hit.
+func (s *Store) SearchChats(ctx context.Context, q string) (hits []ChatHit, seq int64, err error) {
+	match := searchQuery(q)
+	seq, err = s.readAtHead(ctx, func(tx *sql.Tx) error {
+		hits = []ChatHit{}
+		if match == "" {
+			return nil
+		}
+		type found struct {
+			chatID  string
+			snippet sql.NullString
+		}
+		// Best ranked first, so a chat's first message row is the one its snippet comes from.
+		rows, err := queryAll(ctx, tx, func(r rowScanner) (found, error) {
+			var f found
+			err := r.Scan(&f.chatID, &f.snippet)
+			return f, err
+		}, `SELECT chat_id, CASE WHEN rowid > 0 THEN snippet(messages_fts, 1, char(2), char(3), '…', 12) END
+			FROM messages_fts WHERE messages_fts MATCH ? ORDER BY rank`, match)
+		if err != nil {
+			return err
+		}
+		snippets := map[string][]SnippetPart{}
+		ids := []string{}
+		for _, f := range rows {
+			got, seen := snippets[f.chatID]
+			if !seen {
+				ids = append(ids, f.chatID)
+			}
+			if got == nil && f.snippet.Valid {
+				got = splitSnippet(f.snippet.String)
+			}
+			snippets[f.chatID] = got
+		}
+		idList, err := json.Marshal(ids)
+		if err != nil {
+			return err
+		}
+		chats, err := queryAll(ctx, tx, scanChat, `SELECT `+chatColumns+` FROM chats
+			WHERE id IN (SELECT value FROM json_each(?))
+				AND EXISTS (SELECT 1 FROM messages WHERE chat_id = chats.id)
+			ORDER BY updated_at DESC, rowid DESC LIMIT ?`, string(idList), searchHits)
+		if err != nil {
+			return err
+		}
+		for _, c := range chats {
+			hits = append(hits, ChatHit{Chat: c, Snippet: snippets[c.ID]})
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("search chats: %w", err)
+	}
+	return hits, seq, nil
+}
+
 // Chat returns one chat, or ErrNotFound.
 func (s *Store) Chat(ctx context.Context, id string) (ChatRow, int64, error) {
 	var c ChatRow
@@ -222,6 +335,9 @@ func (s *Store) DeleteChat(ctx context.Context, chatID string) error {
 		OR stream IN (SELECT 'run:' || id FROM runs WHERE chat_id = ?)`, "chat:"+chatID, chatID); err != nil {
 		return fmt.Errorf("delete chat: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM messages_fts WHERE chat_id = ?`, chatID); err != nil {
+		return fmt.Errorf("delete chat: %w", err)
+	}
 	// runs, messages and requests go with it (ON DELETE CASCADE).
 	if _, err := tx.ExecContext(ctx, `DELETE FROM chats WHERE id = ?`, chatID); err != nil {
 		return fmt.Errorf("delete chat: %w", err)
@@ -288,14 +404,23 @@ func applyChatEvent(tx *sql.Tx, chatID string, e event.Event) error {
 		if derr != nil {
 			return derr
 		}
-		_, err = tx.Exec(`UPDATE chats SET title = ?, title_source = ?
+		var res sql.Result
+		res, err = tx.Exec(`UPDATE chats SET title = ?, title_source = ?
 			WHERE id = ? AND NOT (title_source = 'user' AND ? = 'auto')`, p.Title, p.Source, chatID, p.Source)
+		if err == nil {
+			if n, _ := res.RowsAffected(); n > 0 {
+				err = indexTitle(tx, chatID)
+			}
+		}
 	case "turn.retracted":
 		p, derr := decode[event.TurnRetracted](e)
 		if derr != nil {
 			return derr
 		}
-		_, err = tx.Exec(`UPDATE messages SET retracted = 1 WHERE chat_id = ? AND run_id = ?`, chatID, p.RunID)
+		if _, err = tx.Exec(`UPDATE messages SET retracted = 1 WHERE chat_id = ? AND run_id = ?`, chatID, p.RunID); err == nil {
+			_, err = tx.Exec(`DELETE FROM messages_fts WHERE rowid IN
+				(SELECT seq FROM messages WHERE chat_id = ? AND run_id = ?)`, chatID, p.RunID)
+		}
 	default:
 		return nil
 	}
@@ -405,10 +530,38 @@ func applyInput(tx *sql.Tx, runID string, e event.Event) error {
 		p.RequestID, runID, p.ChatID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(`UPDATE chats SET title = ? WHERE id = ? AND title = ''`, CutTitle(p.Text), p.ChatID); err != nil {
+	if err := indexMessage(tx, e.Seq, p.ChatID, p.Text); err != nil {
 		return err
 	}
+	res, err := tx.Exec(`UPDATE chats SET title = ? WHERE id = ? AND title = ''`, CutTitle(p.Text), p.ChatID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		if err := indexTitle(tx, p.ChatID); err != nil {
+			return err
+		}
+	}
 	_, err = tx.Exec(`UPDATE chats SET updated_at = ? WHERE id = ?`, e.Time, p.ChatID)
+	return err
+}
+
+// indexMessage makes a message's text findable by search; an empty text adds nothing.
+func indexMessage(tx *sql.Tx, seq int64, chatID, text string) error {
+	if text == "" {
+		return nil
+	}
+	_, err := tx.Exec(`INSERT INTO messages_fts (rowid, chat_id, body) VALUES (?, ?, ?)`, seq, chatID, text)
+	return err
+}
+
+// indexTitle replaces a chat's title row in messages_fts (rowid -chats.rowid) with its current title.
+func indexTitle(tx *sql.Tx, chatID string) error {
+	if _, err := tx.Exec(`DELETE FROM messages_fts WHERE rowid = -(SELECT rowid FROM chats WHERE id = ?)`, chatID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`INSERT INTO messages_fts (rowid, chat_id, body)
+		SELECT -rowid, id, title FROM chats WHERE id = ? AND title != ''`, chatID)
 	return err
 }
 
@@ -465,7 +618,15 @@ func applyMessageCompleted(tx *sql.Tx, runID string, e event.Event) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(`INSERT INTO messages (seq, chat_id, run_id, role, parts, stats, partial, created_at)
-		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?)`, e.Seq, p.ChatID, runID, string(parts), string(stats), p.Partial, e.Time)
-	return err
+	if _, err := tx.Exec(`INSERT INTO messages (seq, chat_id, run_id, role, parts, stats, partial, created_at)
+		VALUES (?, ?, ?, 'assistant', ?, ?, ?, ?)`, e.Seq, p.ChatID, runID, string(parts), string(stats), p.Partial, e.Time); err != nil {
+		return err
+	}
+	var text strings.Builder
+	for _, part := range p.Parts {
+		if part.Kind == "text" {
+			text.WriteString(part.Text)
+		}
+	}
+	return indexMessage(tx, e.Seq, p.ChatID, text.String())
 }

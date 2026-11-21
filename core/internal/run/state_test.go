@@ -39,6 +39,10 @@ func TestFoldAndNext(t *testing.T) {
 		st.Status, st.Inbox, st.LastSeq = s, inbox, seq
 		return st
 	}
+	answered := func(st State) State {
+		st.Answers = 1
+		return st
+	}
 
 	cases := []struct {
 		name   string
@@ -49,10 +53,10 @@ func TestFoldAndNext(t *testing.T) {
 		{"a queued run with one input asks the model",
 			[]event.Payload{queued(), input("hi")}, with(Queued, []string{"hi"}, 2), AskModel},
 		{"after its answer it finishes",
-			[]event.Payload{queued(), input("hi"), started, completed()}, with(Running, []string{}, 4), Finish},
+			[]event.Payload{queued(), input("hi"), started, completed()}, answered(with(Running, []string{}, 4)), Finish},
 		{"an input queued mid-answer is asked after the first answer",
 			[]event.Payload{queued(), input("one"), started, input("two"), completed()},
-			with(Running, []string{"two"}, 5), AskModel},
+			answered(with(Running, []string{"two"}, 5)), AskModel},
 		{"interrupted, stopped, failed and done runs are idle: interrupted",
 			[]event.Payload{queued(), input("hi"), started, paused}, with(Interrupted, []string{"hi"}, 4), Idle},
 		{"interrupted, stopped, failed and done runs are idle: stopped",
@@ -62,7 +66,7 @@ func TestFoldAndNext(t *testing.T) {
 			[]event.Payload{queued(), input("hi"), started, finished("failed")}, with(Failed, []string{"hi"}, 4), Idle},
 		{"interrupted, stopped, failed and done runs are idle: done",
 			[]event.Payload{queued(), input("hi"), started, completed(), finished("done")},
-			with(Done, []string{}, 5), Idle},
+			answered(with(Done, []string{}, 5)), Idle},
 		{"resumed after interrupted asks again for the unanswered input",
 			[]event.Payload{queued(), input("hi"), started, paused, resumed}, with(Queued, []string{"hi"}, 5), AskModel},
 		{"unknown event types only move LastSeq",
@@ -84,6 +88,37 @@ func TestFoldAndNext(t *testing.T) {
 			}
 			if got := Next(s, chat); got != tc.action {
 				t.Fatalf("Next = %d, want %d", got, tc.action)
+			}
+		})
+	}
+}
+
+func TestNextTitle(t *testing.T) {
+	chat, _ := profile.Builtin().Get("chat")
+	noTitle := chat
+	noTitle.Title = false
+	running := func(answers int, want bool, inbox ...string) State {
+		return State{ID: "r1", ChatID: "c1", Status: Running, Inbox: inbox, Answers: answers, WantTitle: want}
+	}
+	cases := []struct {
+		name string
+		s    State
+		p    profile.Profile
+		want Action
+	}{
+		{"a wanted title after one answer comes first", running(1, true), chat, Title},
+		{"a wanted title comes before an input waiting", running(1, true, "two"), chat, Title},
+		{"no title before the first answer", running(0, true, "one"), chat, AskModel},
+		{"not wanted: the input waiting is asked", running(1, false, "two"), chat, AskModel},
+		{"not wanted: the run finishes", running(1, false), chat, Finish},
+		{"a profile without Title finishes", running(1, true), noTitle, Finish},
+		{"a stopped run is idle", State{Status: Stopped, Answers: 1, WantTitle: true}, chat, Idle},
+		{"an interrupted run is idle", State{Status: Interrupted, Answers: 1, WantTitle: true}, chat, Idle},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Next(tc.s, tc.p); got != tc.want {
+				t.Fatalf("Next = %d, want %d", got, tc.want)
 			}
 		})
 	}

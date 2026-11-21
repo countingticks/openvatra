@@ -81,6 +81,15 @@ func checkResponse(doc map[string]any, rt Route, rec *httptest.ResponseRecorder)
 			}
 			return nil
 		}
+		if rt.ContentType != "" && rt.ContentType != "application/json" { // a documented text answer (the export)
+			if lookup(op, "responses", strconv.Itoa(rt.Status), "content", rt.ContentType) == nil {
+				return fmt.Errorf("%s is not documented", rt.ContentType)
+			}
+			if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, rt.ContentType) {
+				return fmt.Errorf("content type %q, documented %q", got, rt.ContentType)
+			}
+			return nil
+		}
 		schema := lookup(op, "responses", strconv.Itoa(rt.Status), "content", "application/json", "schema")
 		return validateBody(doc, schema, rec.Body.Bytes())
 	}

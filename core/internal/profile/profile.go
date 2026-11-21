@@ -14,7 +14,7 @@ type Profile struct {
 	Tools      []string // empty for chat
 	Steps      int      // model calls per input
 	MinContext int
-	Title      bool // used from slice 4
+	Title      bool // a chat's first run asks the model for the chat's title after its first answer
 }
 
 // SystemPrompt is System with {{date}} filled in. The date lets a model answer "what day is it" and judge web results.
@@ -52,4 +52,14 @@ func Builtin() *Registry {
 func (r *Registry) Get(name string) (Profile, bool) {
 	p, ok := r.byName[name]
 	return p, ok
+}
+
+// With returns a copy of r with p in place of the profile of the same name, or added. r is unchanged.
+func (r *Registry) With(p Profile) *Registry {
+	out := &Registry{byName: make(map[string]Profile, len(r.byName)+1)}
+	for name, q := range r.byName {
+		out.byName[name] = q
+	}
+	out.byName[p.Name] = p
+	return out
 }

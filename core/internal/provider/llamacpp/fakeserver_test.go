@@ -85,7 +85,13 @@ func startFake(t *testing.T, args ...string) string {
 // readFake posts a chat request to the fake and reads its answer the way core does.
 func readFake(ctx context.Context, t *testing.T, base string, emit func(provider.Delta)) (*stream, error) {
 	t.Helper()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/chat/completions", strings.NewReader(`{"messages":[]}`))
+	return readFakeBody(ctx, t, base, `{"messages":[]}`, emit)
+}
+
+// readFakeBody is readFake with its own request body.
+func readFakeBody(ctx context.Context, t *testing.T, base, body string, emit func(provider.Delta)) (*stream, error) {
+	t.Helper()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/chat/completions", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,6 +128,24 @@ func TestFakeServerStreamsAnswers(t *testing.T) {
 		want := []provider.PartKind{provider.PartReasoning, provider.PartReasoning, provider.PartText}
 		if !slices.Equal(kinds, want) {
 			t.Fatalf("kinds %v, want %v", kinds, want)
+		}
+	})
+
+	t.Run("max_tokens caps the reply's words, not the reasoning's", func(t *testing.T) {
+		base := startFake(t, "--reasoning", "x y z", "--reply", "a b c d")
+		var reasoning, text []string
+		_, err := readFakeBody(context.Background(), t, base, `{"messages":[],"max_tokens":2}`, func(d provider.Delta) {
+			if d.Kind == provider.PartText {
+				text = append(text, d.Text)
+			} else {
+				reasoning = append(reasoning, d.Text)
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(text, []string{"a ", "b"}) || len(reasoning) != 3 {
+			t.Fatalf("text %q, reasoning %q", text, reasoning)
 		}
 	})
 

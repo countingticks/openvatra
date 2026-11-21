@@ -62,6 +62,11 @@ func main() {
 			http.Error(w, `{"error":{"message":"body is not JSON"}}`, http.StatusBadRequest)
 			return
 		}
+		// Like a real server, max_tokens caps the answer; thinking doesn't count here, so a title call stays short.
+		var opts struct {
+			MaxTokens int `json:"max_tokens"`
+		}
+		json.Unmarshal(body, &opts)
 		w.Header().Set("Content-Type", "text/event-stream")
 		fl, _ := w.(http.Flusher)
 		frame := func(data string) bool {
@@ -81,8 +86,11 @@ func main() {
 			}
 			return true
 		}
-		words := func(field, text string) (int, bool) {
+		words := func(field, text string, limit int) (int, bool) {
 			ws := strings.Fields(text)
+			if limit > 0 && len(ws) > limit {
+				ws = ws[:limit]
+			}
 			for i, word := range ws {
 				if i < len(ws)-1 {
 					word += " "
@@ -94,10 +102,10 @@ func main() {
 			}
 			return len(ws), true
 		}
-		if _, ok := words("reasoning_content", *reasoning); !ok {
+		if _, ok := words("reasoning_content", *reasoning, 0); !ok {
 			return
 		}
-		n, ok := words("content", *reply)
+		n, ok := words("content", *reply, opts.MaxTokens)
 		if !ok {
 			return
 		}

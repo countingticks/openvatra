@@ -304,15 +304,222 @@ func TestViewsRebuiltByReplayEqualTheLiveOnes(t *testing.T) {
 		}
 	}
 
+	queries := []string{"SELECT rowid, chat_id, body FROM messages_fts ORDER BY 1"}
 	for _, table := range viewTables {
-		q := "SELECT * FROM " + table + " ORDER BY 1"
+		queries = append(queries, "SELECT * FROM "+table+" ORDER BY 1")
+	}
+	for _, q := range queries {
 		if live, rebuilt := tableRows(t, s, q), tableRows(t, fresh, q); !slices.Equal(live, rebuilt) {
-			t.Errorf("%s differs:\nlive    %v\nrebuilt %v", table, live, rebuilt)
+			t.Errorf("%s differs:\nlive    %v\nrebuilt %v", q, live, rebuilt)
+		}
+	}
+	if got := len(tableRows(t, s, "SELECT rowid FROM messages_fts")); got == 0 {
+		t.Error("messages_fts is empty")
+	}
+}
+
+// search returns the chats SearchChats finds for q, checking its seq is the log's head.
+func search(t *testing.T, s *Store, q string) []ChatHit {
+	t.Helper()
+	hits, seq, err := s.SearchChats(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != head(t, s) {
+		t.Errorf("seq = %d, want head %d", seq, head(t, s))
+	}
+	return hits
+}
+
+func hitIDs(hits []ChatHit) []string {
+	ids := []string{}
+	for _, h := range hits {
+		ids = append(ids, h.Chat.ID)
+	}
+	return ids
+}
+
+func TestSearchFindsAWordOfAnAnswerAndMarksItInTheSnippet(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, runID := newChat(t, s, "tell me about lifetimes")
+	appendTo(t, s, "run:"+runID, answer(chatID, "The borrow checker tracks every reference.", false))
+	newChat(t, s, "something else entirely")
+
+	hits := search(t, s, "borrow")
+	if got := hitIDs(hits); !slices.Equal(got, []string{chatID}) {
+		t.Fatalf("hits = %v, want [%s]", got, chatID)
+	}
+	var matched []string
+	var text strings.Builder
+	for _, p := range hits[0].Snippet {
+		if p.Match {
+			matched = append(matched, p.Text)
+		}
+		text.WriteString(p.Text)
+	}
+	if !slices.Equal(matched, []string{"borrow"}) || !strings.Contains(text.String(), "The borrow checker") {
+		t.Errorf("snippet = %+v", hits[0].Snippet)
+	}
+}
+
+func TestSearchMatchesAPrefixAndAWordWithoutItsDiacritics(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, _ := newChat(t, s, "Ce cărți îmi recomanzi?")
+	for _, q := range []string{"carti", "căr", "CAR", "recom"} {
+		if got := hitIDs(search(t, s, q)); !slices.Equal(got, []string{chatID}) {
+			t.Errorf("%q: hits = %v", q, got)
 		}
 	}
 }
 
-func TestVersion5DatabaseWithOldChatsMigratesTo6AndHasNoChats(t *testing.T) {
+func TestSearchNeedsEveryWordAndAQueryOfOnlyPunctuationFindsNothing(t *testing.T) {
+	s, _ := newEventStore(t)
+	both, _ := newChat(t, s, "red apples and green pears")
+	newChat(t, s, "red cars")
+
+	if got := hitIDs(search(t, s, "red, pears!")); !slices.Equal(got, []string{both}) {
+		t.Errorf("two words: %v, want [%s]", got, both)
+	}
+	for _, q := range []string{"", "  ", `"*-(),.`} {
+		if got := search(t, s, q); len(got) != 0 {
+			t.Errorf("%q: hits = %v, want none", q, hitIDs(got))
+		}
+	}
+}
+
+func TestSearchByTitleOnlyHasNoSnippetAndARenamedTitleNoLongerMatches(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, _ := newChat(t, s, "hello there")
+	appendTo(t, s, "chat:"+chatID, event.ChatTitled{Title: "Trip to Cluj", Source: "auto"})
+
+	hits := search(t, s, "cluj")
+	if got := hitIDs(hits); !slices.Equal(got, []string{chatID}) || hits[0].Snippet != nil {
+		t.Fatalf("title hit = %+v", hits)
+	}
+	appendTo(t, s, "chat:"+chatID, event.ChatTitled{Title: "Holiday plans", Source: "user"})
+	if got := search(t, s, "cluj"); len(got) != 0 {
+		t.Errorf("old title still matches: %v", hitIDs(got))
+	}
+	if got := hitIDs(search(t, s, "holiday")); !slices.Equal(got, []string{chatID}) {
+		t.Errorf("new title: %v", got)
+	}
+	// An auto title the view refuses (the user's stays) is not findable either.
+	appendTo(t, s, "chat:"+chatID, event.ChatTitled{Title: "Ignored words", Source: "auto"})
+	if got := search(t, s, "ignored"); len(got) != 0 {
+		t.Errorf("refused auto title matches: %v", hitIDs(got))
+	}
+}
+
+func TestSearchLeavesOutReasoning(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, runID := newChat(t, s, "hi")
+	appendTo(t, s, "run:"+runID, event.MessageCompleted{ChatID: chatID, Model: "m1", Parts: []event.MessagePart{
+		{Kind: "reasoning", Text: "pondering zebras"}, {Kind: "text", Text: "Hello!"},
+	}})
+	if got := search(t, s, "zebras"); len(got) != 0 {
+		t.Errorf("reasoning matched: %v", hitIDs(got))
+	}
+	if got := hitIDs(search(t, s, "hello")); !slices.Equal(got, []string{chatID}) {
+		t.Errorf("answer text: %v", got)
+	}
+}
+
+func TestSearchNoLongerFindsARetractedRunsMessagesButFindsAnotherRuns(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, first := newChat(t, s, "first question")
+	appendTo(t, s, "run:"+first, answer(chatID, "walrus", false), event.RunFinished{ChatID: chatID, State: "done"})
+	second := NewID()
+	queueRun(t, s, chatID, second, "second question")
+	appendTo(t, s, "run:"+second, answer(chatID, "penguin", false), event.RunFinished{ChatID: chatID, State: "done"})
+	appendTo(t, s, "chat:"+chatID, event.TurnRetracted{RunID: second})
+
+	if got := search(t, s, "penguin"); len(got) != 0 {
+		t.Errorf("retracted answer matched: %v", hitIDs(got))
+	}
+	if got := search(t, s, "second"); len(got) != 0 {
+		t.Errorf("retracted input matched: %v", hitIDs(got))
+	}
+	if got := hitIDs(search(t, s, "walrus")); !slices.Equal(got, []string{chatID}) {
+		t.Errorf("other run: %v", got)
+	}
+}
+
+func TestSearchListsNewestFirstAndNeverAChatWithNoMessages(t *testing.T) {
+	s, _ := newEventStore(t)
+	older, _ := newChat(t, s, "shared word one")
+	newer, _ := newChat(t, s, "shared word two")
+	empty := NewID()
+	appendTo(t, s, "chat:"+empty, event.ChatCreated{Model: "m1", Profile: "chat"},
+		event.ChatTitled{Title: "shared title", Source: "user"})
+
+	if got := hitIDs(search(t, s, "shared")); !slices.Equal(got, []string{newer, older}) {
+		t.Errorf("hits = %v, want [newer older]", got)
+	}
+}
+
+func TestSearchFindsNothingOfADeletedChat(t *testing.T) {
+	s, _ := newEventStore(t)
+	gone, goneRun := newChat(t, s, "common unique")
+	appendTo(t, s, "run:"+goneRun, answer(gone, "answer", false))
+	kept, _ := newChat(t, s, "common")
+
+	if err := s.DeleteChat(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+	if got := search(t, s, "unique"); len(got) != 0 {
+		t.Errorf("deleted chat matched: %v", hitIDs(got))
+	}
+	if got := hitIDs(search(t, s, "common")); !slices.Equal(got, []string{kept}) {
+		t.Errorf("hits = %v", got)
+	}
+	if got := tableRows(t, s, "SELECT rowid FROM messages_fts WHERE chat_id = ?", gone); len(got) != 0 {
+		t.Errorf("rows left: %v", got)
+	}
+}
+
+func TestVersion6DatabaseWithChatsMigratesTo7AndFindsThemByTitleAndText(t *testing.T) {
+	dir := t.TempDir()
+	old, err := open(dir, event.NewBus(16), embeddedMigrations(t, 6), "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, q := range []string{
+		`INSERT INTO chats (id, title, model, profile, created_at, updated_at, last_seq)
+			VALUES ('c1', 'Trip to Cluj', 'm1', 'chat', 1, 1, 3)`,
+		`INSERT INTO messages (seq, chat_id, run_id, role, parts, created_at)
+			VALUES (1, 'c1', 'r1', 'user', '[{"kind":"text","text":"Where to eat?"}]', 1)`,
+		`INSERT INTO messages (seq, chat_id, run_id, role, parts, created_at) VALUES (2, 'c1', 'r1', 'assistant',
+			'[{"kind":"reasoning","text":"hmm zebras"},{"kind":"text","text":"Try the "},{"kind":"text","text":"bistro."}]', 1)`,
+		`INSERT INTO messages (seq, chat_id, run_id, role, parts, retracted, created_at)
+			VALUES (3, 'c1', 'r0', 'assistant', '[{"kind":"text","text":"walrus"}]', 1, 1)`,
+		`INSERT INTO messages (seq, chat_id, run_id, role, parts, created_at)
+			VALUES (4, 'c1', 'r1', 'summary', '[{"kind":"text","text":"penguin"}]', 1)`,
+	} {
+		if _, err := old.writer().Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	old.Close()
+
+	s, err := Open(dir, event.NewBus(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if v, _ := s.Version(); v != 7 {
+		t.Fatalf("version = %d", v)
+	}
+	for q, want := range map[string]int{"cluj": 1, "eat": 1, "the bistro": 1, "zebras": 0, "walrus": 0, "penguin": 0} {
+		if got := search(t, s, q); len(got) != want {
+			t.Errorf("%q: %d hits, want %d", q, len(got), want)
+		}
+	}
+	if got := search(t, s, "cluj"); len(got) == 1 && got[0].Snippet != nil {
+		t.Errorf("title hit has snippet %+v", got[0].Snippet)
+	}
+}
+
+func TestVersion5DatabaseWithOldChatsMigratesAndHasNoChats(t *testing.T) {
 	dir := t.TempDir()
 	old, err := open(dir, event.NewBus(16), embeddedMigrations(t, 5), "m")
 	if err != nil {
@@ -328,7 +535,7 @@ func TestVersion5DatabaseWithOldChatsMigratesTo6AndHasNoChats(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 6 {
+	if v, _ := s.Version(); v != 7 {
 		t.Fatalf("version = %d", v)
 	}
 	for _, table := range viewTables {

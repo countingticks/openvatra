@@ -1,0 +1,8 @@
+{"type":"chat.created","stream":"chat:chat1","data":{"model":"m1","profile":"chat"}}
+{"type":"chat.model","stream":"chat:chat1","data":{"model":"m1"}}
+{"type":"run.queued","stream":"run:run1","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-1"}}
+{"type":"input.received","stream":"run:run1","data":{"chatId":"chat1","requestId":"req-1","text":"How does the borrow checker work?"}}
+{"type":"run.started","stream":"run:run1","data":{"chatId":"chat1"}}
+{"type":"message.completed","stream":"run:run1","data":{"chatId":"chat1","model":"m1","partial":false,"parts":[{"kind":"text","text":"Lifetimes are scopes."}],"stats":{"answerTokens":6,"contextSize":8192,"durationMs":0,"exact":false,"firstTokenMs":0,"promptTokens":55,"reasoningMs":0,"tokensPerSecond":0}}}
+{"type":"chat.titled","stream":"chat:chat1","data":{"source":"auto","title":"Rust Borrow Checker Basics"}}
+{"type":"run.finished","stream":"run:run1","data":{"chatId":"chat1","state":"done"}}
