@@ -182,6 +182,41 @@
   }
 }
 
+/* Code highlighting: highlight.js token classes (from rehype-highlight) in the theme's own colours. */
+@layer components {
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--muted-foreground);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-built_in,
+  .hljs-type {
+    color: var(--primary);
+  }
+  .hljs-string,
+  .hljs-regexp,
+  .hljs-addition {
+    color: var(--chart-2);
+  }
+  .hljs-number,
+  .hljs-literal,
+  .hljs-symbol,
+  .hljs-attr,
+  .hljs-attribute {
+    color: var(--chart-3);
+  }
+  .hljs-title,
+  .hljs-section,
+  .hljs-name {
+    color: var(--chart-1);
+  }
+  .hljs-deletion {
+    color: var(--destructive);
+  }
+}
+
 /*
  * Collapsible sidebar (design decision: 240ms, fast start, gentle stop). Only the width animates; the content
  * keeps its own width, so nothing reflows mid-slide. `visibility` waits for the slide to finish before hiding,
