@@ -79,7 +79,7 @@ func routes(d Deps, t *tokens) []Route {
 		JSON(http.MethodGet, "/api/version", UI, "getVersion", "Core's version and the contract's version",
 			func(context.Context, struct{}) (VersionBody, error) { return VersionBody{d.Version, APILevel}, nil }),
 		Raw(http.MethodGet, "/api/events", UI, "streamEvents", "Stream the event log as Server-Sent Events",
-			eventsHandler(d.Log, keepaliveInterval)).
+			eventsHandler(d.Log, partialsOf(d.Runs), keepaliveInterval)).
 			WithDoc(reflect.TypeFor[EventsQuery](), nil, "").
 			WithStream(StreamDoc{Schema: eventStreamSchema}).
 			WithErrors("invalid_after", "invalid_filter", "no_streaming", "event_log_failed"),
@@ -117,6 +117,14 @@ func routes(d Deps, t *tokens) []Route {
 		Raw(http.MethodPost, "/shutdown", Shell, "shutdown", "Stop core", shutdownHandler(d.Shutdown)).
 			WithStatus(http.StatusAccepted),
 	)
+}
+
+// partialsOf is the engine's Partials, or nil without an engine.
+func partialsOf(runs *run.Engine) func(event.Filter) []event.Event {
+	if runs == nil {
+		return nil
+	}
+	return runs.Partials
 }
 
 // NewHandler serves every route behind the gate.

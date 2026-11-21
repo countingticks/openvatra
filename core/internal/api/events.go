@@ -90,9 +90,10 @@ const keepaliveInterval = 15 * time.Second
 const catchUpPage = 500
 
 // eventsHandler streams the event log as Server-Sent Events: a hello frame, the stored events after the client's
-// bookmark, the retained values, then everything published live. Only hello has an "event:" line; every log event
-// is a default message whose data is the envelope, with "id: <seq>" when it is durable.
-func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
+// bookmark, the retained values, the answers streaming now (partials; nil = none), then everything published live.
+// Only hello has an "event:" line; every log event is a default message whose data is the envelope, with
+// "id: <seq>" when it is durable.
+func eventsHandler(log event.Log, partials func(event.Filter) []event.Event, keepalive time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		hasAfter := q.Has("after")
@@ -182,6 +183,15 @@ func eventsHandler(log event.Log, keepalive time.Duration) http.HandlerFunc {
 		for _, e := range retained {
 			if !writeEvent(e) {
 				return
+			}
+		}
+		// After the subscription: a delta the partial does not hold is in the channel with a higher n, and the
+		// client drops the ones at or below the partial's.
+		if partials != nil {
+			for _, e := range partials(filter) {
+				if !writeEvent(e) {
+					return
+				}
 			}
 		}
 

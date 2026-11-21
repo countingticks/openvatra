@@ -37,6 +37,15 @@ var chatModels = []provider.Model{{ID: "m1", Kind: provider.ModelChat, Context: 
 // list is the installed model list.
 func newRunsFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn) *runsFixture {
 	t.Helper()
+	model := providertest.NewScripted(turns...)
+	f := newRunsFixtureWith(t, list, model)
+	f.model = model
+	return f
+}
+
+// newRunsFixtureWith is newRunsFixture with its own chat model.
+func newRunsFixtureWith(t *testing.T, list []provider.Model, model provider.Chat) *runsFixture {
+	t.Helper()
 	bus := event.NewBus(4096)
 	st, err := store.Open(t.TempDir(), bus)
 	if err != nil {
@@ -45,7 +54,6 @@ func newRunsFixture(t *testing.T, list []provider.Model, turns ...providertest.T
 	_, events, cancel := bus.Subscribe(event.Filter{})
 	cfg := config.New(st, slog.New(slog.DiscardHandler))
 	config.Register[chats.Settings, struct{}](cfg, chats.ID, chats.DefaultSettings(), nil)
-	model := providertest.NewScripted(turns...)
 	eng := run.New(run.Config{
 		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: profile.Builtin(),
 		Model: func(_ context.Context, id string) (provider.Model, error) {
@@ -60,7 +68,7 @@ func newRunsFixture(t *testing.T, list []provider.Model, turns ...providertest.T
 	svc := chats.New(chats.Config{Store: st, Engine: eng, Config: cfg,
 		Models: func(context.Context) ([]provider.Model, error) { return list, nil }})
 	deps := Deps{Chats: svc, Runs: eng, Log: st.Log()}
-	return &runsFixture{t: t, store: st, model: model, engine: eng, deps: deps, h: testHandler(t, deps), events: events}
+	return &runsFixture{t: t, store: st, engine: eng, deps: deps, h: testHandler(t, deps), events: events}
 }
 
 func (f *runsFixture) call(method, path, body string) *httptest.ResponseRecorder {
@@ -276,5 +284,65 @@ func TestRunAndChatRoutesWithoutADatabaseAre503(t *testing.T) {
 		t.Run(c.method+" "+c.path, func(t *testing.T) {
 			wantErrorCode(t, callHandler(h, c.method, c.path, c.body), 503, "chat_unavailable")
 		})
+	}
+}
+
+// twoPhase answers "ab", waits for resume, then plays its scripted turns ("c" and a hang): a stream can attach
+// between the two phases.
+type twoPhase struct {
+	*providertest.Scripted
+	firstPart chan struct{} // closed once "ab" is out
+	resume    chan struct{}
+}
+
+func (p *twoPhase) Complete(ctx context.Context, req provider.Request, emit func(provider.Delta)) (provider.Result, error) {
+	emit(provider.Delta{Kind: provider.PartText, Text: "a"})
+	emit(provider.Delta{Kind: provider.PartText, Text: "b"})
+	close(p.firstPart)
+	select {
+	case <-p.resume:
+	case <-ctx.Done():
+	}
+	res, err := p.Scripted.Complete(ctx, req, emit)
+	res.Parts = append([]provider.Part{{Kind: provider.PartText, Text: "ab"}}, res.Parts...)
+	return res, err
+}
+
+func TestAStreamOpenedMidAnswerGetsThePartialThenHigherDeltas(t *testing.T) {
+	model := &twoPhase{Scripted: providertest.NewScripted(providertest.Turn{Text: []string{"c"}, Hang: true}),
+		firstPart: make(chan struct{}), resume: make(chan struct{})}
+	f := newRunsFixtureWith(t, chatModels, model)
+	ref := f.start(`{"requestId":"r1","text":"hello"}`)
+	select {
+	case <-model.firstPart:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the model did not start answering")
+	}
+
+	// The full handler, with the gate's host and token filled in for the plain client openStream uses.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Host = "127.0.0.1:53121"
+		r.Header.Set("Authorization", "Bearer "+testToken)
+		r.URL.Path = "/api/events"
+		f.h.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	events := openStream(t, srv, "stream=run:"+ref.RunID, false)
+	if hello := nextEvent(t, events); !strings.HasPrefix(hello, "event: hello|") {
+		t.Fatalf("first frame = %q, want hello", hello)
+	}
+	_, e := logEvent(t, nextEvent(t, events))
+	var partial event.MessagePartial
+	if err := json.Unmarshal(e.Data, &partial); err != nil || e.Type != "message.partial" || partial.Text != "ab" ||
+		partial.N != 2 {
+		t.Fatalf("frame = %+v, want message.partial ab at n 2", e)
+	}
+
+	close(model.resume)
+	_, e = logEvent(t, nextEvent(t, events))
+	var delta event.MessageDelta
+	if err := json.Unmarshal(e.Data, &delta); err != nil || e.Type != "message.delta" || delta.Text != "c" ||
+		delta.N != 3 {
+		t.Fatalf("frame = %+v, want message.delta c at n 3", e)
 	}
 }
