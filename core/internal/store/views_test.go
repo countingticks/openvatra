@@ -174,6 +174,17 @@ func TestFailedRunMarksItsPartialAnswerFailedAndStoppedDoesNot(t *testing.T) {
 	}
 }
 
+func TestFailedRunKeepsAnEarlierCompleteAnswerNotFailed(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID, runID := newChat(t, s, "one")
+	appendTo(t, s, "run:"+runID, answer(chatID, "full", false),
+		event.RunFinished{ChatID: chatID, State: "failed", Error: &event.RunError{Code: "backend_failed", Message: "it broke"}})
+
+	if got := row(t, s, "SELECT partial, failed FROM messages WHERE run_id = ? AND role = 'assistant'", runID); got != "[0 0]" {
+		t.Errorf("complete answer of a failed run = %s", got)
+	}
+}
+
 func TestUserTitleIsNotReplacedByAutoTitleAndAutoReplacesCutOne(t *testing.T) {
 	s, _ := newEventStore(t)
 	chatID, _ := newChat(t, s, "hello there")

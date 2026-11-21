@@ -443,7 +443,8 @@ func applyRunFinished(tx *sql.Tx, runID string, e event.Event) error {
 	if p.State != "failed" {
 		return nil
 	}
-	_, err = tx.Exec(`UPDATE messages SET failed = 1 WHERE seq =
+	// Only the cut-off answer: an earlier input of the run may have been answered in full.
+	_, err = tx.Exec(`UPDATE messages SET failed = 1 WHERE partial = 1 AND seq =
 		(SELECT max(seq) FROM messages WHERE run_id = ? AND role = 'assistant')`, runID)
 	return err
 }
