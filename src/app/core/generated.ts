@@ -1,7 +1,6 @@
 import { emptyApi as api } from './emptyApi'
 export const addTagTypes = [
   'catalog',
-  'chats',
   'config',
   'downloads',
   'engines',
@@ -24,30 +23,6 @@ const injectedRtkApi = api
       removeCatalogEntry: build.mutation<RemoveCatalogEntryApiResponse, RemoveCatalogEntryApiArg>({
         query: (queryArg) => ({ url: `/api/catalog/${queryArg.id}/remove`, method: 'POST' }),
         invalidatesTags: ['catalog']
-      }),
-      listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
-        query: () => ({ url: `/api/chats` }),
-        providesTags: ['chats']
-      }),
-      createChat: build.mutation<CreateChatApiResponse, CreateChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats`, method: 'POST', body: queryArg.createChat }),
-        invalidatesTags: ['chats']
-      }),
-      deleteChat: build.mutation<DeleteChatApiResponse, DeleteChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'DELETE' }),
-        invalidatesTags: ['chats']
-      }),
-      getChat: build.query<GetChatApiResponse, GetChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}` }),
-        providesTags: ['chats']
-      }),
-      updateChat: build.mutation<UpdateChatApiResponse, UpdateChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'PATCH', body: queryArg.body }),
-        invalidatesTags: ['chats']
-      }),
-      exportChat: build.query<ExportChatApiResponse, ExportChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/export` }),
-        providesTags: ['chats']
       }),
       getConfig: build.query<GetConfigApiResponse, GetConfigApiArg>({
         query: () => ({ url: `/api/config` }),
@@ -162,33 +137,6 @@ export type GetCatalogApiResponse = /** status 200 OK */ View
 export type GetCatalogApiArg = void
 export type RemoveCatalogEntryApiResponse = unknown
 export type RemoveCatalogEntryApiArg = {
-  id: string
-}
-export type ListChatsApiResponse = /** status 200 OK */ Chat[]
-export type ListChatsApiArg = void
-export type CreateChatApiResponse = /** status 201 Created */ Chat
-export type CreateChatApiArg = {
-  createChat: CreateChat
-}
-export type DeleteChatApiResponse = unknown
-export type DeleteChatApiArg = {
-  id: string
-}
-export type GetChatApiResponse = /** status 200 OK */ ChatWithMessages
-export type GetChatApiArg = {
-  id: string
-}
-export type UpdateChatApiResponse = /** status 200 OK */ Chat
-export type UpdateChatApiArg = {
-  id: string
-  body: {
-    model?: string | null
-    title?: string | null
-    webSearch?: boolean | null
-  }
-}
-export type ExportChatApiResponse = /** status 200 OK */ string
-export type ExportChatApiArg = {
   id: string
 }
 export type GetConfigApiResponse = /** status 200 OK */ ConfigAll
@@ -306,36 +254,6 @@ export type ErrorBody = {
   current?: any
   error: string
   message: string
-}
-export type Chat = {
-  createdAt: number
-  id: string
-  model: string
-  settings: any
-  title: string
-  titleSource: string
-  updatedAt: number
-  webSearch: boolean
-}
-export type CreateChat = {
-  model: string
-  webSearch?: boolean
-}
-export type Message = {
-  chatId: string
-  content: string
-  createdAt: number
-  error: string
-  id: string
-  model: string
-  reasoning: string
-  role: string
-  stats: any
-  status: string
-}
-export type ChatWithMessages = {
-  chat: Chat
-  messages: Message[]
 }
 export type SectionEntry = {
   effective?: any
@@ -458,7 +376,276 @@ export type DownloadProgressEvent = {
   type: 'download.progress'
   v: number
 }
-export type Event = ConfigChangedEvent | ModelStateEvent | DownloadProgressEvent
+export type ChatCreated = {
+  model: string
+  profile: string
+}
+export type ChatCreatedEvent = {
+  data: ChatCreated
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.created'
+  v: number
+}
+export type ChatTitled = {
+  source: 'auto' | 'user'
+  title: string
+}
+export type ChatTitledEvent = {
+  data: ChatTitled
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.titled'
+  v: number
+}
+export type ChatModel = {
+  model: string
+}
+export type ChatModelEvent = {
+  data: ChatModel
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.model'
+  v: number
+}
+export type TurnRetracted = {
+  runId: string
+}
+export type TurnRetractedEvent = {
+  data: TurnRetracted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'turn.retracted'
+  v: number
+}
+export type ChatDeleted = {
+  chatId: string
+}
+export type ChatDeletedEvent = {
+  data: ChatDeleted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.deleted'
+  v: number
+}
+export type RunQueued = {
+  chatId: string
+  model: string
+  origin: 'user'
+  profile: string
+  requestId: string
+}
+export type RunQueuedEvent = {
+  data: RunQueued
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.queued'
+  v: number
+}
+export type InputReceived = {
+  chatId: string
+  requestId: string
+  text: string
+}
+export type InputReceivedEvent = {
+  data: InputReceived
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'input.received'
+  v: number
+}
+export type RunStarted = {
+  chatId: string
+}
+export type RunStartedEvent = {
+  data: RunStarted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.started'
+  v: number
+}
+export type RunPaused = {
+  chatId: string
+  reason: 'interrupted'
+}
+export type RunPausedEvent = {
+  data: RunPaused
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.paused'
+  v: number
+}
+export type RunResumed = {
+  chatId: string
+}
+export type RunResumedEvent = {
+  data: RunResumed
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.resumed'
+  v: number
+}
+export type RunError = {
+  code: string
+  message: string
+}
+export type RunFinished = {
+  chatId: string
+  error?: RunError | null
+  state: 'done' | 'stopped' | 'failed'
+}
+export type RunFinishedEvent = {
+  data: RunFinished
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.finished'
+  v: number
+}
+export type MessageDelta = {
+  n: number
+  text: string
+}
+export type MessageDeltaEvent = {
+  data: MessageDelta
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'message.delta'
+  v: number
+}
+export type ReasoningDelta = {
+  n: number
+  text: string
+}
+export type ReasoningDeltaEvent = {
+  data: ReasoningDelta
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'reasoning.delta'
+  v: number
+}
+export type MessagePartial = {
+  n: number
+  reasoning: string
+  text: string
+}
+export type MessagePartialEvent = {
+  data: MessagePartial
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'message.partial'
+  v: number
+}
+export type MessagePart = {
+  kind: 'text' | 'reasoning'
+  text: string
+}
+export type MessageStats = {
+  answerTokens: number
+  contextSize: number
+  durationMs: number
+  exact: boolean
+  firstTokenMs: number
+  promptTokens: number
+  tokensPerSecond: number
+}
+export type MessageCompleted = {
+  chatId: string
+  model: string
+  partial: boolean
+  parts: MessagePart[]
+  stats: MessageStats
+}
+export type MessageCompletedEvent = {
+  data: MessageCompleted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'message.completed'
+  v: number
+}
+export type CompactionCompleted = {
+  chatId: string
+  firstKeptSeq: number
+  summary: string
+  tokensAfter: number
+  tokensBefore: number
+}
+export type CompactionCompletedEvent = {
+  data: CompactionCompleted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'compaction.completed'
+  v: number
+}
+export type SchedWaiting = {
+  runId: string
+  why: string
+}
+export type SchedState = {
+  holder?: string
+  waiting: SchedWaiting[]
+}
+export type SchedStateEvent = {
+  data: SchedState
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'sched.state'
+  v: number
+}
+export type Event =
+  | ConfigChangedEvent
+  | ModelStateEvent
+  | DownloadProgressEvent
+  | ChatCreatedEvent
+  | ChatTitledEvent
+  | ChatModelEvent
+  | TurnRetractedEvent
+  | ChatDeletedEvent
+  | RunQueuedEvent
+  | InputReceivedEvent
+  | RunStartedEvent
+  | RunPausedEvent
+  | RunResumedEvent
+  | RunFinishedEvent
+  | MessageDeltaEvent
+  | ReasoningDeltaEvent
+  | MessagePartialEvent
+  | MessageCompletedEvent
+  | CompactionCompletedEvent
+  | SchedStateEvent
 export type Gpu = {
   freeBytes: number
   name: string
@@ -477,12 +664,6 @@ export type VersionBody = {
 export const {
   useGetCatalogQuery,
   useRemoveCatalogEntryMutation,
-  useListChatsQuery,
-  useCreateChatMutation,
-  useDeleteChatMutation,
-  useGetChatQuery,
-  useUpdateChatMutation,
-  useExportChatQuery,
   useGetConfigQuery,
   useGetConfigEngineLlamaserverQuery,
   usePutConfigEngineLlamaserverMutation,

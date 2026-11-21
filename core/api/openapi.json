@@ -16,58 +16,195 @@
         ],
         "type": "object"
       },
-      "Chat": {
+      "ChatCreated": {
         "properties": {
-          "createdAt": {
-            "type": "integer"
-          },
-          "id": {
-            "type": "string"
-          },
           "model": {
             "type": "string"
           },
-          "settings": {},
-          "title": {
+          "profile": {
             "type": "string"
-          },
-          "titleSource": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "integer"
-          },
-          "webSearch": {
-            "type": "boolean"
           }
         },
         "required": [
-          "id",
-          "title",
-          "titleSource",
           "model",
-          "createdAt",
-          "updatedAt",
-          "webSearch",
-          "settings"
+          "profile"
         ],
         "type": "object"
       },
-      "ChatWithMessages": {
+      "ChatCreatedEvent": {
         "properties": {
-          "chat": {
-            "$ref": "#/components/schemas/Chat"
+          "data": {
+            "$ref": "#/components/schemas/ChatCreated"
           },
-          "messages": {
-            "items": {
-              "$ref": "#/components/schemas/Message"
-            },
-            "type": "array"
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "chat.created"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
           }
         },
         "required": [
-          "chat",
-          "messages"
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "ChatDeleted": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId"
+        ],
+        "type": "object"
+      },
+      "ChatDeletedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChatDeleted"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "chat.deleted"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "ChatModel": {
+        "properties": {
+          "model": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model"
+        ],
+        "type": "object"
+      },
+      "ChatModelEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChatModel"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "chat.model"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "ChatTitled": {
+        "properties": {
+          "source": {
+            "enum": [
+              "auto",
+              "user"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "source"
+        ],
+        "type": "object"
+      },
+      "ChatTitledEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ChatTitled"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "chat.titled"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
         ],
         "type": "object"
       },
@@ -127,6 +264,67 @@
           "source",
           "capped",
           "tokensPerSecond"
+        ],
+        "type": "object"
+      },
+      "CompactionCompleted": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "firstKeptSeq": {
+            "type": "integer"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "tokensAfter": {
+            "type": "integer"
+          },
+          "tokensBefore": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "chatId",
+          "summary",
+          "firstKeptSeq",
+          "tokensBefore",
+          "tokensAfter"
+        ],
+        "type": "object"
+      },
+      "CompactionCompletedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CompactionCompleted"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "compaction.completed"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
         ],
         "type": "object"
       },
@@ -190,20 +388,6 @@
           "type",
           "v",
           "data"
-        ],
-        "type": "object"
-      },
-      "CreateChat": {
-        "properties": {
-          "model": {
-            "type": "string"
-          },
-          "webSearch": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "model"
         ],
         "type": "object"
       },
@@ -342,6 +526,57 @@
           },
           {
             "$ref": "#/components/schemas/DownloadProgressEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatCreatedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatTitledEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatModelEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TurnRetractedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ChatDeletedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunQueuedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/InputReceivedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunStartedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunPausedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunResumedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/RunFinishedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/MessageDeltaEvent"
+          },
+          {
+            "$ref": "#/components/schemas/ReasoningDeltaEvent"
+          },
+          {
+            "$ref": "#/components/schemas/MessagePartialEvent"
+          },
+          {
+            "$ref": "#/components/schemas/MessageCompletedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/CompactionCompletedEvent"
+          },
+          {
+            "$ref": "#/components/schemas/SchedStateEvent"
           }
         ]
       },
@@ -403,6 +638,59 @@
           "log",
           "head",
           "reset"
+        ],
+        "type": "object"
+      },
+      "InputReceived": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId",
+          "text",
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "InputReceivedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/InputReceived"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "input.received"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
         ],
         "type": "object"
       },
@@ -558,48 +846,223 @@
         ],
         "type": "object"
       },
-      "Message": {
+      "MessageCompleted": {
         "properties": {
           "chatId": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "createdAt": {
-            "type": "integer"
-          },
-          "error": {
-            "type": "string"
-          },
-          "id": {
             "type": "string"
           },
           "model": {
             "type": "string"
           },
-          "reasoning": {
+          "partial": {
+            "type": "boolean"
+          },
+          "parts": {
+            "items": {
+              "$ref": "#/components/schemas/MessagePart"
+            },
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/MessageStats"
+          }
+        },
+        "required": [
+          "chatId",
+          "parts",
+          "partial",
+          "model",
+          "stats"
+        ],
+        "type": "object"
+      },
+      "MessageCompletedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MessageCompleted"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
             "type": "string"
           },
-          "role": {
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "message.completed"
+            ],
             "type": "string"
           },
-          "stats": {},
-          "status": {
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "MessageDelta": {
+        "properties": {
+          "n": {
+            "type": "integer"
+          },
+          "text": {
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "chatId",
-          "role",
-          "content",
+          "text",
+          "n"
+        ],
+        "type": "object"
+      },
+      "MessageDeltaEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MessageDelta"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "message.delta"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "MessagePart": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "text",
+              "reasoning"
+            ],
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "text"
+        ],
+        "type": "object"
+      },
+      "MessagePartial": {
+        "properties": {
+          "n": {
+            "type": "integer"
+          },
+          "reasoning": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
           "reasoning",
-          "status",
-          "error",
-          "model",
-          "stats",
-          "createdAt"
+          "n"
+        ],
+        "type": "object"
+      },
+      "MessagePartialEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/MessagePartial"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "message.partial"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "MessageStats": {
+        "properties": {
+          "answerTokens": {
+            "type": "integer"
+          },
+          "contextSize": {
+            "type": "integer"
+          },
+          "durationMs": {
+            "type": "integer"
+          },
+          "exact": {
+            "type": "boolean"
+          },
+          "firstTokenMs": {
+            "type": "integer"
+          },
+          "promptTokens": {
+            "type": "integer"
+          },
+          "tokensPerSecond": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "promptTokens",
+          "answerTokens",
+          "exact",
+          "tokensPerSecond",
+          "firstTokenMs",
+          "durationMs",
+          "contextSize"
         ],
         "type": "object"
       },
@@ -720,6 +1183,55 @@
         ],
         "type": "object"
       },
+      "ReasoningDelta": {
+        "properties": {
+          "n": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "n"
+        ],
+        "type": "object"
+      },
+      "ReasoningDeltaEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ReasoningDelta"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "reasoning.delta"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
       "Report": {
         "properties": {
           "error": {
@@ -742,6 +1254,357 @@
         "required": [
           "gpu",
           "ramBytes"
+        ],
+        "type": "object"
+      },
+      "RunError": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "RunFinished": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "done",
+              "stopped",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId",
+          "state"
+        ],
+        "type": "object"
+      },
+      "RunFinishedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunFinished"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "run.finished"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "RunPaused": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "interrupted"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "RunPausedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunPaused"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "run.paused"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "RunQueued": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "user"
+            ],
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId",
+          "profile",
+          "model",
+          "origin",
+          "requestId"
+        ],
+        "type": "object"
+      },
+      "RunQueuedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunQueued"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "run.queued"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "RunResumed": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId"
+        ],
+        "type": "object"
+      },
+      "RunResumedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunResumed"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "run.resumed"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "RunStarted": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "chatId"
+        ],
+        "type": "object"
+      },
+      "RunStartedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunStarted"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "run.started"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "SchedState": {
+        "properties": {
+          "holder": {
+            "type": "string"
+          },
+          "waiting": {
+            "items": {
+              "$ref": "#/components/schemas/SchedWaiting"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "waiting"
+        ],
+        "type": "object"
+      },
+      "SchedStateEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SchedState"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "sched.state"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
+        ],
+        "type": "object"
+      },
+      "SchedWaiting": {
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId",
+          "why"
         ],
         "type": "object"
       },
@@ -819,6 +1682,51 @@
         },
         "required": [
           "scope"
+        ],
+        "type": "object"
+      },
+      "TurnRetracted": {
+        "properties": {
+          "runId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "runId"
+        ],
+        "type": "object"
+      },
+      "TurnRetractedEvent": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TurnRetracted"
+          },
+          "seq": {
+            "description": "durable events only",
+            "type": "integer"
+          },
+          "stream": {
+            "type": "string"
+          },
+          "time": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "turn.retracted"
+            ],
+            "type": "string"
+          },
+          "v": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "type",
+          "v",
+          "data"
         ],
         "type": "object"
       },
@@ -937,340 +1845,6 @@
         "summary": "Move a downloaded model to the Recycle Bin",
         "tags": [
           "catalog"
-        ],
-        "x-scope": "ui"
-      }
-    },
-    "/api/chats": {
-      "get": {
-        "operationId": "listChats",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/Chat"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: chat_unavailable, internal."
-          }
-        },
-        "summary": "List the chats, newest first",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      },
-      "post": {
-        "operationId": "createChat",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateChat"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chat"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: invalid_request, bad_request, chat_unavailable, internal."
-          }
-        },
-        "summary": "Start a chat",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      }
-    },
-    "/api/chats/{id}": {
-      "delete": {
-        "operationId": "deleteChat",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "No Content"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: chat_unavailable, chat_not_found, internal."
-          }
-        },
-        "summary": "Delete a chat",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      },
-      "get": {
-        "operationId": "getChat",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatWithMessages"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: chat_unavailable, chat_not_found, internal."
-          }
-        },
-        "summary": "One chat with its messages",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      },
-      "patch": {
-        "operationId": "updateChat",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "model": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "title": {
-                    "type": [
-                      "string",
-                      "null"
-                    ]
-                  },
-                  "webSearch": {
-                    "type": [
-                      "boolean",
-                      "null"
-                    ]
-                  }
-                },
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chat"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: invalid_request, chat_unavailable, chat_not_found, bad_request, internal."
-          }
-        },
-        "summary": "Change a chat's title, model or web search",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      }
-    },
-    "/api/chats/{id}/export": {
-      "get": {
-        "operationId": "exportChat",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/markdown": {}
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: chat_unavailable, chat_not_found, internal."
-          }
-        },
-        "summary": "A chat as Markdown",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      }
-    },
-    "/api/chats/{id}/messages": {
-      "post": {
-        "operationId": "sendMessage",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/event-stream": {}
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: chat_unavailable, chat_not_found, bad_request, no_streaming, internal."
-          }
-        },
-        "summary": "Send a message and stream the reply",
-        "tags": [
-          "chats"
-        ],
-        "x-scope": "ui"
-      }
-    },
-    "/api/chats/{id}/regenerate": {
-      "post": {
-        "operationId": "regenerate",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "text/event-stream": {}
-            },
-            "description": "OK"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorBody"
-                }
-              }
-            },
-            "description": "Error. Codes: chat_unavailable, chat_not_found, bad_request, no_streaming, internal."
-          }
-        },
-        "summary": "Answer the last message again, streamed",
-        "tags": [
-          "chats"
         ],
         "x-scope": "ui"
       }

@@ -64,7 +64,7 @@ func (s *Store) recordFit(ctx context.Context, m FitModel, p FitPlace, columns, 
 		return fmt.Errorf("record fit: %w", err)
 	}
 	args := append(append(append([]any{}, key...), m.FileBytes, m.FileMtime.UnixNano()), values...)
-	args = append(args, s.nowMillis())
+	args = append(args, s.clock().UnixMilli())
 	_, err = tx.ExecContext(ctx, `INSERT INTO model_fit
 		(model_id, projector, args, context, placement, layers, file_bytes, file_mtime, `+columns+`, measured_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, `+marks+`, ?)

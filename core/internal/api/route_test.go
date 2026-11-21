@@ -13,7 +13,6 @@ import (
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
-	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/provider"
@@ -256,7 +255,6 @@ func TestErrorMapping(t *testing.T) {
 		{provider.ErrUnknownModel, 404, "model_not_found"},
 		{provider.ErrNoEmbeddingModel, 409, "no_embedding_model"},
 		{store.ErrNotFound, 404, "chat_not_found"},
-		{fmt.Errorf("%w: the message is empty", chat.ErrBadInput), 400, "bad_request"},
 	}
 	for _, c := range cases {
 		t.Run(c.code+" "+c.err.Error(), func(t *testing.T) {

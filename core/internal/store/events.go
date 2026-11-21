@@ -163,12 +163,28 @@ func (l storeLog) Info(ctx context.Context) (event.Info, error) {
 	if err := r.QueryRowContext(ctx, "SELECT id FROM log_info").Scan(&info.ID); err != nil {
 		return event.Info{}, fmt.Errorf("event info: %w", err)
 	}
-	// sqlite_sequence keeps the highest seq ever given, so trimming never lowers the head.
-	err := r.QueryRowContext(ctx, "SELECT seq FROM sqlite_sequence WHERE name = 'events'").Scan(&info.Head)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	head, err := logHead(ctx, r)
+	if err != nil {
 		return event.Info{}, fmt.Errorf("event info: %w", err)
 	}
+	info.Head = head
 	return info, nil
+}
+
+// queryRower is what both *sql.DB and *sql.Tx offer for a single-row query.
+type queryRower interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+// logHead is the highest seq ever assigned, 0 for an empty log. sqlite_sequence keeps it, so trimming never lowers
+// the head.
+func logHead(ctx context.Context, q queryRower) (int64, error) {
+	var head int64
+	err := q.QueryRowContext(ctx, "SELECT seq FROM sqlite_sequence WHERE name = 'events'").Scan(&head)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	return head, nil
 }
 
 // TrimSystem deletes system events older than before and returns how many went. Other streams are never trimmed.
