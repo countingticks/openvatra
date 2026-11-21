@@ -10,7 +10,7 @@ import {
   settingsFileSchema
 } from '../../../src/shared/settings'
 
-const saved: SettingsFile = { ...defaultSettings, theme: 'dark', lastTab: 'code' }
+const saved: SettingsFile = { ...defaultSettings, theme: 'dark', lastRoute: 'code' }
 
 let dir: string
 let filePath: string
@@ -87,7 +87,7 @@ describe('saveSettings', () => {
 
     const written: unknown = JSON.parse(await readFile(filePath, 'utf8'))
     expect(settingsFileSchema.parse(written)).toEqual(saved)
-    expect(written).toMatchObject({ schemaVersion: 7 })
+    expect(written).toMatchObject({ schemaVersion: 8 })
   })
 
   it('fails without leaving a temporary file when the folder is missing', async () => {
@@ -105,16 +105,16 @@ describe('migrate', () => {
   describe('1 → 2: Settings became a dialog', () => {
     it('reopens a file left on the Settings tab on Chat', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings', theme: 'dark' })).toEqual({
-        schemaVersion: 7,
-        lastTab: 'chat',
+        schemaVersion: 8,
+        lastRoute: 'chat',
         theme: 'dark'
       })
     })
 
     it('keeps every other tab and setting as it was', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'code', closeAction: 'quit' })).toEqual({
-        schemaVersion: 7,
-        lastTab: 'code',
+        schemaVersion: 8,
+        lastRoute: 'code',
         closeAction: 'quit'
       })
     })
@@ -125,16 +125,16 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 7, theme: 'dark', lastTab: 'chat' })
+      expect(settings).toMatchObject({ schemaVersion: 8, theme: 'dark', lastRoute: 'chat' })
     })
   })
 
   describe('2 → 3: models settings', () => {
     it('keeps every existing setting and adds only the version', () => {
       expect(migrate({ schemaVersion: 2, theme: 'dark', lastTab: 'code' })).toEqual({
-        schemaVersion: 7,
+        schemaVersion: 8,
         theme: 'dark',
-        lastTab: 'code'
+        lastRoute: 'code'
       })
     })
 
@@ -144,7 +144,7 @@ describe('migrate', () => {
       const { settings, outcome } = await loadSettings(filePath)
 
       expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings).toMatchObject({ schemaVersion: 7, theme: 'dark', closeAction: 'quit' })
+      expect(settings).toMatchObject({ schemaVersion: 8, theme: 'dark', closeAction: 'quit' })
       // No models in the file, so nothing for core to import: core's defaults apply.
       expect(settings).not.toHaveProperty('legacyModels')
       expect(settings).toMatchObject({ showAdvancedModels: false, cudaOfferDismissed: false })
@@ -152,8 +152,8 @@ describe('migrate', () => {
 
     it('upgrades a version-1 file through every step', () => {
       expect(migrate({ schemaVersion: 1, lastTab: 'settings' })).toEqual({
-        schemaVersion: 7,
-        lastTab: 'chat'
+        schemaVersion: 8,
+        lastRoute: 'chat'
       })
     })
   })
@@ -175,7 +175,7 @@ describe('migrate', () => {
           })
         )
       ).toEqual({
-        schemaVersion: 7,
+        schemaVersion: 8,
         theme: 'dark',
         legacyModels: {
           modelsDir: 'D:/models',
@@ -201,7 +201,7 @@ describe('migrate', () => {
     })
 
     it('leaves a file without models alone', () => {
-      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 7, theme: 'dark' })
+      expect(migrate({ schemaVersion: 3, theme: 'dark' })).toEqual({ schemaVersion: 8, theme: 'dark' })
     })
   })
 
@@ -223,7 +223,7 @@ describe('migrate', () => {
           })
         )
       ).toEqual({
-        schemaVersion: 7,
+        schemaVersion: 8,
         theme: 'dark',
         legacyModels: {
           modelsDir: 'D:/models',
@@ -249,7 +249,39 @@ describe('migrate', () => {
     })
 
     it('leaves a file without models alone', () => {
-      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 7, theme: 'dark' })
+      expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 8, theme: 'dark' })
+    })
+  })
+
+  describe('7 → 8: lastTab became lastRoute', () => {
+    it('copies lastTab to lastRoute and removes lastTab', () => {
+      expect(migrate({ schemaVersion: 7, lastTab: 'code', theme: 'dark' })).toEqual({
+        schemaVersion: 8,
+        lastRoute: 'code',
+        theme: 'dark'
+      })
+    })
+
+    it('adds no lastRoute when the file had no lastTab', () => {
+      expect(migrate({ schemaVersion: 7, theme: 'dark' })).toEqual({ schemaVersion: 8, theme: 'dark' })
+    })
+
+    it('loads a version-7 file on its last tab', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 7, lastTab: 'code' }))
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings).toMatchObject({ schemaVersion: 8, lastRoute: 'code' })
+      expect(settings).not.toHaveProperty('lastTab')
+    })
+
+    it('sets aside a version-7 file whose lastTab is not a tab', async () => {
+      await writeFile(filePath, JSON.stringify({ schemaVersion: 7, lastTab: 'nonsense' }))
+
+      const { outcome } = await loadSettings(filePath)
+
+      expect(outcome).toMatchObject({ kind: 'recovered', reason: 'invalid' })
     })
   })
 
@@ -269,7 +301,7 @@ describe('migrate', () => {
           }
         })
       ).toEqual({
-        schemaVersion: 7,
+        schemaVersion: 8,
         theme: 'dark',
         showAdvancedModels: true,
         cudaOfferDismissed: true,
@@ -283,7 +315,7 @@ describe('migrate', () => {
     })
 
     it('a v6 file without models gets no legacyModels', () => {
-      expect(migrate({ schemaVersion: 6, theme: 'dark' })).toEqual({ schemaVersion: 7, theme: 'dark' })
+      expect(migrate({ schemaVersion: 6, theme: 'dark' })).toEqual({ schemaVersion: 8, theme: 'dark' })
     })
 
     it('fills the keys a v6 file left out with the v6 defaults', async () => {
@@ -308,12 +340,12 @@ describe('migrate', () => {
 
       const { settings } = await loadSettings(filePath)
 
-      expect(settings).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'chat' })
+      expect(settings).toEqual({ ...defaultSettings, theme: 'dark', lastRoute: 'chat' })
     })
   })
 
   it.each([
-    ['current files', { schemaVersion: 7, theme: 'dark' }],
+    ['current files', { schemaVersion: 8, theme: 'dark' }],
     ['newer files', { schemaVersion: 8 }],
     ['files with no migration path', { schemaVersion: 0 }],
     ['non-objects', [1, 2]]

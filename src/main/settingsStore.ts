@@ -11,7 +11,7 @@ export type FilePatch = Partial<
     SettingsFile,
     | 'theme'
     | 'startWithWindows'
-    | 'lastTab'
+    | 'lastRoute'
     | 'closeAction'
     | 'sidebarOpen'
     | 'motion'

@@ -16,8 +16,9 @@ export type TabId = (typeof tabIds)[number]
  * 6: added `models.engine`, `showAdvanced` and `cudaOfferDismissed` (model setup).
  * 7: model settings moved to core; the file keeps `legacyModels` until they are imported, and the two view
  * preferences at the top level.
+ * 8: `lastTab` became `lastRoute`, a route path.
  */
-export const settingsSchemaVersion = 7
+export const settingsSchemaVersion = 8
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -30,7 +31,11 @@ export const motions = ['system', 'on', 'off'] as const
 
 const theme = z.enum(themes)
 const startWithWindows = z.boolean()
-const lastTab = z.enum(tabIds)
+/** A route path (src/app/store/route.ts); the app falls back to Chat when it names nothing. */
+const lastRoute = z
+  .string()
+  .max(512)
+  .regex(/^(chat|code|automations)(\/.*)?$/)
 const closeAction = z.enum(closeActions)
 const sidebarOpen = z.boolean()
 const motion = z.enum(motions)
@@ -77,7 +82,7 @@ const topLevelShape = {
   schemaVersion: z.literal(settingsSchemaVersion),
   theme: theme.default('system'),
   startWithWindows: startWithWindows.default(false),
-  lastTab: lastTab.default('chat'),
+  lastRoute: lastRoute.default('chat'),
   closeAction: closeAction.default('tray'),
   sidebarOpen: sidebarOpen.default(true),
   motion: motion.default('system'),
@@ -137,7 +142,7 @@ export const defaultSettingsFile: Readonly<SettingsFile> = Object.freeze(
 export const settingsPatchSchema = z.strictObject({
   theme: theme.optional(),
   startWithWindows: startWithWindows.optional(),
-  lastTab: lastTab.optional(),
+  lastRoute: lastRoute.optional(),
   closeAction: closeAction.optional(),
   sidebarOpen: sidebarOpen.optional(),
   motion: motion.optional(),

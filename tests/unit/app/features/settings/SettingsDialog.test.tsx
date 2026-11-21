@@ -15,7 +15,7 @@ async function openSettings(): Promise<HTMLElement> {
 describe('Settings dialog', () => {
   describe('opening and closing', () => {
     it('opens from the gear at the bottom of the sidebar, over the current tab', async () => {
-      renderWithStore(<Shell />, { lastTab: 'code' })
+      renderWithStore(<Shell />, { lastRoute: 'code' })
       expect(gear()).toHaveAttribute('aria-haspopup', 'dialog')
 
       await openSettings()

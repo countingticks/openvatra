@@ -1,6 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Shell } from '@app/shell/Shell'
+import { selectActiveTab } from '@app/store/uiSlice'
 import { renderWithStore } from '../../renderWithStore'
 
 const sidebar = (): HTMLElement => screen.getByRole('navigation', { name: 'Main' })
@@ -25,7 +26,7 @@ describe('Shell', () => {
   })
 
   it('opens on the tab saved last time', () => {
-    renderWithStore(<Shell />, { lastTab: 'automations' })
+    renderWithStore(<Shell />, { lastRoute: 'automations' })
 
     expect(tabButton('Automations')).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('heading', { level: 1, name: 'Automations' })).toBeInTheDocument()
@@ -48,7 +49,7 @@ describe('Shell', () => {
     ['3', 'Automations']
   ])('Ctrl+%s opens %s', (key, name) => {
     // Start somewhere else, so Ctrl+1 really has to switch.
-    renderWithStore(<Shell />, { lastTab: key === '1' ? 'code' : 'chat' })
+    renderWithStore(<Shell />, { lastRoute: key === '1' ? 'code' : 'chat' })
 
     fireEvent.keyDown(window, { key, ctrlKey: true })
 
@@ -78,7 +79,7 @@ describe('Shell', () => {
 
     fireEvent.click(tabButton('Automations'))
 
-    await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ lastTab: 'automations' }))
+    await vi.waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ lastRoute: 'automations' }))
   })
 
   it('stops listening for shortcuts once it is gone', () => {
@@ -87,6 +88,6 @@ describe('Shell', () => {
     unmount()
     fireEvent.keyDown(window, { key: '3', ctrlKey: true })
 
-    expect(store.getState().ui.activeTab).toBe('chat')
+    expect(selectActiveTab(store.getState())).toBe('chat')
   })
 })

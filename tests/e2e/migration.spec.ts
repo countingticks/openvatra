@@ -8,6 +8,39 @@ import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
 // These callbacks run inside the app's page, where the preload put the API on `window`.
 type WithApi = typeof globalThis & { api: Api }
 
+// A settings file from before `lastTab` became `lastRoute` (schema version 7), left on the Code tab.
+test.describe('a version-7 settings file', () => {
+  let app: ElectronApplication
+  let mainWindow: Page
+  let userDataDir: string
+
+  test.beforeAll(async () => {
+    userDataDir = await createUserDataDir()
+    await writeFile(join(userDataDir, 'settings.json'), JSON.stringify({ schemaVersion: 7, lastTab: 'code' }))
+    app = await electron.launch({ args: appArgs(userDataDir) })
+    mainWindow = await app.firstWindow()
+  })
+
+  test.afterAll(async () => {
+    await app.close()
+    await removeUserDataDir(userDataDir)
+  })
+
+  test('opens on its last tab and saves lastRoute from then on', async () => {
+    const heading = mainWindow.getByRole('heading', { level: 1, name: 'Code' })
+    await expect(heading).toBeVisible()
+
+    // A freshly launched window has no keyboard focus yet; click into the page so the shortcut reaches it.
+    await heading.click()
+    await mainWindow.keyboard.press('Control+3')
+
+    await expect
+      .poll(async () => JSON.parse(await readFile(join(userDataDir, 'settings.json'), 'utf8')) as unknown)
+      .toMatchObject({ schemaVersion: 8, lastRoute: 'automations' })
+    expect(await readFile(join(userDataDir, 'settings.json'), 'utf8')).not.toContain('lastTab')
+  })
+})
+
 // A settings file from before Settings became a dialog (schema version 1), left on the Settings tab.
 test.describe('a version-1 settings file', () => {
   let app: ElectronApplication
@@ -102,11 +135,11 @@ test.describe('a version-6 settings file with model settings', () => {
 
     await expect.poll(models).toMatchObject(imported)
     // The old copy is dropped only once core has the values, so from then on they can only come from core. The file
-    // on disk stays v6 (no `legacyModels` either) until that save, so wait for the v7 file without it.
+    // on disk stays v6 (no `legacyModels` either) until that save, so wait for the v8 file without it.
     await expect
       .poll(async () => {
         const file = await onDisk()
-        return file['schemaVersion'] === 7 && !('legacyModels' in file)
+        return file['schemaVersion'] === 8 && !('legacyModels' in file)
       })
       .toBe(true)
     expect(await models()).toMatchObject(imported)
@@ -115,7 +148,7 @@ test.describe('a version-6 settings file with model settings', () => {
     )
 
     const file = await onDisk()
-    expect(file).toMatchObject({ schemaVersion: 7, showAdvancedModels: true })
+    expect(file).toMatchObject({ schemaVersion: 8, showAdvancedModels: true })
     expect(file).not.toHaveProperty('models')
 
     await mainWindow.getByRole('button', { name: 'Settings' }).click()

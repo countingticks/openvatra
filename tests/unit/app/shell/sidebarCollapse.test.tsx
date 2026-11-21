@@ -1,6 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
+import { selectActiveTab } from '@app/store/uiSlice'
 import { renderWithStore } from '../../renderWithStore'
 
 const panel = (): HTMLElement => document.getElementById('sidebar') as HTMLElement
@@ -62,11 +63,11 @@ describe('collapsible sidebar', () => {
   })
 
   it('keeps the tabs: closing the sidebar does not change the open tab', () => {
-    const { store } = renderWithStore(<Shell />, { lastTab: 'code' })
+    const { store } = renderWithStore(<Shell />, { lastRoute: 'code' })
 
     pressCtrlB()
 
-    expect(store.getState().ui.activeTab).toBe('code')
+    expect(selectActiveTab(store.getState())).toBe('code')
     expect(screen.getByRole('heading', { level: 1, name: 'Code' })).toBeInTheDocument()
   })
 

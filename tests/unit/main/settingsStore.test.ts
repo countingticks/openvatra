@@ -46,9 +46,9 @@ describe('createSettingsStore', () => {
     const { store } = setUp()
     await store.update({ theme: 'dark' })
 
-    await store.update({ theme: undefined, lastTab: 'code' })
+    await store.update({ theme: undefined, lastRoute: 'code' })
 
-    expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'code' })
+    expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastRoute: 'code' })
   })
 
   it('dropLegacyModels saves the file without it', async () => {
@@ -73,7 +73,7 @@ describe('createSettingsStore', () => {
     const { store } = setUp(save)
 
     const first = store.update({ theme: 'dark' })
-    const second = store.update({ lastTab: 'code' })
+    const second = store.update({ lastRoute: 'code' })
     await vi.waitFor(() => expect(saves).toHaveLength(1))
     finishFirstSave()
     await Promise.all([first, second])
@@ -81,9 +81,9 @@ describe('createSettingsStore', () => {
     // The second save started only after the first finished, and built on its result.
     expect(saves).toEqual([
       { ...defaultSettings, theme: 'dark' },
-      { ...defaultSettings, theme: 'dark', lastTab: 'code' }
+      { ...defaultSettings, theme: 'dark', lastRoute: 'code' }
     ])
-    expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastTab: 'code' })
+    expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastRoute: 'code' })
   })
 
   it('saves window bounds set by the main process', async () => {

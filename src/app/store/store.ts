@@ -16,7 +16,16 @@ import { connectionSlice } from '@app/core/connectionSlice'
 import { coreApi } from '@app/core/coreApi'
 import type { Platform } from '@app/platform/platform'
 import { settingsChanged, settingsReplaced, settingsSlice } from './settingsSlice'
-import { initialUiState, sidebarToggled, tabSelected, uiSlice, wentBack, wentForward } from './uiSlice'
+import { parseRoute, routePath } from './route'
+import {
+  initialUiState,
+  navigated,
+  sidebarToggled,
+  tabSelected,
+  uiSlice,
+  wentBack,
+  wentForward
+} from './uiSlice'
 
 const rootReducer = combineSlices(uiSlice, settingsSlice, connectionSlice, coreApi)
 
@@ -56,14 +65,14 @@ export function createAppStore({ platform, initialSettings }: AppStoreOptions): 
   }
 
   listener.startListening({
-    // Clicking a tab, Back and Forward all change the open tab, and the app should reopen on it.
-    matcher: isAnyOf(tabSelected, wentBack, wentForward),
+    // Every move changes the route, and the app should reopen on it.
+    matcher: isAnyOf(navigated, tabSelected, wentBack, wentForward),
     effect: async (_action, api) => {
-      const tab = api.getState().ui.activeTab
+      const route = api.getState().ui.route
       // Selecting the open tab, or Back with no history, changes nothing, so there's nothing to save.
-      if (api.getOriginalState().ui.activeTab === tab) return
+      if (routePath(api.getOriginalState().ui.route) === routePath(route)) return
       try {
-        await save({ lastTab: tab }, api.dispatch)
+        await save({ lastRoute: routePath(route) }, api.dispatch)
       } catch (error) {
         // The tab still switches; only remembering it for next launch failed.
         console.error('Could not save the last open tab', error)
@@ -98,11 +107,18 @@ export function createAppStore({ platform, initialSettings }: AppStoreOptions): 
   })
 
   const startup = initialSettings ?? structuredClone(defaultSettings)
+  // A saved path that names nothing (an old or edited file) opens on Chat.
+  const route = parseRoute(startup.lastRoute) ?? { tab: 'chat' }
   const store = configureStore({
     reducer: rootReducer,
     preloadedState: {
       // History starts empty each launch: Back never leads somewhere from a previous session.
-      ui: { ...initialUiState, activeTab: startup.lastTab, sidebarOpen: startup.sidebarOpen },
+      ui: {
+        ...initialUiState,
+        route,
+        tabRoutes: { ...initialUiState.tabRoutes, [route.tab]: route },
+        sidebarOpen: startup.sidebarOpen
+      },
       settings: startup
     },
     middleware: (getDefault) =>
