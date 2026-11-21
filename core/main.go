@@ -23,7 +23,6 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/catalog"
-	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
@@ -293,10 +292,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 			lc.Notify() // a new models folder changes the list although no model changed state
 		}
 	})
-	var chats *chat.Service
-	if chatStore != nil {
-		chats = &chat.Service{Store: chatStore, Chat: lc, Model: lc.Model, Logger: logger}
-	}
 	entries, err := catalog.Builtin()
 	if err != nil {
 		return fmt.Errorf("built-in catalog: %w", err) // a build bug; its test keeps it from shipping
@@ -346,7 +341,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		Handler: api.NewHandler(api.Deps{
 			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Fit: fitAt, Resident: lc, Upstream: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
-			Chats: chats, Log: eventLog, Logger: logger,
+			Log: eventLog, Logger: logger,
 		}),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}

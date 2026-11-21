@@ -94,10 +94,6 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chat, err := old.CreateChat(context.Background(), "m", false)
-	if err != nil {
-		t.Fatal(err)
-	}
 	old.Close()
 
 	s, err := Open(dir, event.NewBus(16))
@@ -107,9 +103,6 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 	defer s.Close()
 	if v, _ := s.Version(); v != 5 {
 		t.Fatalf("version = %d", v)
-	}
-	if _, err := s.GetChat(context.Background(), chat.ID); err != nil {
-		t.Fatal("chat lost:", err)
 	}
 	if _, _, err := s.ConfigGet(context.Background(), "x"); err != nil {
 		t.Fatal(err)

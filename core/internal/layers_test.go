@@ -47,13 +47,11 @@ var layers = map[string]pkg{
 	"provider/providertest": {layer: seamLayer},
 
 	"catalog":   {layer: application},
-	"chat":      {layer: application},
 	"downloads": {layer: application},
 	"feed":      {layer: application},
 	"fit":       {layer: application},
 	"hw":        {layer: application},
 	"models":    {layer: application},
-	"prompt":    {layer: application},
 	"removal":   {layer: application},
 
 	"api":         {layer: adapter},

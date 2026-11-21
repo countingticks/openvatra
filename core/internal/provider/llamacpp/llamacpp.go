@@ -128,8 +128,8 @@ func (r *Provider) Models(context.Context) ([]provider.Model, error) {
 	return r.cfg.List()
 }
 
-// Model looks model id up in List, with the context size it loads with; it starts nothing. chat.Service gets it as
-// its Model func, and Complete loads the model.
+// Model looks model id up in List, with the context size it loads with; it starts nothing; Complete loads the
+// model.
 func (r *Provider) Model(ctx context.Context, id string) (provider.Model, error) {
 	models, err := r.Models(ctx)
 	if err != nil {

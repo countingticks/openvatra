@@ -1,7 +1,6 @@
 import { emptyApi as api } from './emptyApi'
 export const addTagTypes = [
   'catalog',
-  'chats',
   'config',
   'downloads',
   'engines',
@@ -24,30 +23,6 @@ const injectedRtkApi = api
       removeCatalogEntry: build.mutation<RemoveCatalogEntryApiResponse, RemoveCatalogEntryApiArg>({
         query: (queryArg) => ({ url: `/api/catalog/${queryArg.id}/remove`, method: 'POST' }),
         invalidatesTags: ['catalog']
-      }),
-      listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
-        query: () => ({ url: `/api/chats` }),
-        providesTags: ['chats']
-      }),
-      createChat: build.mutation<CreateChatApiResponse, CreateChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats`, method: 'POST', body: queryArg.createChat }),
-        invalidatesTags: ['chats']
-      }),
-      deleteChat: build.mutation<DeleteChatApiResponse, DeleteChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'DELETE' }),
-        invalidatesTags: ['chats']
-      }),
-      getChat: build.query<GetChatApiResponse, GetChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}` }),
-        providesTags: ['chats']
-      }),
-      updateChat: build.mutation<UpdateChatApiResponse, UpdateChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'PATCH', body: queryArg.body }),
-        invalidatesTags: ['chats']
-      }),
-      exportChat: build.query<ExportChatApiResponse, ExportChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/export` }),
-        providesTags: ['chats']
       }),
       getConfig: build.query<GetConfigApiResponse, GetConfigApiArg>({
         query: () => ({ url: `/api/config` }),
@@ -162,33 +137,6 @@ export type GetCatalogApiResponse = /** status 200 OK */ View
 export type GetCatalogApiArg = void
 export type RemoveCatalogEntryApiResponse = unknown
 export type RemoveCatalogEntryApiArg = {
-  id: string
-}
-export type ListChatsApiResponse = /** status 200 OK */ Chat[]
-export type ListChatsApiArg = void
-export type CreateChatApiResponse = /** status 201 Created */ Chat
-export type CreateChatApiArg = {
-  createChat: CreateChat
-}
-export type DeleteChatApiResponse = unknown
-export type DeleteChatApiArg = {
-  id: string
-}
-export type GetChatApiResponse = /** status 200 OK */ ChatWithMessages
-export type GetChatApiArg = {
-  id: string
-}
-export type UpdateChatApiResponse = /** status 200 OK */ Chat
-export type UpdateChatApiArg = {
-  id: string
-  body: {
-    model?: string | null
-    title?: string | null
-    webSearch?: boolean | null
-  }
-}
-export type ExportChatApiResponse = /** status 200 OK */ string
-export type ExportChatApiArg = {
   id: string
 }
 export type GetConfigApiResponse = /** status 200 OK */ ConfigAll
@@ -306,36 +254,6 @@ export type ErrorBody = {
   current?: any
   error: string
   message: string
-}
-export type Chat = {
-  createdAt: number
-  id: string
-  model: string
-  settings: any
-  title: string
-  titleSource: string
-  updatedAt: number
-  webSearch: boolean
-}
-export type CreateChat = {
-  model: string
-  webSearch?: boolean
-}
-export type Message = {
-  chatId: string
-  content: string
-  createdAt: number
-  error: string
-  id: string
-  model: string
-  reasoning: string
-  role: string
-  stats: any
-  status: string
-}
-export type ChatWithMessages = {
-  chat: Chat
-  messages: Message[]
 }
 export type SectionEntry = {
   effective?: any
@@ -746,12 +664,6 @@ export type VersionBody = {
 export const {
   useGetCatalogQuery,
   useRemoveCatalogEntryMutation,
-  useListChatsQuery,
-  useCreateChatMutation,
-  useDeleteChatMutation,
-  useGetChatQuery,
-  useUpdateChatMutation,
-  useExportChatQuery,
   useGetConfigQuery,
   useGetConfigEngineLlamaserverQuery,
   usePutConfigEngineLlamaserverMutation,

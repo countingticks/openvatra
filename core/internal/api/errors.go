@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
-	"github.com/countingticks/openvatra/core/internal/chat"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/provider"
@@ -63,7 +62,6 @@ var errorTable = []mapped{
 	{provider.ErrUnknownModel, http.StatusNotFound, "model_not_found", "no model with that name in the models folder"},
 	{provider.ErrNoEmbeddingModel, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen"},
 	{store.ErrNotFound, http.StatusNotFound, "chat_not_found", "no chat with that id"},
-	{chat.ErrBadInput, http.StatusBadRequest, "bad_request", ""},
 }
 
 // toError turns any error into the answer the client gets; an error with no mapping is 500 internal.
