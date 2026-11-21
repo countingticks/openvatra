@@ -133,6 +133,9 @@ func TestCompletePlainRequestBody(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := requestKeys(t, up.bodies()[0])
+	if _, ok := m["chat_template_kwargs"]; ok {
+		t.Fatalf("chat_template_kwargs sent without NoThinking: %s", up.bodies()[0])
+	}
 	var keys []string
 	for k := range m {
 		keys = append(keys, k)
@@ -143,6 +146,19 @@ func TestCompletePlainRequestBody(t *testing.T) {
 	}
 	if string(m["model"]) != `"qwen"` || string(m["messages"]) != `[{"role":"user","content":"hi"}]` ||
 		string(m["stream"]) != "true" || string(m["stream_options"]) != `{"include_usage":true}` {
+		t.Fatalf("body = %s", up.bodies()[0])
+	}
+}
+
+func TestCompleteNoThinkingTurnsThinkingOff(t *testing.T) {
+	up := &upstream{handler: func(_ int, w http.ResponseWriter, _ *http.Request) { sse(w, `[DONE]`) }}
+	req := hello()
+	req.NoThinking = true
+	if _, _, err := completeWith(t, up, req); err != nil {
+		t.Fatal(err)
+	}
+	m := requestKeys(t, up.bodies()[0])
+	if string(m["chat_template_kwargs"]) != `{"enable_thinking":false}` {
 		t.Fatalf("body = %s", up.bodies()[0])
 	}
 }

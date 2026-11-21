@@ -79,6 +79,9 @@ func (p *Provider) Complete(ctx context.Context, req provider.Request, emit func
 	if req.MaxOut > 0 {
 		body["max_tokens"] = req.MaxOut
 	}
+	if req.NoThinking {
+		body["chat_template_kwargs"] = map[string]bool{"enable_thinking": false}
+	}
 	if req.Sampling.Temperature != nil {
 		body["temperature"] = *req.Sampling.Temperature
 	}
