@@ -3,7 +3,14 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { promisify } from 'util'
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Locator,
+  type Page
+} from '@playwright/test'
 import { ggufHeader } from './ggufHeader'
 import { appArgs, createUserDataDir, removeUserDataDir, seedCoreModels } from './testProfile'
 
@@ -31,12 +38,17 @@ test.beforeAll(async () => {
 
   userDataDir = await createUserDataDir()
 
+  await launch(() => seedCoreModels(userDataDir, { llamaServerPath: fakeServer, modelsDir }))
+})
+
+/** Starts the app on this test's profile and waits for core; `beforeReady` runs once the window is up. */
+async function launch(beforeReady: () => Promise<void> = async () => {}): Promise<void> {
   app = await electron.launch({
     args: appArgs(userDataDir),
     env: { ...process.env, FAKE_SERVER_REPLY: answer, FAKE_SERVER_TOKEN_DELAY: '100ms' }
   })
   mainWindow = await app.firstWindow()
-  await seedCoreModels(userDataDir, { llamaServerPath: fakeServer, modelsDir })
+  await beforeReady()
   // Core starts detached and can take several seconds on a busy CI runner; wait for it like models.spec does.
   await expect
     .poll(
@@ -47,7 +59,7 @@ test.beforeAll(async () => {
       { timeout: 20_000 }
     )
     .toBe('ready')
-})
+}
 
 test.afterAll(async () => {
   await app.close().catch(() => undefined)
@@ -79,4 +91,25 @@ test('an answer keeps streaming through a hidden window and a reloaded page', as
   const reloaded = mainWindow.getByRole('log', { name: 'Conversation' })
   await expect(reloaded.getByText(answer, { exact: true })).toHaveCount(1, { timeout: 20_000 })
   await expect(reloaded.getByRole('button', { name: 'Copy answer' })).toHaveCount(1)
+})
+
+test('a chat keeps its model-made title across a restart and opens from the sidebar', async () => {
+  // The fake server answers the title call with its reply's first words.
+  const row = (page: Page): Locator =>
+    page.getByRole('list', { name: 'Chats' }).getByRole('button', { name: /^w1 w2/ })
+  await expect(row(mainWindow)).toBeVisible({ timeout: 20_000 })
+  const title = (await row(mainWindow).getAttribute('title')) ?? ''
+  expect(title).not.toBe('Hello')
+
+  await app.close()
+  await launch()
+
+  await mainWindow.getByRole('button', { name: 'New chat' }).click()
+  await expect(mainWindow.getByRole('heading', { level: 1 })).toHaveText('New chat')
+  await row(mainWindow).click()
+
+  const conversation = mainWindow.getByRole('log', { name: 'Conversation' })
+  await expect(conversation.getByText('Hello', { exact: true })).toBeVisible()
+  await expect(conversation.getByText(answer, { exact: true })).toHaveCount(1)
+  await expect(mainWindow.getByRole('heading', { level: 1 })).toHaveText(title)
 })

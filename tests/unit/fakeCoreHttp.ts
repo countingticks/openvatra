@@ -194,6 +194,8 @@ export function createFakeCoreHttp(): FakeCoreHttp {
       }
       if (call.method === 'GET' && /^\/api\/models\/[^/]+\/fit$/.test(path)) return reply(200, fake.fit)
       if (call.method === 'GET' && path === '/api/events') return openStream(signal)
+      // The sidebar always asks for the chat list: no chats unless a test answers it.
+      if (call.method === 'GET' && path === '/api/chats') return reply(200, { seq: 0, chats: [] })
       const section = path.startsWith('/api/config/') ? path.slice('/api/config/'.length) : ''
       const entry = config.get(section)
       if (entry && call.method === 'GET') return reply(200, entry)

@@ -167,4 +167,24 @@ describe('registerRuns', () => {
     await flush()
     expect(chat()).toMatchObject({ seq: 5, chat: { activeRun: null } })
   })
+
+  it('patches a cached getChat with chat.titled, but never an auto title over a user one', async () => {
+    const { store, http, push, flush } = await connect()
+    const body: ChatBody = {
+      seq: 2,
+      chat: { id: 'c1', model: 'tiny', title: 'Hello', titleSource: 'auto', updatedAt: 0, activeRun: null }
+    }
+    http.answer('/api/chats/c1', body)
+    await store.dispatch(coreApi.endpoints.getChat.initiate({ id: 'c1' }))
+    const chat = (): ChatBody | undefined =>
+      coreApi.endpoints.getChat.select({ id: 'c1' })(store.getState()).data
+
+    push(event('chat.titled', 3, { title: 'Trip to Cluj', source: 'user' }, 'chat:c1'))
+    await flush()
+    expect(chat()).toMatchObject({ seq: 3, chat: { title: 'Trip to Cluj', titleSource: 'user' } })
+
+    push(event('chat.titled', 4, { title: 'Cluj trip plans', source: 'auto' }, 'chat:c1'))
+    await flush()
+    expect(chat()).toMatchObject({ chat: { title: 'Trip to Cluj', titleSource: 'user' } })
+  })
 })

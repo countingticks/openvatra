@@ -1,4 +1,5 @@
 import { Settings } from 'lucide-react'
+import { ChatList } from '@app/features/chat'
 import { cn } from '@app/lib/utils'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import { selectActiveTab, selectSidebarOpen, settingsOpened, tabSelected } from '@app/store/uiSlice'
@@ -46,6 +47,11 @@ export function Sidebar(): React.JSX.Element {
           ))}
         </nav>
 
+        {/* The chats scroll under the tabs; the gear below stays at the bottom. */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ChatList />
+        </div>
+
         {/* Settings is a dialog, not a page, so it's a gear at the bottom rather than a tab (design decision). */}
         <button
           type="button"
@@ -55,7 +61,7 @@ export function Sidebar(): React.JSX.Element {
           title="Settings (Ctrl+,)"
           onClick={() => dispatch(settingsOpened())}
           className={cn(
-            'mt-auto grid size-8 place-items-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
+            'mt-1 grid size-8 place-items-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
             focusRing
           )}
         >

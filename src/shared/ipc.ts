@@ -13,6 +13,7 @@ export const ipcChannels = {
   filesLocations: 'files:locations',
   filesOpenFolder: 'files:open-folder',
   filesPick: 'files:pick',
+  filesExportChat: 'files:export-chat',
   windowMinimize: 'window:minimize',
   windowToggleMaximize: 'window:toggle-maximize',
   windowClose: 'window:close',
@@ -77,6 +78,11 @@ export interface FilesApi {
    * false: the user cancelled.
    */
   pick(target: PickTarget): Promise<boolean>
+  /**
+   * Asks core for the chat as Markdown and saves it where the user picks in Windows' Save dialog. The window names
+   * only the chat. true: saved; false: the user cancelled.
+   */
+  exportChat(chatId: string): Promise<boolean>
 }
 
 export interface RuntimeInfo {

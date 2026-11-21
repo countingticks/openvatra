@@ -5,6 +5,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { ipcChannels } from '../shared/ipc'
 import { defaultSettingsFile, type SettingsFile } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
+import { createChatExport } from './core/chatExport'
 import { createConfigClient } from './core/configClient'
 import { createHost, type Host } from './core/host'
 import { registerIpc } from './ipc'
@@ -168,7 +169,8 @@ function start(): void {
       appUrl,
       locations: { settingsFile: settingsPath, logsFolder: logsFolder() },
       config: configClient,
-      core: { state: core.state, restart: core.restart }
+      core: { state: core.state, restart: core.restart },
+      chats: createChatExport(request)
     })
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
