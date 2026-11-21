@@ -6,7 +6,6 @@ import { ipcChannels } from '../shared/ipc'
 import { defaultSettingsFile, type SettingsFile } from '../shared/settings'
 import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { createConfigClient } from './core/configClient'
-import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
 import { createHost, type Host } from './core/host'
 import { registerIpc } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
@@ -154,16 +153,6 @@ function start(): void {
     }
     // Every change, wherever it came from, reaches the window.
     settings.onChange((value) => sendToWindow(ipcChannels.settingsChanged, value))
-    /** On every ready: a v6 user's values go to core once, then leave the file. */
-    async function syncModelSettings(): Promise<void> {
-      const legacy = store.get().legacyModels
-      if (!legacy) return
-      const outcome: ImportOutcome = await importLegacyModels(configClient, legacy, log)
-      if (outcome === 'retry-later') return
-      await store
-        .dropLegacyModels()
-        .catch((error) => log.warn('Could not remove the imported model settings from settings.json', error))
-    }
     core = createHost({
       exePath: coreExePath(),
       args: coreArgs(),
@@ -171,7 +160,6 @@ function start(): void {
       dataDir: join(app.getPath('userData'), 'data'),
       logsDir: logsFolder(),
       onState: (state) => sendToWindow(ipcChannels.coreStateChanged, state),
-      onReady: () => void syncModelSettings(),
       log
     })
     // Before the window, so the UI's first request always finds a handler.

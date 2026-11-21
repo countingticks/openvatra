@@ -1,6 +1,6 @@
 // Every e2e run gets a fresh, empty user-data folder, so tests never read or change the developer's real
 // %APPDATA%\OpenVatra (settings, logs) and always start from a first launch.
-import { mkdtemp, rm } from 'fs/promises'
+import { mkdtemp, readFile, rm } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -17,4 +17,46 @@ export function appArgs(userDataDir: string): string[] {
 export async function removeUserDataDir(userDataDir: string): Promise<void> {
   // Windows can hold a file open for a moment after the app quits; retry instead of failing the run.
   await rm(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+}
+
+/**
+ * Points core at a fake llama-server and / or a models folder: settings.json no longer carries model settings, and the
+ * engine path can only be set with the shell token, so this reads it from the test's own (temporary) core.json and
+ * waits for core to be up. Never use it on a real profile.
+ */
+export async function seedCoreModels(
+  userDataDir: string,
+  seed: { llamaServerPath?: string; modelsDir?: string }
+): Promise<void> {
+  const deadline = Date.now() + 30_000
+  let discovery: { port: number; token: string } | undefined
+  while (!discovery) {
+    try {
+      discovery = JSON.parse(await readFile(join(userDataDir, 'data', 'core.json'), 'utf8')) as {
+        port: number
+        token: string
+      }
+      const alive = await fetch(`http://127.0.0.1:${discovery.port}/api/config/engine.llamaserver`, {
+        headers: { Authorization: `Bearer ${discovery.token}` }
+      })
+      if (!alive.ok) discovery = undefined
+    } catch {
+      discovery = undefined
+    }
+    if (!discovery) {
+      if (Date.now() > deadline) throw new Error('core did not become ready')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  }
+  const { port, token } = discovery
+  const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+  const set = async (section: string, change: Record<string, string>): Promise<void> => {
+    const url = `http://127.0.0.1:${port}/api/config/${section}`
+    const current = (await (await fetch(url, { headers })).json()) as { rev: number; value: object }
+    const body = JSON.stringify({ rev: current.rev, value: { ...current.value, ...change } })
+    const response = await fetch(url, { method: 'PUT', headers, body })
+    if (!response.ok) throw new Error(`${section} was refused: ${await response.text()}`)
+  }
+  if (seed.llamaServerPath) await set('engine.llamaserver', { path: seed.llamaServerPath })
+  if (seed.modelsDir) await set('provider.llamacpp', { modelsDir: seed.modelsDir })
 }
