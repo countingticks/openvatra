@@ -68,12 +68,13 @@ type Upstream interface {
 }
 
 type Request struct {
-	Model    string
-	Messages []Message
-	Tools    []ToolSchema // empty: no tools offered
-	Sampling Sampling
-	MaxOut   int    // 0 = the provider's default
-	CacheKey string // ignored by llamacpp in this step
+	Model      string
+	Messages   []Message
+	Tools      []ToolSchema // empty: no tools offered
+	Sampling   Sampling
+	MaxOut     int    // 0 = the provider's default
+	CacheKey   string // ignored by llamacpp in this step
+	NoThinking bool   // true: ask the model not to think first (compaction, titles)
 }
 
 type Message struct {

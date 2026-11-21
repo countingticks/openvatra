@@ -36,6 +36,15 @@ func Builtin() *Registry {
 			Steps:  1,
 			Title:  true,
 		},
+		"compaction": {
+			Name: "compaction",
+			System: "You summarise a conversation so it can continue without its earlier messages. Write the summary in the " +
+				"conversation's language, under exactly these headings, in this order: Objective, Decisions, Done, In " +
+				"progress, Blockers, Files. Under each, short bullet points with the facts, names, numbers and file paths that " +
+				"matter. Write \"none\" under a heading with nothing to say. Fold the previous summary in; drop nothing from it " +
+				"that still matters. Output only the summary.",
+			Steps: 1,
+		},
 	}}
 }
 

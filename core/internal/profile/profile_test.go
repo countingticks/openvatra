@@ -1,6 +1,7 @@
 package profile
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -18,6 +19,19 @@ func TestBuiltin(t *testing.T) {
 		}
 		if p.Steps != 1 || !p.Title || len(p.Tools) != 0 || p.MinContext != 0 {
 			t.Fatalf("chat profile = %+v", p)
+		}
+	})
+
+	t.Run("the compaction profile asks for the six headings", func(t *testing.T) {
+		p, ok := Builtin().Get("compaction")
+		if !ok {
+			t.Fatal("no compaction profile")
+		}
+		if !strings.Contains(p.System, "Objective, Decisions, Done, In progress, Blockers, Files.") {
+			t.Fatalf("system prompt = %q", p.System)
+		}
+		if p.Steps != 1 || p.Title || len(p.Tools) != 0 {
+			t.Fatalf("compaction profile = %+v", p)
 		}
 	})
 

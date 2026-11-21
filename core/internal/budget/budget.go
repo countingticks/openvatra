@@ -1,5 +1,5 @@
 // Package budget decides what of a conversation goes into the prompt so it fits the model's context. This is the
-// first cut: estimated token counts and dropping the oldest turns; compaction comes with slice 2.
+// first cut, Fit: estimated token counts and dropping the oldest turns. Assemble (assemble.go) replaces it in 066.
 package budget
 
 import (
