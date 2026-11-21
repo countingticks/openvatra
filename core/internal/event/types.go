@@ -158,6 +158,7 @@ type MessageStats struct {
 	Exact           bool    `json:"exact"`
 	TokensPerSecond float64 `json:"tokensPerSecond"`
 	FirstTokenMs    int64   `json:"firstTokenMs"`
+	ReasoningMs     int64   `json:"reasoningMs"`
 	DurationMs      int64   `json:"durationMs"`
 	ContextSize     int     `json:"contextSize"`
 }

@@ -3,5 +3,5 @@
 {"type":"run.queued","stream":"run:run1","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-1"}}
 {"type":"input.received","stream":"run:run1","data":{"chatId":"chat1","requestId":"req-1","text":"hi"}}
 {"type":"run.started","stream":"run:run1","data":{"chatId":"chat1"}}
-{"type":"message.completed","stream":"run:run1","data":{"chatId":"chat1","model":"m1","partial":false,"parts":[{"kind":"reasoning","text":"think"},{"kind":"text","text":"Hello"}],"stats":{"answerTokens":3,"contextSize":8192,"durationMs":0,"exact":true,"firstTokenMs":30,"promptTokens":40,"tokensPerSecond":12.5}}}
+{"type":"message.completed","stream":"run:run1","data":{"chatId":"chat1","model":"m1","partial":false,"parts":[{"kind":"reasoning","text":"think"},{"kind":"text","text":"Hello"}],"stats":{"answerTokens":3,"contextSize":8192,"durationMs":0,"exact":true,"firstTokenMs":30,"promptTokens":40,"reasoningMs":0,"tokensPerSecond":12.5}}}
 {"type":"run.finished","stream":"run:run1","data":{"chatId":"chat1","state":"done"}}

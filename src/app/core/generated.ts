@@ -403,6 +403,7 @@ export type MessageStats = {
   exact: boolean
   firstTokenMs: number
   promptTokens: number
+  reasoningMs: number
   tokensPerSecond: number
 }
 export type TranscriptItem = {

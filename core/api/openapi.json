@@ -1154,6 +1154,9 @@
           "promptTokens": {
             "type": "integer"
           },
+          "reasoningMs": {
+            "type": "integer"
+          },
           "tokensPerSecond": {
             "type": "number"
           }
@@ -1164,6 +1167,7 @@
           "exact",
           "tokensPerSecond",
           "firstTokenMs",
+          "reasoningMs",
           "durationMs",
           "contextSize"
         ],
