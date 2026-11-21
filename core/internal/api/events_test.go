@@ -52,7 +52,13 @@ func publishModels(log event.Log) {
 
 func eventsServer(t *testing.T, log event.Log) *httptest.Server {
 	t.Helper()
-	srv := httptest.NewServer(eventsHandler(log, testKeepalive))
+	return eventsServerWith(t, log, nil)
+}
+
+// eventsServerWith is eventsServer with the answers streaming now coming from partials.
+func eventsServerWith(t *testing.T, log event.Log, partials func(event.Filter) []event.Event) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(eventsHandler(log, partials, testKeepalive))
 	t.Cleanup(srv.Close)
 	return srv
 }
@@ -199,6 +205,47 @@ func TestEventsWithoutQueryStartLiveFromHead(t *testing.T) {
 	expectRetained(t, events)
 	appendConfig(t, log, "system", 1)
 	expectSeqs(t, events, 1, 2)
+}
+
+func TestEventsWritePartialsAfterRetainedValuesAndBeforeLiveEvents(t *testing.T) {
+	log := storeLog(t)
+	appendConfig(t, log, "system", 2)
+	publishModels(log)
+	var asked event.Filter
+	partials := func(f event.Filter) []event.Event {
+		asked = f
+		return []event.Event{event.New("run:r1", event.MessagePartial{Text: "so far", N: 4}, time.Now())}
+	}
+	events := openStream(t, eventsServerWith(t, log, partials), "after=0", false)
+
+	if got := nextEvent(t, events); got != helloFrame(logInfo(t, log).ID, 2, false) {
+		t.Fatalf("hello = %q", got)
+	}
+	expectSeqs(t, events, 0, 2)
+	expectRetained(t, events)
+	id, e := logEvent(t, nextEvent(t, events))
+	if id != "" || e.Seq != 0 || e.Type != "message.partial" || e.Stream != "run:r1" ||
+		string(e.Data) != `{"text":"so far","reasoning":"","n":4}` {
+		t.Fatalf("partial frame: id %q, event %+v", id, e)
+	}
+	if !asked.Match("system") {
+		t.Errorf("partials got filter %+v, want the stream's (everything)", asked)
+	}
+	appendConfig(t, log, "system", 1)
+	expectSeqs(t, events, 2, 3)
+}
+
+func TestEventsWithNilPartialsWriteNone(t *testing.T) {
+	log := storeLog(t)
+	publishModels(log)
+	events := openStream(t, eventsServerWith(t, log, nil), "", false)
+
+	if got := nextEvent(t, events); got != helloFrame(logInfo(t, log).ID, 0, false) {
+		t.Fatalf("hello = %q", got)
+	}
+	expectRetained(t, events)
+	appendConfig(t, log, "system", 1)
+	expectSeqs(t, events, 0, 1)
 }
 
 func TestEventsCatchUpFromAfter(t *testing.T) {

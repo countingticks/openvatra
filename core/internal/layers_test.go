@@ -48,6 +48,7 @@ var layers = map[string]pkg{
 
 	"budget":    {layer: application},
 	"catalog":   {layer: application},
+	"chats":     {layer: application},
 	"downloads": {layer: application},
 	"feed":      {layer: application},
 	"fit":       {layer: application},

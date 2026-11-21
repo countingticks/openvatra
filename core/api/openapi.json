@@ -1,6 +1,26 @@
 {
   "components": {
     "schemas": {
+      "ActiveRun": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "interrupted"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state"
+        ],
+        "type": "object"
+      },
       "BundledEngine": {
         "properties": {
           "tag": {
@@ -13,6 +33,21 @@
         },
         "required": [
           "tag"
+        ],
+        "type": "object"
+      },
+      "ChatBody": {
+        "properties": {
+          "chat": {
+            "$ref": "#/components/schemas/ChatItem"
+          },
+          "seq": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "chat"
         ],
         "type": "object"
       },
@@ -107,6 +142,58 @@
           "type",
           "v",
           "data"
+        ],
+        "type": "object"
+      },
+      "ChatItem": {
+        "properties": {
+          "activeRun": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ActiveRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "description": "Unix ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "model",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "ChatList": {
+        "properties": {
+          "chats": {
+            "items": {
+              "$ref": "#/components/schemas/ChatItem"
+            },
+            "type": "array"
+          },
+          "seq": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "chats"
         ],
         "type": "object"
       },
@@ -1452,6 +1539,26 @@
         ],
         "type": "object"
       },
+      "RunRef": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "seq": {
+            "description": "read the run's events on /api/events from after this seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runId",
+          "chatId",
+          "seq"
+        ],
+        "type": "object"
+      },
       "RunResumed": {
         "properties": {
           "chatId": {
@@ -1494,6 +1601,55 @@
           "type",
           "v",
           "data"
+        ],
+        "type": "object"
+      },
+      "RunSnapshot": {
+        "properties": {
+          "chatId": {
+            "type": "string"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "interrupted",
+              "done",
+              "stopped",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "chatId",
+          "state",
+          "profile",
+          "model",
+          "seq"
         ],
         "type": "object"
       },
@@ -1622,6 +1778,20 @@
         ],
         "type": "object"
       },
+      "Settings": {
+        "properties": {
+          "lastModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lastModel"
+        ],
+        "type": "object"
+      },
       "StartDownload": {
         "properties": {
           "catalogId": {
@@ -1634,6 +1804,30 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "StartRun": {
+        "properties": {
+          "chatId": {
+            "description": "omit to start a new chat",
+            "type": "string"
+          },
+          "model": {
+            "description": "omit for the chat's model, or for a new chat the last one named",
+            "type": "string"
+          },
+          "requestId": {
+            "description": "the client's id for this send; the same id again answers the same run",
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "text"
+        ],
         "type": "object"
       },
       "StateBody": {
@@ -1682,6 +1876,94 @@
         },
         "required": [
           "scope"
+        ],
+        "type": "object"
+      },
+      "Transcript": {
+        "properties": {
+          "activeRun": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptItem"
+            },
+            "type": "array"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/RunSnapshot"
+            },
+            "type": "array"
+          },
+          "seq": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "items",
+          "runs"
+        ],
+        "type": "object"
+      },
+      "TranscriptItem": {
+        "properties": {
+          "failed": {
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "input",
+              "answer",
+              "summary"
+            ],
+            "type": "string"
+          },
+          "partial": {
+            "description": "the answer was cut off by a stop or a failure",
+            "type": "boolean"
+          },
+          "parts": {
+            "description": "answer",
+            "items": {
+              "$ref": "#/components/schemas/MessagePart"
+            },
+            "type": "array"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "integer"
+          },
+          "stats": {
+            "description": "answer",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/MessageStats"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "description": "input and summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "kind",
+          "runId"
         ],
         "type": "object"
       },
@@ -1849,6 +2131,219 @@
         "x-scope": "ui"
       }
     },
+    "/api/chats": {
+      "get": {
+        "operationId": "listChats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_unavailable."
+          }
+        },
+        "summary": "List the chats, most recently updated first",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}": {
+      "delete": {
+        "operationId": "deleteChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_not_found, chat_unavailable."
+          }
+        },
+        "summary": "Delete a chat, stopping its answer first",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      },
+      "get": {
+        "operationId": "getChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_not_found, chat_unavailable."
+          }
+        },
+        "summary": "One chat",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      },
+      "patch": {
+        "operationId": "updateChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "model": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "title": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, model_not_found, chat_unavailable."
+          }
+        },
+        "summary": "Rename a chat or change its model",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}/messages": {
+      "get": {
+        "operationId": "getTranscript",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Transcript"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: chat_not_found, chat_unavailable."
+          }
+        },
+        "summary": "A chat's messages and runs, oldest first",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
     "/api/config": {
       "get": {
         "operationId": "getConfig",
@@ -1875,6 +2370,114 @@
           }
         },
         "summary": "Every config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/config/chat": {
+      "get": {
+        "operationId": "getConfigChat",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/Settings"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: internal."
+          }
+        },
+        "summary": "The chat config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      },
+      "put": {
+        "operationId": "putConfigChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rev": {
+                    "type": "integer"
+                  },
+                  "value": {
+                    "$ref": "#/components/schemas/Settings"
+                  }
+                },
+                "required": [
+                  "rev",
+                  "value"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/Settings"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, shell_only_field, internal."
+          }
+        },
+        "summary": "Replace the chat config section if rev is still current",
         "tags": [
           "config"
         ],
@@ -2661,6 +3264,160 @@
         "summary": "Core's OpenAPI document",
         "tags": [
           "openapi"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/runs": {
+      "post": {
+        "operationId": "startRun",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartRun"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunRef"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, model_not_found, no_chat_model, chat_unavailable."
+          }
+        },
+        "summary": "Send a message: to a new chat, or to a chat by id",
+        "tags": [
+          "runs"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/runs/{id}": {
+      "get": {
+        "operationId": "getRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSnapshot"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: run_not_found, chat_unavailable."
+          }
+        },
+        "summary": "One run's state",
+        "tags": [
+          "runs"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/runs/{id}/resume": {
+      "post": {
+        "operationId": "resumeRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: run_not_found, run_not_interrupted, chat_unavailable."
+          }
+        },
+        "summary": "Continue a run that a restart cut off",
+        "tags": [
+          "runs"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/runs/{id}/stop": {
+      "post": {
+        "operationId": "stopRun",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: run_not_found, chat_unavailable."
+          }
+        },
+        "summary": "Stop a run, keeping the answer so far",
+        "tags": [
+          "runs"
         ],
         "x-scope": "ui"
       }

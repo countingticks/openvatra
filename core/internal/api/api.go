@@ -9,11 +9,14 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/countingticks/openvatra/core/internal/chats"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/run"
+	"github.com/countingticks/openvatra/core/internal/sched"
 )
 
 // Deps is everything the routes reach.
@@ -38,7 +41,11 @@ type Deps struct {
 	Downloads Downloads
 	Engines   func() downloads.EnginesBody // the llama.cpp builds on disk; nil = an unknown bundled build only
 	Log       event.Log
-	Logger    *slog.Logger // nil = discard
+	// Chats and Runs are nil without a writable database: the run and chat routes then answer 503.
+	Chats  *chats.Service
+	Runs   *run.Engine
+	Sched  sched.Scheduler // the /v1 chat route takes a lease from it; nil = no lease
+	Logger *slog.Logger    // nil = discard
 }
 
 // APILevel is the contract's major version; it changes only when a change breaks existing clients.
@@ -74,7 +81,7 @@ func routes(d Deps, t *tokens) []Route {
 		JSON(http.MethodGet, "/api/version", UI, "getVersion", "Core's version and the contract's version",
 			func(context.Context, struct{}) (VersionBody, error) { return VersionBody{d.Version, APILevel}, nil }),
 		Raw(http.MethodGet, "/api/events", UI, "streamEvents", "Stream the event log as Server-Sent Events",
-			eventsHandler(d.Log, keepaliveInterval)).
+			eventsHandler(d.Log, partialsOf(d.Runs), keepaliveInterval)).
 			WithDoc(reflect.TypeFor[EventsQuery](), nil, "").
 			WithStream(StreamDoc{Schema: eventStreamSchema}).
 			WithErrors("invalid_after", "invalid_filter", "no_streaming", "event_log_failed"),
@@ -87,16 +94,17 @@ func routes(d Deps, t *tokens) []Route {
 	routes = append(routes, downloadRoutes(d.Downloads)...)
 	routes = append(routes, engineRoutes(d.Engines)...)
 	routes = append(routes, configRoutes(d.Config)...)
+	routes = append(routes, runRoutes(d.Chats, d.Runs)...)
 	return append(routes,
 		Raw(http.MethodGet, "/v1/models", UI, "openaiModels", "List the models on disk, OpenAI style",
 			modelList(d.ListModels)).
 			WithErrors("models_unreadable"),
 		Raw(http.MethodPost, "/v1/chat/completions", UI, "openaiChatCompletions", "Chat with a model, OpenAI style",
-			proxy(d.Upstream, provider.KindChat)).
+			proxy(d.Upstream, provider.KindChat, d.Sched)).
 			WithErrors("body_unreadable", "bad_request", "model_not_found", "model_load_failed", "bad_backend",
 				"backend_failed"),
 		Raw(http.MethodPost, "/v1/embeddings", UI, "openaiEmbeddings", "Embed text with the embedding model, OpenAI style",
-			proxy(d.Upstream, provider.KindEmbedding)).
+			proxy(d.Upstream, provider.KindEmbedding, d.Sched)).
 			WithErrors("body_unreadable", "no_embedding_model", "model_load_failed", "bad_backend", "backend_failed"),
 		JSON(http.MethodPost, "/api/tokens", Shell, "issueToken", "Issue a token for the app's window",
 			func(_ context.Context, in TokenRequest) (TokenBody, error) {
@@ -111,6 +119,14 @@ func routes(d Deps, t *tokens) []Route {
 		Raw(http.MethodPost, "/shutdown", Shell, "shutdown", "Stop core", shutdownHandler(d.Shutdown)).
 			WithStatus(http.StatusAccepted),
 	)
+}
+
+// partialsOf is the engine's Partials, or nil without an engine.
+func partialsOf(runs *run.Engine) func(event.Filter) []event.Event {
+	if runs == nil {
+		return nil
+	}
+	return runs.Partials
 }
 
 // NewHandler serves every route behind the gate.
