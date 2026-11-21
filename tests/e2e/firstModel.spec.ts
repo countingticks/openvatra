@@ -8,7 +8,7 @@ import { join } from 'path'
 import { promisify } from 'util'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { ggufHeader } from './ggufHeader'
-import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
+import { appArgs, createUserDataDir, removeUserDataDir, seedCoreModels } from './testProfile'
 
 const run = promisify(execFile)
 
@@ -71,18 +71,13 @@ test.beforeAll(async () => {
   await mkdir(modelsDir)
 
   userDataDir = await createUserDataDir()
-  // A v6 file, imported into core on its first ready.
-  const settings = {
-    schemaVersion: 6,
-    models: { llamaServerPath: fakeServer, modelsDir }
-  }
-  await writeFile(join(userDataDir, 'settings.json'), JSON.stringify(settings))
 
   app = await electron.launch({
     args: appArgs(userDataDir),
     env: { ...process.env, OPENVATRA_E2E: '1', OPENVATRA_TEST_CATALOG: catalogFile }
   })
   mainWindow = await app.firstWindow()
+  await seedCoreModels(userDataDir, { llamaServerPath: fakeServer, modelsDir })
 })
 
 test.afterAll(async () => {

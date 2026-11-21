@@ -4,7 +4,7 @@ import { join } from 'path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import type { Api } from '../../src/shared/ipc'
 import { ggufHeader } from './ggufHeader'
-import { appArgs, createUserDataDir, removeUserDataDir } from './testProfile'
+import { appArgs, createUserDataDir, removeUserDataDir, seedCoreModels } from './testProfile'
 
 // This callback runs inside the app's page, where the preload put the API on `window`.
 type WithApi = typeof globalThis & { api: Api }
@@ -22,14 +22,11 @@ test("the unload timer and a model's arguments survive a restart and are not in 
   await mkdir(modelsDir)
   await writeFile(join(modelsDir, 'tiny.gguf'), ggufHeader('llama'))
   const userDataDir = await createUserDataDir()
-  // A v6 file, imported into core on its first ready; nothing loads, so no fake server is needed.
-  await writeFile(
-    join(userDataDir, 'settings.json'),
-    JSON.stringify({ schemaVersion: 6, models: { modelsDir } })
-  )
   try {
     const first = await electron.launch({ args: appArgs(userDataDir) })
     const firstWindow = await first.firstWindow()
+    // Nothing loads, so no fake server is needed.
+    await seedCoreModels(userDataDir, { modelsDir })
     const dialog = await openModels(firstWindow)
     // Core may still be starting, so the radio is enabled only once it answers.
     const hour = dialog.getByRole('radio', { name: '1 hour' })
@@ -68,7 +65,6 @@ test("the unload timer and a model's arguments survive a restart and are not in 
       unknown
     >
     expect(file).not.toHaveProperty('models')
-    expect(file).not.toHaveProperty('legacyModels')
 
     const second = await electron.launch({ args: appArgs(userDataDir) })
     try {

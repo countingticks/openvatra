@@ -2,11 +2,7 @@
 import { describe, expect, it, type Mock, vi } from 'vitest'
 import type { saveSettings } from '../../../src/main/settings'
 import { createSettingsStore } from '../../../src/main/settingsStore'
-import {
-  defaultSettingsFile as defaultSettings,
-  legacyModelsSchema,
-  type SettingsFile
-} from '../../../src/shared/settings'
+import { defaultSettingsFile as defaultSettings, type SettingsFile } from '../../../src/shared/settings'
 
 const filePath = 'D:/data/settings.json'
 
@@ -49,18 +45,6 @@ describe('createSettingsStore', () => {
     await store.update({ theme: undefined, lastRoute: 'code' })
 
     expect(store.get()).toEqual({ ...defaultSettings, theme: 'dark', lastRoute: 'code' })
-  })
-
-  it('dropLegacyModels saves the file without it', async () => {
-    const legacyModels = { ...legacyModelsSchema.parse({}), modelsDir: 'D:/models' }
-    const save = vi.fn<Save>(async () => undefined)
-    const store = createSettingsStore(filePath, { ...defaultSettings, legacyModels }, save)
-
-    await store.dropLegacyModels()
-
-    expect(store.get()).toEqual(defaultSettings)
-    expect(store.get()).not.toHaveProperty('legacyModels')
-    expect(save).toHaveBeenCalledWith(filePath, defaultSettings)
   })
 
   it('saves one change at a time, in the order they were made', async () => {

@@ -83,7 +83,7 @@ describe('saveSettings', () => {
   })
 
   it('writes a file that validates as v7', async () => {
-    await saveSettings(filePath, { ...saved, legacyModels: undefined })
+    await saveSettings(filePath, saved)
 
     const written: unknown = JSON.parse(await readFile(filePath, 'utf8'))
     expect(settingsFileSchema.parse(written)).toEqual(saved)
@@ -145,8 +145,6 @@ describe('migrate', () => {
 
       expect(outcome).toEqual({ kind: 'loaded' })
       expect(settings).toMatchObject({ schemaVersion: 8, theme: 'dark', closeAction: 'quit' })
-      // No models in the file, so nothing for core to import: core's defaults apply.
-      expect(settings).not.toHaveProperty('legacyModels')
       expect(settings).toMatchObject({ showAdvancedModels: false, cudaOfferDismissed: false })
     })
 
@@ -165,39 +163,10 @@ describe('migrate', () => {
       models: { modelsDir: 'D:/models', idleUnloadMinutes: 60, options }
     })
 
-    it('turns the number fields and the argument list into one line per model', () => {
+    it('passes a v3 file through, and 6 → 7 drops its models', () => {
       expect(
-        migrate(
-          v3({
-            qwen: { contextSize: 131072, gpuLayers: 0, extraArgs: ['--alias', 'my qwen'] },
-            gemma: { extraArgs: ['--jinja'] },
-            plain: {}
-          })
-        )
-      ).toEqual({
-        schemaVersion: 8,
-        theme: 'dark',
-        legacyModels: {
-          modelsDir: 'D:/models',
-          idleUnloadMinutes: 60,
-          options: {
-            qwen: { args: '-c 131072 -ngl 0 --alias "my qwen"' },
-            gemma: { args: '--jinja' }
-          }
-        }
-      })
-    })
-
-    it("drops a model's arguments that name a flag core sets, instead of setting the file aside", async () => {
-      await writeFile(
-        filePath,
-        JSON.stringify(v3({ qwen: { contextSize: 8192, extraArgs: ['--port', '1'] } }))
-      )
-
-      const { settings, outcome } = await loadSettings(filePath)
-
-      expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings.legacyModels).toMatchObject({ modelsDir: 'D:/models', options: {} })
+        migrate(v3({ qwen: { contextSize: 131072, gpuLayers: 0, extraArgs: ['--alias', 'my qwen'] } }))
+      ).toEqual({ schemaVersion: 8, theme: 'dark' })
     })
 
     it('leaves a file without models alone', () => {
@@ -206,48 +175,6 @@ describe('migrate', () => {
   })
 
   describe('4 → 5: simpler model settings', () => {
-    const v4 = (models: unknown): Record<string, unknown> => ({ schemaVersion: 4, theme: 'dark', models })
-
-    it('drops the shared arguments, the per-model unload time and projector switch, and empty entries', () => {
-      expect(
-        migrate(
-          v4({
-            modelsDir: 'D:/models',
-            embeddingModel: 'bge',
-            sharedArgs: '-fa on',
-            options: {
-              qwen: { args: '-c 4096', idleUnloadMinutes: 60, mmproj: false },
-              gemma: { idleUnloadMinutes: null },
-              plain: { args: '' }
-            }
-          })
-        )
-      ).toEqual({
-        schemaVersion: 8,
-        theme: 'dark',
-        legacyModels: {
-          modelsDir: 'D:/models',
-          embeddingModel: 'bge',
-          options: { qwen: { args: '-c 4096' } }
-        }
-      })
-    })
-
-    it('loads an old file, and says in the outcome that shared arguments were dropped', async () => {
-      await writeFile(filePath, JSON.stringify(v4({ sharedArgs: '-fa on', options: {} })))
-
-      const { settings, outcome } = await loadSettings(filePath)
-
-      expect(outcome).toEqual({ kind: 'loaded', droppedSharedArgs: true })
-      expect(settings.legacyModels).not.toHaveProperty('sharedArgs')
-    })
-
-    it('does not mention shared arguments when there were none', async () => {
-      await writeFile(filePath, JSON.stringify(v4({ sharedArgs: '  ' })))
-
-      expect((await loadSettings(filePath)).outcome).toEqual({ kind: 'loaded' })
-    })
-
     it('leaves a file without models alone', () => {
       expect(migrate({ schemaVersion: 4, theme: 'dark' })).toEqual({ schemaVersion: 8, theme: 'dark' })
     })
@@ -286,7 +213,7 @@ describe('migrate', () => {
   })
 
   describe('6 → 7: model settings moved to core', () => {
-    it('6 → 7 moves the flags to the top level and the rest into legacyModels', () => {
+    it('6 → 7 moves the two flags to the top level and drops the rest', () => {
       expect(
         migrate({
           schemaVersion: 6,
@@ -304,35 +231,64 @@ describe('migrate', () => {
         schemaVersion: 8,
         theme: 'dark',
         showAdvancedModels: true,
-        cudaOfferDismissed: true,
-        legacyModels: {
-          modelsDir: 'D:/models',
-          idleUnloadMinutes: 30,
-          options: { qwen: { args: '-c 8192' } },
-          engine: 'cuda'
-        }
+        cudaOfferDismissed: true
       })
     })
 
-    it('a v6 file without models gets no legacyModels', () => {
+    it('a v6 file without models loads unchanged but for the version', () => {
       expect(migrate({ schemaVersion: 6, theme: 'dark' })).toEqual({ schemaVersion: 8, theme: 'dark' })
     })
 
-    it('fills the keys a v6 file left out with the v6 defaults', async () => {
+    it('loads a v6 file with model settings and says they were dropped', async () => {
       await writeFile(filePath, JSON.stringify({ schemaVersion: 6, models: { modelsDir: 'D:/models' } }))
 
       const { settings, outcome } = await loadSettings(filePath)
 
-      expect(outcome).toEqual({ kind: 'loaded' })
-      expect(settings.legacyModels).toEqual({
-        llamaServerPath: null,
-        modelsDir: 'D:/models',
-        embeddingModel: null,
-        idleUnloadMinutes: 15,
-        options: {},
-        engine: 'bundled'
-      })
+      expect(outcome).toEqual({ kind: 'loaded', droppedModels: true })
       expect(settings).not.toHaveProperty('models')
+      expect(settings).not.toHaveProperty('legacyModels')
+    })
+
+    it('loads a v6 file whose model settings v6 would reject instead of setting it aside', async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({
+          schemaVersion: 6,
+          theme: 'dark',
+          models: { engine: 'rocm', options: { m: { args: '--a "b' } } }
+        })
+      )
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded', droppedModels: true })
+      expect(settings).toMatchObject({ theme: 'dark' })
+      expect(await readdir(dir)).toEqual(['settings.json'])
+    })
+
+    it('a v6 file with only the two view flags in models says nothing was dropped', async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({ schemaVersion: 6, models: { showAdvanced: true, cudaOfferDismissed: true } })
+      )
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded' })
+      expect(settings).toMatchObject({ showAdvancedModels: true, cudaOfferDismissed: true })
+    })
+
+    it('a v8 file that still has legacyModels loads without it and says it was dropped', async () => {
+      await writeFile(
+        filePath,
+        JSON.stringify({ schemaVersion: 8, theme: 'dark', legacyModels: { modelsDir: 'D:/models' } })
+      )
+
+      const { settings, outcome } = await loadSettings(filePath)
+
+      expect(outcome).toEqual({ kind: 'loaded', droppedModels: true })
+      expect(settings).toMatchObject({ theme: 'dark' })
+      expect(settings).not.toHaveProperty('legacyModels')
     })
 
     it('a v1 file migrates to 7', async () => {
@@ -369,6 +325,16 @@ describe('logLoadOutcome', () => {
     expect(logger.info).toHaveBeenCalledTimes(2)
     expect(logger.warn).not.toHaveBeenCalled()
     expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('logs the dropped model settings once, as info', () => {
+    const logger = fakeLogger()
+    logLoadOutcome(logger, path, { kind: 'loaded', droppedModels: true })
+    expect(logger.info).toHaveBeenCalledTimes(2)
+    expect(logger.info).toHaveBeenCalledWith(
+      'Dropped the model settings left from settings v6 or older (core owns them since v7)'
+    )
+    expect(logger.warn).not.toHaveBeenCalled()
   })
 
   it('warns where the bad file was kept after a recovery', () => {

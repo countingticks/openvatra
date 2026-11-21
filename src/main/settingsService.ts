@@ -1,11 +1,11 @@
-// The window's Settings: settings.json (the store) without the v6 model keys still waiting for the import. Model
-// settings are core's; the window reads and writes them through core itself.
+// The window's Settings: settings.json (the store). Model settings are core's; the window reads and writes them
+// through core itself.
 // No Electron imports, so it's unit-testable.
 import { type Settings, settingsPatchSchema, settingsSchema } from '../shared/settings'
 import type { FilePatch, SettingsStore } from './settingsStore'
 
 export interface SettingsService {
-  /** The file without legacyModels. */
+  /** The file's settings, validated. */
   get(): Settings
   /** `patch` is untrusted: anything but a valid SettingsPatch rejects with the ZodError. */
   update(patch: unknown): Promise<Settings>
@@ -22,7 +22,6 @@ export function createSettingsService(store: SettingsStore): SettingsService {
   const listeners = new Set<(settings: Settings) => void>()
 
   function get(): Settings {
-    // Parsing strips the keys the schema doesn't have, so legacyModels never reaches the window.
     return settingsSchema.parse(store.get())
   }
 

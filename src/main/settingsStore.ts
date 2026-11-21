@@ -28,8 +28,6 @@ export interface SettingsStore {
   setWindowBounds(bounds: unknown): Promise<SettingsFile>
   /** Main process only: the one-time close-to-tray notice has been shown. */
   markCloseToTrayNoticeShown(): Promise<SettingsFile>
-  /** After the import's final outcome. */
-  dropLegacyModels(): Promise<SettingsFile>
   /** Resolves once every save asked for so far has finished, so quitting doesn't cut one off. */
   whenIdle(): Promise<void>
   /**
@@ -76,21 +74,12 @@ export function createSettingsStore(
     return enqueue((settings) => ({ ...settings, window: windowBoundsSchema.parse(bounds) }))
   }
 
-  function dropLegacyModels(): Promise<SettingsFile> {
-    return enqueue((settings) => {
-      const next = { ...settings }
-      delete next.legacyModels
-      return next
-    })
-  }
-
   // Copies, so callers can't change the store's state behind its back.
   return {
     get: () => structuredClone(current),
     update: (patch) => enqueue((settings) => ({ ...settings, ...defined(patch) })),
     setWindowBounds,
     markCloseToTrayNoticeShown: () => enqueue((settings) => ({ ...settings, closeToTrayNoticeShown: true })),
-    dropLegacyModels,
     whenIdle: () => queue.then(() => undefined),
     onChange: (listener) => {
       listeners.add(listener)
