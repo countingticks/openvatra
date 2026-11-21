@@ -128,7 +128,7 @@ type Upgraded struct {
 
 // UpgradeArgs takes the flags that became core's own (-c, -ngl, --cpu-moe, --n-cpu-moe, --fit, -lv and their aliases) out
 // of an argument text stored before they were reserved, turning each into the context or placement field it means.
-// It is the Go twin of upgradeArgs in src/shared/args.ts; both read testdata/upgrade.json. Text without such a flag
+// Its test reads testdata/upgrade.json. Text without such a flag
 // comes back as it was. The error is Words' only.
 func UpgradeArgs(text string) (Upgraded, error) {
 	words, err := Words(text)

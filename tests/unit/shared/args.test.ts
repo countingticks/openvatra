@@ -1,13 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import {
-  joinArgs,
-  legacyReservedFlags,
-  maxArgsLength,
-  splitArgs,
-  upgradeArgs
-} from '../../../src/shared/args'
+import { joinArgs, maxArgsLength, splitArgs } from '../../../src/shared/args'
 
 describe('splitArgs', () => {
   it.each([
@@ -41,7 +35,8 @@ describe('splitArgs', () => {
   )
 
   it('checks against the list it is given', () => {
-    expect(splitArgs('-c 8192', legacyReservedFlags)).toEqual({ ok: true, args: ['-c', '8192'] })
+    expect(splitArgs('-c 8192', ['--x'])).toEqual({ ok: true, args: ['-c', '8192'] })
+    expect(splitArgs('--x 1', ['--x']).ok).toBe(false)
   })
 
   it('refuses text that is too long', () => {
@@ -71,26 +66,5 @@ describe('shared fixture with core', () => {
     expect(splitArgs(c.text)).toEqual(
       c.error === undefined ? { ok: true, args: c.args } : { ok: false, error: c.error }
     )
-  })
-})
-
-describe('upgradeArgs, shared fixture with core', () => {
-  type Case = {
-    name: string
-    text: string
-    args: string
-    context?: number
-    placement?: 'gpu' | 'experts' | 'layers'
-    dropped: string[]
-  }
-  const path = new URL('../../../core/internal/config/testdata/upgrade.json', import.meta.url)
-  const cases = JSON.parse(readFileSync(path, 'utf-8')) as Case[]
-
-  it.each(cases.map(({ name, ...c }) => [name, c] as const))('%s', (_name, { text, ...want }) => {
-    expect(upgradeArgs(text)).toEqual(want)
-  })
-
-  it('returns text that does not split as it was', () => {
-    expect(upgradeArgs('-c "8192')).toEqual({ args: '-c "8192', dropped: [] })
   })
 })
