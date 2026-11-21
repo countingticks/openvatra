@@ -676,6 +676,35 @@ func TestBudget(t *testing.T) {
 	})
 }
 
+func TestContextUse(t *testing.T) {
+	t.Run("after an exact answer, used is its prompt tokens plus the answer's estimate; nothing is counted", func(t *testing.T) {
+		usage := provider.Usage{PromptTokens: 40, AnswerTokens: 3, Exact: true}
+		f := newFixture(t, providertest.Turn{Text: []string{"Hello there"}, Usage: usage})
+		ref, _ := f.say("", "hi")
+		calls := f.counter.calls()
+		used, size, err := f.eng.ContextUse(bg, ref.ChatID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := 40 + budget.EstimateTokens("Hello there") + perMessageTokens; used != want || size != contextSize {
+			t.Fatalf("used %d, size %d; want %d, %d", used, size, want, contextSize)
+		}
+		if f.counter.calls() != calls {
+			t.Fatal("ContextUse called the counter")
+		}
+	})
+
+	t.Run("a model no longer installed gives size 0", func(t *testing.T) {
+		f := newFixture(t, answer("a"))
+		ref, _ := f.say("", "hi")
+		f.modelErrs["m1"] = provider.ErrUnknownModel
+		used, size, err := f.eng.ContextUse(bg, ref.ChatID)
+		if err != nil || size != 0 || used == 0 {
+			t.Fatalf("used %d, size %d, err %v", used, size, err)
+		}
+	})
+}
+
 func TestPrompt(t *testing.T) {
 	t.Run("the prompt leaves out reasoning, failed answers and the inputs queued behind the one being answered", func(t *testing.T) {
 		f := newFixture(t,

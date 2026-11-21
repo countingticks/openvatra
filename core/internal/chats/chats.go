@@ -195,6 +195,11 @@ func (s *Service) Transcript(ctx context.Context, id string) ([]store.MessageRow
 	return s.c.Store.Transcript(ctx, id)
 }
 
+// Context is ContextUse for a chat; store.ErrNotFound for an unknown chat.
+func (s *Service) Context(ctx context.Context, id string) (used, size int, err error) {
+	return s.c.Engine.ContextUse(ctx, id)
+}
+
 // Run is one run, or run.ErrRunNotFound.
 func (s *Service) Run(ctx context.Context, id string) (store.RunRow, int64, error) {
 	row, seq, err := s.c.Store.Run(ctx, id)

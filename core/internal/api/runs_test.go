@@ -228,6 +228,9 @@ func TestTranscriptIsInputThenAnswerWithStatsAndTheRun(t *testing.T) {
 	if len(tr.Runs) != 1 || tr.Runs[0].ID != ref.RunID || tr.Runs[0].State != "done" || tr.ActiveRun != nil {
 		t.Errorf("runs = %+v, active %+v; want one done run and none active", tr.Runs, tr.ActiveRun)
 	}
+	if tr.Context.Size != 8192 || tr.Context.Used <= 0 {
+		t.Errorf("context = %+v, want size 8192 and some used", tr.Context)
+	}
 }
 
 func TestStopEndsStoppedAndResumeOfADoneRunIsNotInterrupted(t *testing.T) {

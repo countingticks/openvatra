@@ -387,6 +387,11 @@ export type RunSnapshot = {
   seq: number
   state: 'queued' | 'running' | 'interrupted' | 'done' | 'stopped' | 'failed'
 }
+export type ContextUse = {
+  /** 0 when the chat's model is not installed */
+  size: number
+  used: number
+}
 export type MessagePart = {
   kind: 'text' | 'reasoning'
   text: string
@@ -416,6 +421,7 @@ export type TranscriptItem = {
 }
 export type Transcript = {
   activeRun?: RunSnapshot | null
+  context: ContextUse
   items: TranscriptItem[]
   runs: RunSnapshot[]
   seq: number

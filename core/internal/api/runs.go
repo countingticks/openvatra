@@ -77,11 +77,17 @@ type TranscriptItem struct {
 	Failed  bool                `json:"failed,omitempty"`
 }
 
+type ContextUse struct {
+	Used int `json:"used"`
+	Size int `json:"size" doc:"0 when the chat's model is not installed"`
+}
+
 type Transcript struct {
 	Seq       int64            `json:"seq"`
 	Items     []TranscriptItem `json:"items"`
 	Runs      []RunSnapshot    `json:"runs"`
 	ActiveRun *RunSnapshot     `json:"activeRun,omitempty"`
+	Context   ContextUse       `json:"context"`
 }
 
 type UpdateChat struct {
@@ -172,7 +178,14 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 				if err != nil {
 					return Transcript{}, err
 				}
-				return transcript(msgs, runs, seq)
+				out, err := transcript(msgs, runs, seq)
+				if err != nil {
+					return Transcript{}, err
+				}
+				if out.Context.Used, out.Context.Size, err = svc.Context(ctx, in.ID); err != nil {
+					return Transcript{}, err
+				}
+				return out, nil
 			}).
 			WithErrors("chat_not_found", "chat_unavailable"),
 		JSON(http.MethodPatch, "/api/chats/{id}", UI, "updateChat", "Rename a chat or change its model",

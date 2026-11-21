@@ -295,6 +295,38 @@ func (e *Engine) Partials(f event.Filter) []event.Event {
 	return out
 }
 
+// ContextUse is how many tokens the chat's next prompt is expected to take, and its model's context size.
+//
+// Every input is counted, queued ones included, and the fixed part is estimated: counting it would load the model.
+// A model no longer installed gives size 0.
+func (e *Engine) ContextUse(ctx context.Context, chatID string) (used, size int, err error) {
+	chat, _, err := e.c.Views.Chat(ctx, chatID)
+	if err != nil {
+		return 0, 0, err
+	}
+	p, ok := e.c.Profiles.Get(chat.Profile)
+	if !ok {
+		p, _ = e.c.Profiles.Get(defaultProfile)
+	}
+	window := defaultContextSize
+	model, err := e.c.Model(ctx, chat.Model)
+	switch {
+	case errors.Is(err, provider.ErrUnknownModel):
+	case err != nil:
+		return 0, 0, err
+	default:
+		if model.Context != 0 {
+			window = model.Context
+		}
+		size = window
+	}
+	in, err := e.input(ctx, State{ChatID: chatID, Model: chat.Model}, p.SystemPrompt(e.now()))
+	if err != nil {
+		return 0, 0, err
+	}
+	return budget.Assemble(in, budget.NewWindow(window)).Tokens, size, nil
+}
+
 // Close cancels every worker's step without writing events and waits for the workers to exit; their runs stay
 // open for the next core's Recover.
 func (e *Engine) Close() {
