@@ -8,7 +8,7 @@ import { applyStartWithWindows, wasStartedAtLogin } from './autostart'
 import { createConfigClient } from './core/configClient'
 import { importLegacyModels, type ImportOutcome } from './core/legacyImport'
 import { createHost, type Host } from './core/host'
-import { registerIpcHandlers } from './ipc'
+import { registerIpc } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
@@ -175,16 +175,13 @@ function start(): void {
       log
     })
     // Before the window, so the UI's first request always finds a handler.
-    registerIpcHandlers(
+    registerIpc({
       settings,
       appUrl,
-      { settingsFile: settingsPath, logsFolder: logsFolder() },
-      configClient,
-      {
-        state: core.state,
-        restart: core.restart
-      }
-    )
+      locations: { settingsFile: settingsPath, logsFolder: logsFolder() },
+      config: configClient,
+      core: { state: core.state, restart: core.restart }
+    })
 
     // At startup too, so the Run entry points at this install even if the app moved since it was written.
     applyStartWithWindows(store.get().startWithWindows)
