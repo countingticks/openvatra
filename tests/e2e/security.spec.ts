@@ -116,7 +116,8 @@ test('window.api offers exactly the reviewed functions, nothing more', async () 
     settings: ['get', 'onChange', 'update'],
     settingsFrozen: true,
     // Added in T25 (approved 2026-11-02): read-only locations, and opening one of two named folders. (T56's bundledLlama/useBundledLlama went in 040: core answers them.)
-    files: ['locations', 'openFolder', 'pick'],
+    // 071 (decision 24, approved 2026-11-21) adds exportChat: the window names a chat id, main picks the path.
+    files: ['exportChat', 'locations', 'openFolder', 'pick'],
     filesFrozen: true,
     // Added in T27 (approved 2026-11-02): the window buttons, acting only on the sender's own window.
     // T28 adds edit: one of six named Edit commands, checked against an allow-list in main.
