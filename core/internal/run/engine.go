@@ -443,24 +443,51 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	in.FixedTokens = w.fixedTokens
 	win := budget.NewWindow(contextSize)
 
-	plan := budget.Assemble(in, win)
-	switch plan.Verdict {
-	case budget.Refuse:
-		return st, stepOutcome{end: true, err: plan.Err}
-	case budget.Prune:
-		e.log.Error("unexpected prune", "run", st.ID, "chat", st.ChatID)
-		return st, stepOutcome{end: true, err: errUnexpectedPrune}
-	case budget.Compact:
-		// Compaction comes in the next change; until then the whole conversation is sent.
-		open := win
-		open.Trigger = math.MaxInt
-		plan = budget.Assemble(in, open)
-	}
+	// Plan, compact when the plan says so, and send. After the provider says the prompt is too long, plan once more
+	// as if over the trigger: that compacts if anything older is left, and otherwise the run fails.
+	var (
+		plan       budget.Plan
+		res        provider.Result
+		started    time.Time
+		overflowed bool // the provider refused this step's prompt once
+		compacted  bool // compacted since the last plan that was sent
+	)
+	for {
+		plan = budget.Assemble(in, win)
+		switch plan.Verdict {
+		case budget.Refuse:
+			return st, stepOutcome{end: true, err: plan.Err}
+		case budget.Prune:
+			e.log.Error("unexpected prune", "run", st.ID, "chat", st.ChatID)
+			return st, stepOutcome{end: true, err: errUnexpectedPrune}
+		case budget.Compact:
+			if compacted { // Assemble keeps the compacted part whole, so this is a bug, not a long chat
+				return st, stepOutcome{end: true, err: errContextExceeded}
+			}
+			if in, err = e.compact(w, lease, st, in, plan, win); err != nil {
+				if w.ctx.Err() != nil {
+					return st, stepOutcome{end: true}
+				}
+				e.log.Warn("run compaction failed", "run", st.ID, "chat", st.ChatID, "err", err)
+				return st, stepOutcome{end: true, err: errContextExceeded}
+			}
+			compacted = true
+			continue
+		}
+		if overflowed && !compacted { // nothing older left to summarise
+			return st, stepOutcome{end: true, err: errContextExceeded}
+		}
 
-	started := time.Now()
-	res, err := e.c.Chat.Complete(lease.Context(), plan.Request, w.live.add(e.c.Log))
-	if errors.Is(err, provider.ErrContextExceeded) && !w.live.hasText() {
-		err = errContextExceeded
+		started = time.Now()
+		res, err = e.c.Chat.Complete(lease.Context(), plan.Request, w.live.add(e.c.Log))
+		if !errors.Is(err, provider.ErrContextExceeded) || w.live.hasText() || w.ctx.Err() != nil {
+			break
+		}
+		if overflowed {
+			err = errContextExceeded
+			break
+		}
+		overflowed, compacted, in.Force = true, false, true
 	}
 	elapsed := time.Since(started)
 
@@ -503,6 +530,77 @@ var (
 	errContextExceeded = errors.New("context exceeded after compaction")
 	errUnexpectedPrune = errors.New("unexpected prune")
 )
+
+// compactionProfile is the profile whose prompt summarises a chat's older turns.
+const compactionProfile = "compaction"
+
+// perMessageTokens is budget's allowance for the role markers around one message; the compaction call's system
+// message costs its estimate plus this.
+const perMessageTokens = 8
+
+// compact summarises the messages before plan.CutAt, oldest piece first, each piece's summary carried into the next,
+// and records the result as compaction.completed. It streams nothing: the summary is not an answer. It returns the
+// input with the new summary and only the kept messages; on any error nothing is written.
+func (e *Engine) compact(w *worker, lease sched.Lease, st State, in budget.Input, plan budget.Plan,
+	win budget.Window) (budget.Input, error) {
+	p, ok := e.c.Profiles.Get(compactionProfile)
+	if !ok {
+		return in, fmt.Errorf("no %q profile", compactionProfile)
+	}
+	system := p.SystemPrompt(e.now())
+	cut := len(in.Messages)
+	for i, m := range in.Messages {
+		if m.Seq == plan.CutAt {
+			cut = i
+			break
+		}
+	}
+	pieces := budget.Pieces(in.Messages[:cut], win, budget.EstimateTokens(system)+perMessageTokens)
+	if len(pieces) == 0 {
+		return in, errors.New("nothing to summarise")
+	}
+	summary := ""
+	if in.Summary != nil {
+		summary = in.Summary.Text
+	}
+	for i, piece := range pieces {
+		res, err := e.c.Chat.Complete(lease.Context(), budget.CompactRequest(st.Model, system, summary, piece, win),
+			func(provider.Delta) {})
+		if err != nil {
+			return in, fmt.Errorf("piece %d: %w", i+1, err)
+		}
+		if err := w.ctx.Err(); err != nil {
+			return in, err
+		}
+		summary = strings.TrimSpace(textOf(messageParts(res.Parts)))
+		if summary == "" {
+			return in, fmt.Errorf("piece %d: empty summary", i+1)
+		}
+	}
+
+	out := in
+	out.Force = false
+	out.Messages = in.Messages[cut:]
+	out.Known = budget.Known{} // in.Known is the last exact answer: it stays only if it was kept
+	for _, m := range out.Messages {
+		if m.Seq == in.Known.Seq {
+			out.Known = in.Known
+		}
+	}
+	// Until the event is appended its seq is unknown; any seq after the messages' plans the same.
+	out.Summary = &budget.Summary{Text: summary, FirstKeptSeq: plan.CutAt, Seq: math.MaxInt64}
+	after := budget.Assemble(out, win).Tokens
+	events, err := e.c.Log.Append(w.ctx, "run:"+st.ID, event.CompactionCompleted{
+		ChatID: st.ChatID, Summary: summary, FirstKeptSeq: plan.CutAt, TokensBefore: plan.Tokens, TokensAfter: after,
+	})
+	if err != nil {
+		return in, err
+	}
+	out.Summary.Seq = events[0].Seq
+	e.log.Info("run compacted", "run", st.ID, "chat", st.ChatID, "tokensBefore", plan.Tokens, "tokensAfter", after,
+		"pieces", len(pieces))
+	return out, nil
+}
 
 // countFixed counts the fixed part once per run. Without a counter, or when counting fails, it stays 0 and the
 // budget estimates it.

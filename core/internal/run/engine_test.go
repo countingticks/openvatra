@@ -99,6 +99,7 @@ type fixture struct {
 	modelErrs map[string]error
 	size      int // the context size the model reports, read at each call
 	counter   *counter
+	reqN      int // request ids say has used
 	eng       *Engine
 	events    <-chan event.Event
 	seen      []event.Event // every event waitFor has read, in order
@@ -830,6 +831,220 @@ func TestSharing(t *testing.T) {
 		}
 		if after := f.eng.Partials(event.Filter{}); len(after) != 0 {
 			t.Fatalf("partials after stop %+v", after)
+		}
+	})
+}
+
+// say sends text to the chat (a new one when chatID is "") and waits for its run to finish.
+func (f *fixture) say(chatID, text string) (Ref, event.RunFinished) {
+	f.t.Helper()
+	f.reqN++
+	ref := f.start(Spec{ChatID: chatID, Model: "m1", Text: text, RequestID: fmt.Sprintf("req-%d", f.reqN)})
+	return ref, f.finished(ref.RunID)
+}
+
+// long is name followed by filler, n runes in all.
+func long(name string, n int) string { return name + " " + strings.Repeat("w", n-len(name)-1) }
+
+// answer is a scripted answer with text.
+func answer(text string) providertest.Turn { return providertest.Turn{Text: []string{text}} }
+
+var overflow = providertest.Turn{Err: provider.ErrContextExceeded}
+
+// compactions is the user message of every compaction request, in order.
+func (f *fixture) compactions() []string {
+	var out []string
+	for _, r := range f.model.Requests() {
+		if r.NoThinking {
+			out = append(out, r.Messages[1].Parts[0].Text)
+		}
+	}
+	return out
+}
+
+func TestCompaction(t *testing.T) {
+	// A chat on a 2,048 window (Trigger 1,229, Target 768, one compaction piece ≤ 614): two short turns, a turn
+	// of two 700-rune messages and a 1,200-rune fourth input take the prompt over Trigger. The last two turns
+	// alone are over Target, so exactly they are kept, and the first two fit one compaction piece.
+	longChat := func(t *testing.T, more ...providertest.Turn) (*fixture, string) {
+		f := newFixture(t, append([]providertest.Turn{answer("a1"), answer("a2"), answer(long("a3", 700)),
+			answer("SUMMARY ONE"), answer("a4")}, more...)...)
+		f.size = 2048
+		first, _ := f.say("", long("q1", 700))
+		f.say(first.ChatID, long("q2", 700))
+		f.say(first.ChatID, long("q3", 700))
+		if _, fin := f.say(first.ChatID, long("q4", 1200)); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		return f, first.ChatID
+	}
+
+	t.Run("a long chat compacts before answering and keeps the last two turns", func(t *testing.T) {
+		f, _ := longChat(t)
+		reqs := f.model.Requests()
+		if len(reqs) != 5 || !reqs[3].NoThinking || reqs[3].CacheKey != "" {
+			t.Fatalf("requests %+v", reqs)
+		}
+		comp := f.compactions()[0]
+		if !strings.HasPrefix(comp, "Previous summary:\nnone\n\n") || !strings.Contains(comp, "User: q1 ") ||
+			!strings.Contains(comp, "Assistant: a2") || strings.Contains(comp, "q3") {
+			t.Fatalf("compaction request %q", comp)
+		}
+		if sys := reqs[4].Messages[0].Parts[0].Text; !strings.HasSuffix(sys, "Summary of the earlier conversation:\nSUMMARY ONE") {
+			t.Fatalf("system %q", sys)
+		}
+		want := []string{"user:" + long("q3", 700), "assistant:" + long("a3", 700), "user:" + long("q4", 1200)}
+		if got := f.prompt(4); !slices.Equal(got, want) {
+			t.Fatalf("answer prompt has %d messages: %.40v", len(got), got)
+		}
+		done := f.storedOf("compaction.completed")
+		if len(done) != 1 {
+			t.Fatalf("%d compactions stored", len(done))
+		}
+		c := decodeAs[event.CompactionCompleted](t, done[0])
+		if c.Summary != "SUMMARY ONE" || c.FirstKeptSeq != f.storedOf("input.received")[2].Seq ||
+			c.TokensAfter >= c.TokensBefore || c.TokensBefore <= 1229 {
+			t.Fatalf("compaction %+v", c)
+		}
+		f.checkLog("compact")
+	})
+
+	t.Run("no message.delta or message.partial carries the compaction's text", func(t *testing.T) {
+		f, _ := longChat(t)
+		for _, e := range f.seen {
+			if (e.Type == "message.delta" || e.Type == "message.partial") && strings.Contains(string(e.Data), "SUMMARY") {
+				t.Fatalf("%s carries the summary: %s", e.Type, e.Data)
+			}
+		}
+	})
+
+	t.Run("a second compaction in a later run passes the first summary as prev", func(t *testing.T) {
+		f, chatID := longChat(t, answer("a5"), answer("SUMMARY TWO A"), answer("SUMMARY TWO B"), answer("a6"))
+		f.say(chatID, long("q5", 1200))
+		if _, fin := f.say(chatID, long("q6", 700)); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		comps := f.compactions()
+		if len(comps) < 2 || !strings.HasPrefix(comps[1], "Previous summary:\nSUMMARY ONE\n\n") {
+			t.Fatalf("compactions %.60q", comps)
+		}
+		if n := len(f.storedOf("compaction.completed")); n != 2 {
+			t.Fatalf("%d compactions stored", n)
+		}
+	})
+
+	t.Run("a history too large for one compaction call is summarised in two pieces", func(t *testing.T) {
+		// Two 1,400-rune answers (about 400 tokens each) are over one piece's 614 together.
+		f := newFixture(t, answer(long("a1", 1400)), answer(long("a2", 1400)), answer(long("a3", 1400)),
+			answer("PIECE ONE"), answer("PIECE TWO"), answer("a4"))
+		f.size = 2048
+		first, _ := f.say("", "q1")
+		f.say(first.ChatID, "q2")
+		f.say(first.ChatID, "q3")
+		if _, fin := f.say(first.ChatID, "q4"); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		comps := f.compactions()
+		if len(comps) != 2 || !strings.HasPrefix(comps[0], "Previous summary:\nnone\n\n") ||
+			!strings.HasPrefix(comps[1], "Previous summary:\nPIECE ONE\n\n") {
+			t.Fatalf("compactions %.60q", comps)
+		}
+		done := f.storedOf("compaction.completed")
+		if len(done) != 1 || decodeAs[event.CompactionCompleted](t, done[0]).Summary != "PIECE TWO" {
+			t.Fatalf("compactions stored %+v", done)
+		}
+	})
+
+	// shortChat is two answered turns under Trigger by estimate but over Target (three 1,000-rune inputs make
+	// 938 tokens), so a forced plan has the first turn to summarise; the third input is answered with turns.
+	q := func(n int) string { return long(fmt.Sprintf("q%d", n), 1000) }
+	shortChat := func(t *testing.T, turns ...providertest.Turn) (*fixture, Ref) {
+		f := newFixture(t, append([]providertest.Turn{answer("a1"), answer("a2")}, turns...)...)
+		f.size = 2048
+		first, _ := f.say("", q(1))
+		f.say(first.ChatID, q(2))
+		f.reqN++
+		return f, f.start(Spec{ChatID: first.ChatID, Text: q(3), RequestID: "req-3"})
+	}
+
+	t.Run("a provider overflow on a short-by-estimate chat compacts and retries once", func(t *testing.T) {
+		f, ref := shortChat(t, overflow, answer("SUM"), answer("a3"))
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if got := f.prompt(4); !slices.Equal(got, []string{"user:" + q(2), "assistant:a2", "user:" + q(3)}) {
+			t.Fatalf("retry prompt has %d messages", len(got))
+		}
+		if !f.model.Requests()[3].NoThinking {
+			t.Fatal("the overflow was not followed by a compaction")
+		}
+		f.checkLog("overflow_retry")
+	})
+
+	t.Run("a second overflow fails context_exceeded", func(t *testing.T) {
+		f, ref := shortChat(t, overflow, answer("SUM"), overflow)
+		fin := f.finished(ref.RunID)
+		if fin.State != "failed" || fin.Error == nil || fin.Error.Code != "context_exceeded" {
+			t.Fatalf("finished %+v", fin)
+		}
+		reqs := f.model.Requests()[2:]
+		if len(reqs) != 3 || reqs[0].NoThinking || !reqs[1].NoThinking || reqs[2].NoThinking {
+			t.Fatalf("%d requests in the run", len(reqs))
+		}
+		f.checkLog("overflow_fail")
+	})
+
+	t.Run("a compaction call that errors fails context_exceeded and stores no summary", func(t *testing.T) {
+		f, ref := shortChat(t, overflow, providertest.Turn{Err: errors.New("connection reset")})
+		fin := f.finished(ref.RunID)
+		if fin.State != "failed" || fin.Error == nil || fin.Error.Code != "context_exceeded" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.storedOf("compaction.completed")); n != 0 {
+			t.Fatalf("%d compactions stored", n)
+		}
+	})
+
+	t.Run("Stop during the compaction finishes stopped with no answer and no summary", func(t *testing.T) {
+		f, ref := shortChat(t, overflow, providertest.Turn{Text: []string{"SUM"}, Hang: true})
+		waitUntil(t, func() bool { return len(f.model.Requests()) == 4 })
+		if parts := f.eng.Partials(event.Filter{}); len(parts) != 0 {
+			t.Fatalf("partials during compaction %+v", parts)
+		}
+		if err := f.eng.Stop(bg, ref.RunID); err != nil {
+			t.Fatal(err)
+		}
+		if s := f.runState(ref.RunID); s != "stopped" {
+			t.Fatalf("state %s", s)
+		}
+		if a, c := len(f.storedOf("message.completed")), len(f.storedOf("compaction.completed")); a != 2 || c != 0 {
+			t.Fatalf("%d answers and %d compactions stored", a, c)
+		}
+	})
+
+	t.Run("Close during the compaction, then Recover and Resume, compacts again and answers", func(t *testing.T) {
+		f, ref := shortChat(t, overflow, providertest.Turn{Text: []string{"SUM"}, Hang: true})
+		waitUntil(t, func() bool { return len(f.model.Requests()) == 4 })
+		f.eng.Close()
+		f.newEngine(overflow, answer("SUM"), answer("a3"))
+		if err := f.eng.Recover(bg); err != nil {
+			t.Fatal(err)
+		}
+		if s := f.runState(ref.RunID); s != "interrupted" {
+			t.Fatalf("state %s", s)
+		}
+		if err := f.eng.Resume(bg, ref.RunID); err != nil {
+			t.Fatal(err)
+		}
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		reqs := f.model.Requests()
+		if len(reqs) != 3 || !reqs[1].NoThinking {
+			t.Fatalf("%d requests after Resume", len(reqs))
+		}
+		if n := len(f.storedOf("compaction.completed")); n != 1 {
+			t.Fatalf("%d compactions stored", n)
 		}
 	})
 }
