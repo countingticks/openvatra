@@ -1,10 +1,12 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChatItem, Event, Transcript } from '@app/core/generated'
 import type { ModelInfo } from '@app/core/types'
 import { routePath } from '@app/store/route'
 import { Shell } from '@app/shell/Shell'
 import { selectRoute } from '@app/store/uiSlice'
+import { coreWrites } from '../../../fakeCoreHttp'
+import type { OptionalMember } from '../../../fakePlatform'
 import { renderWithStore } from '../../../renderWithStore'
 
 const chat = (id: string, title: string, overrides: Partial<ChatItem> = {}): ChatItem => ({
@@ -32,9 +34,13 @@ const transcript: Transcript = { seq: 0, items: [], runs: [], activeRun: null, c
 const event = (type: string, seq: number, data: object, stream = 'run:r1'): Event =>
   ({ type, stream, seq, v: 1, time: 0, data }) as Event
 
-function show(chats: ChatItem[], saved: { lastRoute?: string } = {}): ReturnType<typeof renderWithStore> {
+function show(
+  chats: ChatItem[],
+  saved: { lastRoute?: string } = {},
+  omit: readonly OptionalMember[] = []
+): ReturnType<typeof renderWithStore> {
   // A chat model, so the Chat tab shows the chat rather than the welcome card.
-  const rendered = renderWithStore(<Shell />, saved, { models: [tiny] })
+  const rendered = renderWithStore(<Shell />, saved, { models: [tiny], omit })
   rendered.coreHttp.answer('/api/chats', { seq: 1, chats })
   for (const item of chats) {
     rendered.coreHttp.answer(`/api/chats/${item.id}`, { seq: 1, chat: item })
@@ -124,5 +130,129 @@ describe('ChatList', () => {
     await waitFor(() => expect(row('Trip to Cluj')).toHaveAccessibleName('Trip to Cluj answering'))
     expect(screen.getByRole('heading', { level: 1, name: 'Trip to Cluj' })).toBeInTheDocument()
     expect(rowNames()).toEqual(['Trip to Cluj'])
+  })
+})
+
+describe('chat actions', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  async function openActions(title: string): Promise<HTMLElement> {
+    fireEvent.click(await screen.findByRole('button', { name: `Actions for ${title}` }))
+    return screen.findByRole('menu')
+  }
+
+  const itemNames = (menu: HTMLElement): string[] =>
+    within(menu)
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent ?? '')
+
+  async function startRename(title: string): Promise<HTMLInputElement> {
+    fireEvent.click(within(await openActions(title)).getByRole('menuitem', { name: 'Rename' }))
+    return (await screen.findByRole('textbox', { name: 'Chat title' })) as HTMLInputElement
+  }
+
+  const patches = (rendered: ReturnType<typeof renderWithStore>): unknown[] =>
+    coreWrites(rendered.coreHttp).filter((write) => write.method === 'PATCH')
+
+  it('offers Rename, Export as Markdown and Delete from … and from a right-click', async () => {
+    show([chat('c1', 'Trip to Cluj')])
+
+    expect(itemNames(await openActions('Trip to Cluj'))).toEqual(['Rename', 'Export as Markdown', 'Delete'])
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+
+    fireEvent.contextMenu(row('Trip to Cluj'))
+    expect(itemNames(await screen.findByRole('menu'))).toEqual(['Rename', 'Export as Markdown', 'Delete'])
+  })
+
+  it('renames on Enter with the trimmed text', async () => {
+    const rendered = show([chat('c1', 'Trip to Cluj')])
+    rendered.coreHttp.respond('PATCH', '/api/chats/c1', () => ({
+      body: { seq: 2, chat: chat('c1', 'Cluj in autumn', { titleSource: 'user' }) }
+    }))
+    const field = await startRename('Trip to Cluj')
+    expect(field).toHaveValue('Trip to Cluj')
+    await waitFor(() => expect(field).toHaveFocus())
+
+    fireEvent.change(field, { target: { value: '  Cluj in autumn  ' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(patches(rendered)).toEqual([
+        { method: 'PATCH', path: '/api/chats/c1', body: { title: 'Cluj in autumn' } }
+      ])
+    )
+    expect(row('Cluj in autumn')).toHaveFocus()
+  })
+
+  it.each([
+    ['Esc', 'Cluj in autumn', 'Escape'],
+    ['an empty text', '   ', 'Enter']
+  ])('sends nothing on %s', async (_, text, key) => {
+    const rendered = show([chat('c1', 'Trip to Cluj')])
+    const field = await startRename('Trip to Cluj')
+
+    fireEvent.change(field, { target: { value: text } })
+    fireEvent.keyDown(field, { key })
+
+    await waitFor(() => expect(row('Trip to Cluj')).toHaveFocus())
+    expect(screen.queryByRole('textbox', { name: 'Chat title' })).not.toBeInTheDocument()
+    expect(patches(rendered)).toEqual([])
+  })
+
+  it('puts the old title back when the rename fails', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const rendered = show([chat('c1', 'Trip to Cluj')])
+    rendered.coreHttp.respond('PATCH', '/api/chats/c1', () => ({
+      status: 500,
+      body: { error: 'internal', message: 'disk full' }
+    }))
+    const field = await startRename('Trip to Cluj')
+
+    fireEvent.change(field, { target: { value: 'Cluj in autumn' } })
+    fireEvent.keyDown(field, { key: 'Enter' })
+
+    await waitFor(() => expect(error).toHaveBeenCalledWith('Could not rename the chat', expect.anything()))
+    expect(rowNames()).toEqual(['Trip to Cluj'])
+  })
+
+  it('exports through the host', async () => {
+    const rendered = show([chat('c1', 'Trip to Cluj')])
+
+    fireEvent.click(
+      within(await openActions('Trip to Cluj')).getByRole('menuitem', { name: 'Export as Markdown' })
+    )
+
+    expect(rendered.platform.files.exportChat).toHaveBeenCalledWith('c1')
+  })
+
+  it('leaves Export out on a host without files', async () => {
+    show([chat('c1', 'Trip to Cluj')], {}, ['files'])
+
+    expect(itemNames(await openActions('Trip to Cluj'))).toEqual(['Rename', 'Delete'])
+  })
+
+  it('asks before deleting, and deletes only on Delete', async () => {
+    const rendered = show([chat('c1', 'Trip to Cluj')])
+    rendered.coreHttp.respond('DELETE', '/api/chats/c1', () => ({ status: 204 }))
+    const deletes = (): unknown[] =>
+      coreWrites(rendered.coreHttp).filter((write) => write.method === 'DELETE')
+
+    fireEvent.click(within(await openActions('Trip to Cluj')).getByRole('menuitem', { name: 'Delete' }))
+    const dialog = await screen.findByRole('dialog', { name: "Delete 'Trip to Cluj'?" })
+    expect(within(dialog).getByText("This can't be undone.")).toBeInTheDocument()
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Cancel' })).toHaveFocus())
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(deletes()).toEqual([])
+
+    fireEvent.click(within(await openActions('Trip to Cluj')).getByRole('menuitem', { name: 'Delete' }))
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() =>
+      expect(deletes()).toEqual([{ method: 'DELETE', path: '/api/chats/c1', body: undefined }])
+    )
   })
 })
