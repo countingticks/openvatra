@@ -96,8 +96,9 @@ function runEntries(
     }
   })
   answers.slice(inputs.length).forEach((answer) => out.push(answerEntry(answer)))
-  // Between two answers (or before a title step) the run is still at work: its live answer goes at the end.
-  if (answering && !waiting) out.push({ kind: 'live', key: `live:${runId}`, runId })
+  // Before its input arrives the run shows a live answer; once every input is answered the run is only
+  // finishing (a title step), so nothing live follows the last answer.
+  if (answering && inputs.length === 0) out.push({ kind: 'live', key: `live:${runId}`, runId })
   if (interrupted) out.push({ kind: 'notice', key: `notice:${runId}`, runId, notice: 'interrupted' })
   if (run?.state === 'failed' && run.error) {
     out.push({ kind: 'notice', key: `notice:${runId}`, runId, notice: 'failed', error: run.error })
@@ -185,6 +186,10 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
         items: [...next.items, { kind: 'summary', seq, runId, text: event.data.summary }],
         context: { ...next.context, used: event.data.tokensAfter }
       }
+    case 'turn.retracted': {
+      const retracted = event.data.runId
+      return { ...next, items: next.items.filter((item) => item.runId !== retracted) }
+    }
     case 'run.finished': {
       const finished = withRunState(next, runId, event.data.state, event.data.error ?? null)
       if (finished.activeRun?.id === runId) finished.activeRun = null
@@ -235,8 +240,12 @@ export function estimateTokens(text: string): number {
 }
 
 /** What Ember shows for the open chat: text streaming, thinking (queued, loading, reasoning) or idle. */
-export function answerState(activeRun: RunSnapshot | null, live: LiveAnswer | undefined): AnswerState {
-  if (activeRun === null || activeRun.state === 'interrupted') return 'idle'
+export function answerState(
+  activeRun: RunSnapshot | null,
+  live: LiveAnswer | undefined,
+  hasLiveEntry = true
+): AnswerState {
+  if (activeRun === null || !hasLiveEntry || activeRun.state === 'interrupted') return 'idle'
   if (activeRun.state === 'running' && live !== undefined && live.text !== '') return 'streaming'
   return 'thinking'
 }
