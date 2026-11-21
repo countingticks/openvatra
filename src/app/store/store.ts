@@ -27,7 +27,15 @@ import {
   wentForward
 } from './uiSlice'
 
-const rootReducer = combineSlices(uiSlice, settingsSlice, connectionSlice, coreApi)
+/** Slices a feature injects when it registers (`declare module` in the feature extends this). */
+export interface LazySlices {}
+
+export const rootReducer = combineSlices(
+  uiSlice,
+  settingsSlice,
+  connectionSlice,
+  coreApi
+).withLazyLoadedSlices<LazySlices>()
 
 export type RootState = ReturnType<typeof rootReducer>
 /** What thunks and listeners get as their extra argument: the host, never window.api. */
