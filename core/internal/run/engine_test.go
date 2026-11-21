@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/countingticks/openvatra/core/internal/budget"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/profile"
 	"github.com/countingticks/openvatra/core/internal/provider"
@@ -66,6 +67,29 @@ func (g *gated) holdCall(n int) func() {
 	return func() { close(ch) }
 }
 
+// counter is a fake provider.Counter: it records each text it counts and answers with the estimate, or err.
+type counter struct {
+	mu    sync.Mutex
+	texts []string
+	err   error
+}
+
+func (c *counter) Count(_ context.Context, _ string, text string) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.texts = append(c.texts, text)
+	if c.err != nil {
+		return 0, c.err
+	}
+	return budget.EstimateTokens(text), nil
+}
+
+func (c *counter) calls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.texts)
+}
+
 type fixture struct {
 	t         *testing.T
 	store     *store.Store
@@ -73,6 +97,8 @@ type fixture struct {
 	model     *gated
 	sched     *sched.FIFO
 	modelErrs map[string]error
+	size      int // the context size the model reports, read at each call
+	counter   *counter
 	eng       *Engine
 	events    <-chan event.Event
 	seen      []event.Event // every event waitFor has read, in order
@@ -87,7 +113,8 @@ func newFixture(t *testing.T, turns ...providertest.Turn) *fixture {
 		t.Fatal(err)
 	}
 	_, events, cancel := bus.Subscribe(event.Filter{})
-	f := &fixture{t: t, store: st, bus: bus, events: events, modelErrs: map[string]error{}}
+	f := &fixture{t: t, store: st, bus: bus, events: events, modelErrs: map[string]error{}, size: contextSize,
+		counter: &counter{}}
 	f.eng = f.newEngine(turns...)
 	t.Cleanup(func() {
 		f.eng.Close()
@@ -109,10 +136,11 @@ func (f *fixture) newEngine(turns ...providertest.Turn) *Engine {
 			if err := f.modelErrs[id]; err != nil {
 				return provider.Model{}, err
 			}
-			return provider.Model{ID: id, Kind: provider.ModelChat, Context: contextSize}, nil
+			return provider.Model{ID: id, Kind: provider.ModelChat, Context: f.size}, nil
 		},
 		Sched:    f.sched,
 		Profiles: profile.Builtin(),
+		Counter:  f.counter,
 		Now:      func() time.Time { return clock },
 	})
 	return f.eng
@@ -516,29 +544,16 @@ func TestFailures(t *testing.T) {
 		f.checkLog("fail_midway")
 	})
 
-	t.Run("context exceeded retries once with two fewer turns; a second overflow fails with context_too_small", func(t *testing.T) {
-		f := newFixture(t,
-			providertest.Turn{Text: []string{"a1"}},
-			providertest.Turn{Err: provider.ErrContextExceeded}, providertest.Turn{Text: []string{"a2"}},
-			providertest.Turn{Err: provider.ErrContextExceeded}, providertest.Turn{Err: provider.ErrContextExceeded},
-		)
-		first := f.send("q1", "req-1")
-		f.finished(first.RunID)
-		second := f.start(Spec{ChatID: first.ChatID, Text: "q2", RequestID: "req-2"})
-		if fin := f.finished(second.RunID); fin.State != "done" {
-			t.Fatalf("retry finished %+v", fin)
-		}
-		if a, b := f.prompt(1), f.prompt(2); len(a) != 3 || !slices.Equal(b, []string{"user:q2"}) {
-			t.Fatalf("prompts %v then %v", a, b)
-		}
-		third := f.start(Spec{ChatID: first.ChatID, Text: "q3", RequestID: "req-3"})
-		fin := f.finished(third.RunID)
-		if fin.State != "failed" || fin.Error.Code != "context_too_small" ||
-			fin.Error.Message != "This message is too long for this model." {
+	t.Run("an overflow with no older turns fails with context_exceeded", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Err: provider.ErrContextExceeded})
+		ref := f.send("q1", "req-1")
+		fin := f.finished(ref.RunID)
+		if fin.State != "failed" || fin.Error == nil || fin.Error.Code != "context_exceeded" ||
+			fin.Error.Message != "This chat is too long for this model, even after summarising." {
 			t.Fatalf("finished %+v", fin)
 		}
-		if n := len(f.model.Requests()); n != 5 {
-			t.Fatalf("%d requests, want 5", n)
+		if n := len(f.model.Requests()); n != 1 {
+			t.Fatalf("%d requests, want 1", n)
 		}
 	})
 
@@ -557,6 +572,105 @@ func TestFailures(t *testing.T) {
 		if fin := f.finished(broken.RunID); fin.Error == nil || fin.Error.Code != "model_load_failed" ||
 			fin.Error.Message != "The model failed to load. Check its settings." {
 			t.Fatalf("finished %+v", fin)
+		}
+	})
+}
+
+func TestBudget(t *testing.T) {
+	chatPrompt := func(t *testing.T) string {
+		p, ok := profile.Builtin().Get("chat")
+		if !ok {
+			t.Fatal("no chat profile")
+		}
+		return p.SystemPrompt(clock)
+	}
+
+	t.Run("the first request's system message is the chat prompt and its cache key is the chat id", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Text: []string{"a"}})
+		ref := f.send("hi", "req-1")
+		f.finished(ref.RunID)
+		req := f.model.Requests()[0]
+		if req.Messages[0].Role != "system" || req.Messages[0].Parts[0].Text != chatPrompt(t) || req.CacheKey != ref.ChatID {
+			t.Fatalf("request %+v", req)
+		}
+	})
+
+	t.Run("a run with a queued second input counts the fixed part once", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Text: []string{"one!"}}, providertest.Turn{Text: []string{"two!"}})
+		release := f.model.holdCall(1)
+		ref := f.send("one", "req-1")
+		f.entered()
+		f.start(Spec{ChatID: ref.ChatID, Text: "two", RequestID: "req-2"})
+		release()
+		f.finished(ref.RunID)
+		if n := len(f.model.Requests()); n != 2 {
+			t.Fatalf("%d requests, want 2", n)
+		}
+		if n := f.counter.calls(); n != 1 {
+			t.Fatalf("counted %d times, want 1", n)
+		}
+		if f.counter.texts[0] != chatPrompt(t) {
+			t.Fatalf("counted %q", f.counter.texts[0])
+		}
+	})
+
+	t.Run("a Count error still answers with the estimate", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Text: []string{"a"}})
+		f.counter.err = errors.New("no tokenizer")
+		ref := f.send("hi", "req-1")
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+	})
+
+	t.Run("a fixed part over half of Room fails context_too_small without asking the model", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Text: []string{"a"}})
+		f.size = 64 // Room 48: the chat prompt's ~38 tokens are over half
+		ref := f.send("hi", "req-1")
+		fin := f.finished(ref.RunID)
+		if fin.State != "failed" || fin.Error == nil || fin.Error.Code != "context_too_small" ||
+			fin.Error.Message != "This model's context is too small to chat. Pick a larger context in model settings." {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.model.Requests()); n != 0 {
+			t.Fatalf("the model was asked %d times", n)
+		}
+	})
+
+	t.Run("an input over Room minus the fixed part fails message_too_long", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Text: []string{"a"}})
+		ref := f.send(strings.Repeat("w", 25_000), "req-1") // ~7,143 tokens; Room is 6,144
+		fin := f.finished(ref.RunID)
+		if fin.State != "failed" || fin.Error == nil || fin.Error.Code != "message_too_long" ||
+			fin.Error.Message != "This message is too long for this model." {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.model.Requests()); n != 0 {
+			t.Fatalf("the model was asked %d times", n)
+		}
+	})
+
+	t.Run("a summary is in the system message and the turns before its first kept message are not sent", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Text: []string{"a1"}}, providertest.Turn{Text: []string{"a2"}},
+			providertest.Turn{Text: []string{"a3"}})
+		first := f.send("q1", "req-1")
+		f.finished(first.RunID)
+		second := f.start(Spec{ChatID: first.ChatID, Text: "q2", RequestID: "req-2"})
+		f.finished(second.RunID)
+		kept := f.storedOf("input.received")[1].Seq
+		if _, err := f.store.Log().Append(bg, "run:"+second.RunID, event.CompactionCompleted{
+			ChatID: first.ChatID, Summary: "They said q1.", FirstKeptSeq: kept, TokensBefore: 100, TokensAfter: 50,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		third := f.start(Spec{ChatID: first.ChatID, Text: "q3", RequestID: "req-3"})
+		f.finished(third.RunID)
+		req := f.model.Requests()[2]
+		if want := chatPrompt(t) + "\n\nSummary of the earlier conversation:\nThey said q1."; req.Messages[0].Parts[0].Text != want {
+			t.Fatalf("system %q", req.Messages[0].Parts[0].Text)
+		}
+		if got := f.prompt(2); !slices.Equal(got, []string{"user:q2", "assistant:a2", "user:q3"}) {
+			t.Fatalf("prompt %v", got)
 		}
 	})
 }

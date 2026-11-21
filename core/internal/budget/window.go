@@ -15,7 +15,7 @@ const maxBuffer = 8192
 
 // NewWindow computes the window for a context size.
 func NewWindow(contextSize int) Window {
-	answer := AnswerRoom(contextSize)
+	answer := min(contextSize/4, maxAnswerRoom)
 	room := contextSize - answer
 	return Window{
 		Context:    contextSize,

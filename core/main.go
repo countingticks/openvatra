@@ -346,7 +346,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if chatStore != nil && chatStore.ReadOnly() == nil {
 		fifo := sched.NewFIFO(func(st sched.State) { eventLog.Publish("system", schedState(st)) })
 		engine = runengine.New(runengine.Config{Log: eventLog, Views: chatStore, Chat: lc, Model: lc.Model, Sched: fifo,
-			Profiles: profile.Builtin(), Logger: logger})
+			Profiles: profile.Builtin(), Counter: lc, Logger: logger})
 		chatService = chats.New(chats.Config{Store: chatStore, Engine: engine, Config: cfg, Models: lc.Models,
 			Logger: logger})
 		scheduler = fifo
