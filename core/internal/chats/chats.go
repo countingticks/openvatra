@@ -47,8 +47,10 @@ type Config struct {
 }
 
 // SendInput is one send from a client; ChatID "" makes a new chat, Model "" keeps the chat's or picks the default.
+// Replace retracts the chat's last turn and sends it again, with Text (optional then) as its last input.
 type SendInput struct {
 	RequestID, ChatID, Model, Text string
+	Replace                        bool
 }
 
 // Service is the chats API over the store, the engine and the config.
@@ -73,10 +75,14 @@ func New(c Config) *Service {
 
 // Send starts a run for the input, or adds it to the chat's active run.
 func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
-	if in.RequestID == "" || strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes {
+	bad := strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes
+	if in.Replace {
+		bad = (in.Text != "" && bad) || in.ChatID == ""
+	}
+	if in.RequestID == "" || bad {
 		return run.Ref{}, run.ErrBadInput
 	}
-	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, RequestID: in.RequestID}
+	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, RequestID: in.RequestID, Replace: in.Replace}
 	if in.ChatID != "" {
 		chat, _, err := s.c.Store.Chat(ctx, in.ChatID)
 		if err != nil {

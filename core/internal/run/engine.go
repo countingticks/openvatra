@@ -49,6 +49,8 @@ type Spec struct {
 	Profile   string // "" = "chat"
 	Text      string
 	RequestID string
+	// Replace true: retract the chat's last turn and send its inputs again; Text, when set, replaces the last of them.
+	Replace bool
 }
 
 // Ref names the run a send went to; Seq is the log position a client reads the run from.
@@ -61,6 +63,7 @@ var (
 	ErrBadInput       = errors.New("bad input")
 	ErrRunNotFound    = errors.New("run not found")
 	ErrNotInterrupted = errors.New("run is not interrupted")
+	ErrChatBusy       = errors.New("chat has an active run")
 )
 
 const (
@@ -130,8 +133,12 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	if s.Profile == "" {
 		s.Profile = defaultProfile
 	}
-	if s.RequestID == "" || strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes ||
-		(s.ChatID == "" && s.Model == "") {
+	bad := strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes
+	if s.Replace {
+		// The text is optional: without it the last turn's inputs are sent again as they were.
+		bad = (s.Text != "" && bad) || s.ChatID == ""
+	}
+	if s.RequestID == "" || bad || (s.ChatID == "" && s.Model == "") {
 		return Ref{}, ErrBadInput
 	}
 	if _, ok := e.c.Profiles.Get(s.Profile); !ok {
@@ -148,6 +155,9 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 			return Ref{}, err
 		}
 		return Ref{RunID: ref.RunID, ChatID: ref.ChatID, Seq: row.LastSeq}, nil
+	}
+	if s.Replace {
+		return e.replaceLocked(ctx, s)
 	}
 
 	chatID, model := s.ChatID, s.Model
@@ -178,6 +188,74 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	e.log.Info("run queued", "run", runID, "chat", chatID)
 	e.startLocked(runID)
 	return Ref{RunID: runID, ChatID: chatID, Seq: events[1].Seq}, nil
+}
+
+// replaceLocked retracts the chat's last turn and starts a run with that turn's inputs, the last one replaced by
+// s.Text when set (regenerate, retry and edit). The caller holds mu.
+func (e *Engine) replaceLocked(ctx context.Context, s Spec) (Ref, error) {
+	chat, _, err := e.c.Views.Chat(ctx, s.ChatID)
+	if err != nil {
+		return Ref{}, err
+	}
+	if chat.ActiveRun != "" {
+		return Ref{}, ErrChatBusy
+	}
+	msgs, runs, _, err := e.c.Views.Transcript(ctx, chat.ID)
+	if err != nil {
+		return Ref{}, err
+	}
+	// The last turn is the newest run with a message left; its inputs are its user rows, by seq.
+	last := ""
+	var inputs []string
+	for i := len(runs) - 1; i >= 0 && last == ""; i-- {
+		inputs = inputs[:0]
+		kept := false
+		for _, m := range msgs {
+			if m.RunID != runs[i].ID || m.Retracted {
+				continue
+			}
+			kept = true
+			if m.Role == "user" {
+				var parts []event.MessagePart
+				if err := json.Unmarshal(m.Parts, &parts); err != nil {
+					return Ref{}, fmt.Errorf("message %d: %w", m.Seq, err)
+				}
+				inputs = append(inputs, textOf(parts))
+			}
+		}
+		if kept {
+			last = runs[i].ID
+		}
+	}
+	if last == "" || len(inputs) == 0 {
+		return Ref{}, ErrBadInput
+	}
+	if s.Text != "" {
+		inputs[len(inputs)-1] = s.Text
+	}
+
+	if _, err := e.c.Log.Append(ctx, "chat:"+chat.ID, event.TurnRetracted{RunID: last}); err != nil {
+		return Ref{}, err
+	}
+	runID := store.NewID()
+	payloads := []event.Payload{
+		event.RunQueued{ChatID: chat.ID, Profile: s.Profile, Model: chat.Model, Origin: "user", RequestID: s.RequestID},
+	}
+	for i, text := range inputs {
+		req := s.RequestID
+		if i > 0 {
+			req = fmt.Sprintf("%s:%d", s.RequestID, i+1)
+		}
+		payloads = append(payloads, event.InputReceived{ChatID: chat.ID, Text: text, RequestID: req})
+	}
+	// If this append fails, the retraction stays: the turn is gone and the user can send again.
+	events, err := e.c.Log.Append(ctx, "run:"+runID, payloads...)
+	if err != nil {
+		return Ref{}, err
+	}
+	e.log.Info("run queued to replace the last turn", "run", runID, "chat", chat.ID, "retracted", last)
+	e.startLocked(runID)
+	return Ref{RunID: runID, ChatID: chat.ID, Seq: events[len(events)-1].Seq}, nil
 }
 
 // sendLocked adds an input to the chat's active run; a cut-off run is resumed by it. The caller holds mu.
@@ -898,7 +976,8 @@ func (e *Engine) input(ctx context.Context, st State, system string) (budget.Inp
 	}
 	var latest *store.MessageRow
 	for i, m := range msgs {
-		if m.Role == "summary" && (latest == nil || m.Seq > latest.Seq) {
+		// A retracted run's summary no longer applies; the one before it, if any, does.
+		if m.Role == "summary" && !m.Retracted && (latest == nil || m.Seq > latest.Seq) {
 			latest = &msgs[i]
 		}
 	}

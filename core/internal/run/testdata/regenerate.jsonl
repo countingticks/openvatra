@@ -1,0 +1,18 @@
+{"type":"chat.created","stream":"chat:chat1","data":{"model":"m1","profile":"chat"}}
+{"type":"chat.model","stream":"chat:chat1","data":{"model":"m1"}}
+{"type":"run.queued","stream":"run:run1","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-1"}}
+{"type":"input.received","stream":"run:run1","data":{"chatId":"chat1","requestId":"req-1","text":"q1"}}
+{"type":"run.started","stream":"run:run1","data":{"chatId":"chat1"}}
+{"type":"message.completed","stream":"run:run1","data":{"chatId":"chat1","model":"m1","partial":false,"parts":[{"kind":"text","text":"a1"}],"stats":{"answerTokens":1,"contextSize":8192,"durationMs":0,"exact":false,"firstTokenMs":0,"promptTokens":46,"reasoningMs":0,"tokensPerSecond":0}}}
+{"type":"run.finished","stream":"run:run1","data":{"chatId":"chat1","state":"done"}}
+{"type":"run.queued","stream":"run:run2","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-2"}}
+{"type":"input.received","stream":"run:run2","data":{"chatId":"chat1","requestId":"req-2","text":"q2"}}
+{"type":"run.started","stream":"run:run2","data":{"chatId":"chat1"}}
+{"type":"message.completed","stream":"run:run2","data":{"chatId":"chat1","model":"m1","partial":false,"parts":[{"kind":"text","text":"a2"}],"stats":{"answerTokens":1,"contextSize":8192,"durationMs":0,"exact":false,"firstTokenMs":0,"promptTokens":64,"reasoningMs":0,"tokensPerSecond":0}}}
+{"type":"run.finished","stream":"run:run2","data":{"chatId":"chat1","state":"done"}}
+{"type":"turn.retracted","stream":"chat:chat1","data":{"runId":"run2"}}
+{"type":"run.queued","stream":"run:run3","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-3"}}
+{"type":"input.received","stream":"run:run3","data":{"chatId":"chat1","requestId":"req-3","text":"q2"}}
+{"type":"run.started","stream":"run:run3","data":{"chatId":"chat1"}}
+{"type":"message.completed","stream":"run:run3","data":{"chatId":"chat1","model":"m1","partial":false,"parts":[{"kind":"text","text":"a2 again"}],"stats":{"answerTokens":3,"contextSize":8192,"durationMs":0,"exact":false,"firstTokenMs":0,"promptTokens":64,"reasoningMs":0,"tokensPerSecond":0}}}
+{"type":"run.finished","stream":"run:run3","data":{"chatId":"chat1","state":"done"}}

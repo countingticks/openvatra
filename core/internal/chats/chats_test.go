@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"slices"
 	"testing"
 	"time"
 
@@ -227,6 +228,50 @@ func TestChangingTheModelOnSendAppendsChatModelBeforeTheRun(t *testing.T) {
 	}
 	if row.Model != "m2" {
 		t.Errorf("run model = %q, want m2", row.Model)
+	}
+}
+
+func TestReplaceNeedsAChatAndAppendsANewModelBeforeTheRun(t *testing.T) {
+	f := newFixture(t, installed, answer, answer)
+	for _, in := range []SendInput{
+		{RequestID: "r0", Replace: true},
+		{RequestID: "r0", Replace: true, Text: "hello"},
+	} {
+		if _, err := f.svc.Send(bg, in); !errors.Is(err, run.ErrBadInput) {
+			t.Errorf("Send(%+v) = %v, want ErrBadInput", in, err)
+		}
+	}
+	first := f.send(SendInput{RequestID: "r1", Model: "m1", Text: "hello"})
+	f.waitFor("run.finished", "run:"+first.RunID)
+
+	second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Model: "m2", Replace: true})
+	if second.RunID == first.RunID {
+		t.Fatal("replace went to the old run")
+	}
+	f.waitFor("run.finished", "run:"+second.RunID)
+	events, err := f.store.Log().Read(bg, 0, event.Filter{}, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, e := range events {
+		switch {
+		case e.Type == "chat.model" && string(e.Data) == `{"model":"m2"}`, e.Type == "turn.retracted",
+			e.Type == "run.queued" && e.Stream == "run:"+second.RunID:
+			order = append(order, e.Type)
+		case e.Type == "input.received" && e.Stream == "run:"+second.RunID:
+			var p event.InputReceived
+			if err := json.Unmarshal(e.Data, &p); err != nil {
+				t.Fatal(err)
+			}
+			order = append(order, "input "+p.Text)
+		}
+	}
+	if want := []string{"chat.model", "turn.retracted", "run.queued", "input hello"}; !slices.Equal(order, want) {
+		t.Fatalf("events %v, want %v", order, want)
+	}
+	if row, _, err := f.store.Run(bg, second.RunID); err != nil || row.Model != "m2" {
+		t.Errorf("run = %+v, %v; want model m2", row, err)
 	}
 }
 
