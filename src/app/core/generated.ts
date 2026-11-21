@@ -28,6 +28,14 @@ const injectedRtkApi = api
         query: () => ({ url: `/api/config` }),
         providesTags: ['config']
       }),
+      getConfigChat: build.query<GetConfigChatApiResponse, GetConfigChatApiArg>({
+        query: () => ({ url: `/api/config/chat` }),
+        providesTags: ['config']
+      }),
+      putConfigChat: build.mutation<PutConfigChatApiResponse, PutConfigChatApiArg>({
+        query: (queryArg) => ({ url: `/api/config/chat`, method: 'PUT', body: queryArg.body }),
+        invalidatesTags: ['config']
+      }),
       getConfigEngineLlamaserver: build.query<
         GetConfigEngineLlamaserverApiResponse,
         GetConfigEngineLlamaserverApiArg
@@ -141,6 +149,21 @@ export type RemoveCatalogEntryApiArg = {
 }
 export type GetConfigApiResponse = /** status 200 OK */ ConfigAll
 export type GetConfigApiArg = void
+export type GetConfigChatApiResponse = /** status 200 OK */ {
+  rev: number
+  value: Settings
+}
+export type GetConfigChatApiArg = void
+export type PutConfigChatApiResponse = /** status 200 OK */ {
+  rev: number
+  value: Settings
+}
+export type PutConfigChatApiArg = {
+  body: {
+    rev: number
+    value: Settings
+  }
+}
 export type GetConfigEngineLlamaserverApiResponse = /** status 200 OK */ {
   effective?: LlamaServerEffective
   rev: number
@@ -264,6 +287,9 @@ export type ConfigAll = {
   sections: {
     [key: string]: SectionEntry
   }
+}
+export type Settings = {
+  lastModel: string | null
 }
 export type LlamaServerEffective = {
   path: string
@@ -665,6 +691,8 @@ export const {
   useGetCatalogQuery,
   useRemoveCatalogEntryMutation,
   useGetConfigQuery,
+  useGetConfigChatQuery,
+  usePutConfigChatMutation,
   useGetConfigEngineLlamaserverQuery,
   usePutConfigEngineLlamaserverMutation,
   useGetConfigProviderLlamacppQuery,

@@ -1622,6 +1622,20 @@
         ],
         "type": "object"
       },
+      "Settings": {
+        "properties": {
+          "lastModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "lastModel"
+        ],
+        "type": "object"
+      },
       "StartDownload": {
         "properties": {
           "catalogId": {
@@ -1875,6 +1889,114 @@
           }
         },
         "summary": "Every config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/config/chat": {
+      "get": {
+        "operationId": "getConfigChat",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/Settings"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: internal."
+          }
+        },
+        "summary": "The chat config section",
+        "tags": [
+          "config"
+        ],
+        "x-scope": "ui"
+      },
+      "put": {
+        "operationId": "putConfigChat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "rev": {
+                    "type": "integer"
+                  },
+                  "value": {
+                    "$ref": "#/components/schemas/Settings"
+                  }
+                },
+                "required": [
+                  "rev",
+                  "value"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "rev": {
+                      "type": "integer"
+                    },
+                    "value": {
+                      "$ref": "#/components/schemas/Settings"
+                    }
+                  },
+                  "required": [
+                    "rev",
+                    "value"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, invalid_config, config_conflict, config_unavailable, shell_only_field, internal."
+          }
+        },
+        "summary": "Replace the chat config section if rev is still current",
         "tags": [
           "config"
         ],

@@ -23,6 +23,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/api"
 	"github.com/countingticks/openvatra/core/internal/catalog"
+	"github.com/countingticks/openvatra/core/internal/chats"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/download"
 	"github.com/countingticks/openvatra/core/internal/downloads"
@@ -377,6 +378,7 @@ func isOrigin(v string) bool {
 func registerSections(cfg *config.Store, env llamaserver.Env, home string) {
 	config.Register(cfg, llamaserver.ID, llamaserver.DefaultSettings(), llamaserver.Effective(env))
 	config.Register(cfg, llamacpp.ID, llamacpp.DefaultSettings(), llamacpp.Effective(home))
+	config.Register[chats.Settings, struct{}](cfg, chats.ID, chats.DefaultSettings(), nil)
 }
 
 // resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,
