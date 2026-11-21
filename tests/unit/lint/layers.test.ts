@@ -12,8 +12,11 @@ const rules = new Set([
 
 let eslint: ESLint
 
-beforeAll(() => {
+beforeAll(async () => {
   eslint = new ESLint({ cwd: root })
+  // The first lint builds the TypeScript program for typed rules, which takes seconds under a full run: do it here,
+  // in the hook's budget, not in the first case's.
+  await eslint.lintText('export {}\n', { filePath: path.join(root, 'src/app/lib/warmup.ts') })
 }, 30_000)
 
 async function lint(file: string, code: string): Promise<string[]> {
