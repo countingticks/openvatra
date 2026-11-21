@@ -478,6 +478,22 @@
         ],
         "type": "object"
       },
+      "ContextUse": {
+        "properties": {
+          "size": {
+            "description": "0 when the chat's model is not installed",
+            "type": "integer"
+          },
+          "used": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used",
+          "size"
+        ],
+        "type": "object"
+      },
       "DownloadItem": {
         "properties": {
           "bytes": {
@@ -1891,6 +1907,9 @@
               }
             ]
           },
+          "context": {
+            "$ref": "#/components/schemas/ContextUse"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/TranscriptItem"
@@ -1910,7 +1929,8 @@
         "required": [
           "seq",
           "items",
-          "runs"
+          "runs",
+          "context"
         ],
         "type": "object"
       },

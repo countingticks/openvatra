@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ type Config struct {
 	Model    func(ctx context.Context, id string) (provider.Model, error) // context size; ErrUnknownModel
 	Sched    sched.Scheduler
 	Profiles *profile.Registry
+	Counter  provider.Counter // nil = estimate the fixed part
 	Now      func() time.Time // nil = time.Now
 	Logger   *slog.Logger     // nil = discard
 }
@@ -93,6 +95,10 @@ type worker struct {
 	stopped bool // guarded by Engine.mu; set by Stop before it cancels ctx
 	done    chan struct{}
 	live    *live
+
+	// The fixed part's exact size, counted the first time the run asks the model and kept for the rest of it.
+	fixedTokens int
+	counted     bool
 }
 
 // live is a run's answer so far. mu is held while a delta is added and published, and while Partials reads, so a
@@ -289,6 +295,38 @@ func (e *Engine) Partials(f event.Filter) []event.Event {
 	return out
 }
 
+// ContextUse is how many tokens the chat's next prompt is expected to take, and its model's context size.
+//
+// Every input is counted, queued ones included, and the fixed part is estimated: counting it would load the model.
+// A model no longer installed gives size 0.
+func (e *Engine) ContextUse(ctx context.Context, chatID string) (used, size int, err error) {
+	chat, _, err := e.c.Views.Chat(ctx, chatID)
+	if err != nil {
+		return 0, 0, err
+	}
+	p, ok := e.c.Profiles.Get(chat.Profile)
+	if !ok {
+		p, _ = e.c.Profiles.Get(defaultProfile)
+	}
+	window := defaultContextSize
+	model, err := e.c.Model(ctx, chat.Model)
+	switch {
+	case errors.Is(err, provider.ErrUnknownModel):
+	case err != nil:
+		return 0, 0, err
+	default:
+		if model.Context != 0 {
+			window = model.Context
+		}
+		size = window
+	}
+	in, err := e.input(ctx, State{ChatID: chatID, Model: chat.Model}, p.SystemPrompt(e.now()))
+	if err != nil {
+		return 0, 0, err
+	}
+	return budget.Assemble(in, budget.NewWindow(window)).Tokens, size, nil
+}
+
 // Close cancels every worker's step without writing events and waits for the workers to exit; their runs stay
 // open for the next core's Recover.
 func (e *Engine) Close() {
@@ -428,34 +466,67 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	if contextSize == 0 {
 		contextSize = defaultContextSize
 	}
-	turns, err := e.turns(w.ctx, st)
+	system := p.SystemPrompt(e.now())
+	e.countFixed(w, lease, st, system)
+	in, err := e.input(w.ctx, st, system)
 	if err != nil {
 		return st, stepOutcome{end: true, err: w.ctxErr(err)}
 	}
+	in.FixedTokens = w.fixedTokens
+	win := budget.NewWindow(contextSize)
 
-	system := p.SystemPrompt(e.now())
-	started := time.Now()
-	var fit budget.Result
-	var res provider.Result
-	for extraDrop := 0; ; extraDrop += 2 {
-		fit = budget.Fit(system, turns, contextSize, extraDrop)
-		res, err = e.c.Chat.Complete(lease.Context(), provider.Request{Model: st.Model, Messages: fit.Messages},
-			w.live.add(e.c.Log))
-		if extraDrop == 0 && errors.Is(err, provider.ErrContextExceeded) && !w.live.hasText() &&
-			w.ctx.Err() == nil {
-			continue // the estimate was too low: try once more with two fewer turns
+	// Plan, compact when the plan says so, and send. After the provider says the prompt is too long, plan once more
+	// as if over the trigger: that compacts if anything older is left, and otherwise the run fails.
+	var (
+		plan       budget.Plan
+		res        provider.Result
+		started    time.Time
+		overflowed bool // the provider refused this step's prompt once
+		compacted  bool // compacted since the last plan that was sent
+	)
+	for {
+		plan = budget.Assemble(in, win)
+		switch plan.Verdict {
+		case budget.Refuse:
+			return st, stepOutcome{end: true, err: plan.Err}
+		case budget.Prune:
+			e.log.Error("unexpected prune", "run", st.ID, "chat", st.ChatID)
+			return st, stepOutcome{end: true, err: errUnexpectedPrune}
+		case budget.Compact:
+			if compacted { // Assemble keeps the compacted part whole, so this is a bug, not a long chat
+				return st, stepOutcome{end: true, err: errContextExceeded}
+			}
+			if in, err = e.compact(w, lease, st, in, plan, win); err != nil {
+				if w.ctx.Err() != nil {
+					return st, stepOutcome{end: true}
+				}
+				e.log.Warn("run compaction failed", "run", st.ID, "chat", st.ChatID, "err", err)
+				return st, stepOutcome{end: true, err: errContextExceeded}
+			}
+			compacted = true
+			continue
 		}
-		if extraDrop > 0 && errors.Is(err, provider.ErrContextExceeded) && !w.live.hasText() {
-			err = errContextTooSmall
+		if overflowed && !compacted { // nothing older left to summarise
+			return st, stepOutcome{end: true, err: errContextExceeded}
 		}
-		break
+
+		started = time.Now()
+		res, err = e.c.Chat.Complete(lease.Context(), plan.Request, w.live.add(e.c.Log))
+		if !errors.Is(err, provider.ErrContextExceeded) || w.live.hasText() || w.ctx.Err() != nil {
+			break
+		}
+		if overflowed {
+			err = errContextExceeded
+			break
+		}
+		overflowed, compacted, in.Force = true, false, true
 	}
 	elapsed := time.Since(started)
 
 	if w.ctx.Err() != nil || err != nil {
 		var partial *partialAnswer
 		if parts := w.live.parts(); textOf(parts) != "" {
-			partial = &partialAnswer{parts: parts, stats: statsOf(res.Usage, fit.PromptTokens, parts, elapsed, contextSize)}
+			partial = &partialAnswer{parts: parts, stats: statsOf(res.Usage, plan.Tokens, parts, elapsed, contextSize)}
 		}
 		if w.ctx.Err() != nil {
 			err = nil
@@ -464,7 +535,7 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	}
 
 	parts := messageParts(res.Parts)
-	stats := statsOf(res.Usage, fit.PromptTokens, parts, elapsed, contextSize)
+	stats := statsOf(res.Usage, plan.Tokens, parts, elapsed, contextSize)
 	if _, err := e.appendCompleted(w.ctx, st, parts, false, stats); err != nil {
 		return st, stepOutcome{end: true, err: w.ctxErr(err)}
 	}
@@ -487,7 +558,101 @@ func (w *worker) ctxErr(err error) error {
 	return err
 }
 
-var errContextTooSmall = errors.New("context too small")
+var (
+	errContextExceeded = errors.New("context exceeded after compaction")
+	errUnexpectedPrune = errors.New("unexpected prune")
+)
+
+// compactionProfile is the profile whose prompt summarises a chat's older turns.
+const compactionProfile = "compaction"
+
+// perMessageTokens is budget's allowance for the role markers around one message; the compaction call's system
+// message costs its estimate plus this.
+const perMessageTokens = 8
+
+// compact summarises the messages before plan.CutAt, oldest piece first, each piece's summary carried into the next,
+// and records the result as compaction.completed. It streams nothing: the summary is not an answer. It returns the
+// input with the new summary and only the kept messages; on any error nothing is written.
+func (e *Engine) compact(w *worker, lease sched.Lease, st State, in budget.Input, plan budget.Plan,
+	win budget.Window) (budget.Input, error) {
+	p, ok := e.c.Profiles.Get(compactionProfile)
+	if !ok {
+		return in, fmt.Errorf("no %q profile", compactionProfile)
+	}
+	system := p.SystemPrompt(e.now())
+	cut := len(in.Messages)
+	for i, m := range in.Messages {
+		if m.Seq == plan.CutAt {
+			cut = i
+			break
+		}
+	}
+	pieces := budget.Pieces(in.Messages[:cut], win, budget.EstimateTokens(system)+perMessageTokens)
+	if len(pieces) == 0 {
+		return in, errors.New("nothing to summarise")
+	}
+	summary := ""
+	if in.Summary != nil {
+		summary = in.Summary.Text
+	}
+	for i, piece := range pieces {
+		res, err := e.c.Chat.Complete(lease.Context(), budget.CompactRequest(st.Model, system, summary, piece, win),
+			func(provider.Delta) {})
+		if err != nil {
+			return in, fmt.Errorf("piece %d: %w", i+1, err)
+		}
+		if err := w.ctx.Err(); err != nil {
+			return in, err
+		}
+		summary = strings.TrimSpace(textOf(messageParts(res.Parts)))
+		if summary == "" {
+			return in, fmt.Errorf("piece %d: empty summary", i+1)
+		}
+	}
+
+	out := in
+	out.Force = false
+	out.Messages = in.Messages[cut:]
+	out.Known = budget.Known{} // in.Known is the last exact answer: it stays only if it was kept
+	for _, m := range out.Messages {
+		if m.Seq == in.Known.Seq {
+			out.Known = in.Known
+		}
+	}
+	// Until the event is appended its seq is unknown; any seq after the messages' plans the same.
+	out.Summary = &budget.Summary{Text: summary, FirstKeptSeq: plan.CutAt, Seq: math.MaxInt64}
+	after := budget.Assemble(out, win).Tokens
+	events, err := e.c.Log.Append(w.ctx, "run:"+st.ID, event.CompactionCompleted{
+		ChatID: st.ChatID, Summary: summary, FirstKeptSeq: plan.CutAt, TokensBefore: plan.Tokens, TokensAfter: after,
+	})
+	if err != nil {
+		return in, err
+	}
+	out.Summary.Seq = events[0].Seq
+	e.log.Info("run compacted", "run", st.ID, "chat", st.ChatID, "tokensBefore", plan.Tokens, "tokensAfter", after,
+		"pieces", len(pieces))
+	return out, nil
+}
+
+// countFixed counts the fixed part once per run. Without a counter, or when counting fails, it stays 0 and the
+// budget estimates it.
+func (e *Engine) countFixed(w *worker, lease sched.Lease, st State, system string) {
+	if w.counted {
+		return
+	}
+	w.counted = true
+	if e.c.Counter == nil {
+		return
+	}
+	n, err := e.c.Counter.Count(lease.Context(), st.Model, system)
+	if err != nil {
+		if w.ctx.Err() == nil {
+			e.log.Warn("fixed part not counted", "run", st.ID, "chat", st.ChatID, "err", err)
+		}
+		return
+	}
+	w.fixedTokens = n
+}
 
 // appendCompleted stores the answer and empties the live buffer in one step under the live lock, so Partials never
 // returns text that is also in a stored message.
@@ -566,8 +731,14 @@ func failure(err error) *event.RunError {
 		return &event.RunError{Code: "model_not_found", Message: "This model is no longer in the models folder."}
 	case errors.As(err, &load):
 		return &event.RunError{Code: "model_load_failed", Message: "The model failed to load. Check its settings."}
-	case errors.Is(err, errContextTooSmall):
-		return &event.RunError{Code: "context_too_small", Message: "This message is too long for this model."}
+	case errors.Is(err, budget.ErrContextTooSmall):
+		return &event.RunError{Code: "context_too_small",
+			Message: "This model's context is too small to chat. Pick a larger context in model settings."}
+	case errors.Is(err, budget.ErrMessageTooLong):
+		return &event.RunError{Code: "message_too_long", Message: "This message is too long for this model."}
+	case errors.Is(err, errContextExceeded):
+		return &event.RunError{Code: "context_exceeded",
+			Message: "This chat is too long for this model, even after summarising."}
 	}
 	return &event.RunError{Code: "backend_failed", Message: "The model stopped answering."}
 }
@@ -589,29 +760,82 @@ func (e *Engine) catchUp(ctx context.Context, st State, runID string) (State, er
 	}
 }
 
-// turns is the conversation the model sees, up to and including the oldest input of st still unanswered. Reasoning,
-// retracted and failed messages, summaries and answers with no text are left out.
-func (e *Engine) turns(ctx context.Context, st State) ([]budget.Turn, error) {
+// input is what the budget plans the chat's next prompt from: the latest summary and the conversation from its
+// first kept message on, up to and including the oldest input of st still unanswered (every input when st.ID is "").
+// FixedTokens is left 0 for the caller.
+func (e *Engine) input(ctx context.Context, st State, system string) (budget.Input, error) {
+	in := budget.Input{Model: st.Model, CacheKey: st.ChatID, Fixed: system}
 	msgs, _, _, err := e.c.Views.Transcript(ctx, st.ChatID)
 	if err != nil {
-		return nil, err
+		return in, err
 	}
-	turns := []budget.Turn{}
-	for _, m := range conversation(msgs, st.ID) {
-		if m.Retracted || m.Failed || (m.Role != "user" && m.Role != "assistant") {
-			continue
+	var latest *store.MessageRow
+	for i, m := range msgs {
+		if m.Role == "summary" && (latest == nil || m.Seq > latest.Seq) {
+			latest = &msgs[i]
 		}
+	}
+	if latest != nil {
+		sum, err := e.summary(ctx, *latest)
+		if err != nil {
+			return in, err
+		}
+		in.Summary = &sum
+	}
+
+	var rows []store.MessageRow
+	for _, m := range conversation(msgs, st.ID) {
+		if m.Role != "summary" {
+			rows = append(rows, m)
+		}
+	}
+	if in.Summary != nil {
+		for i, m := range rows {
+			if m.Seq == in.Summary.FirstKeptSeq {
+				rows = rows[i:]
+				break
+			}
+		}
+	}
+	for _, m := range rows {
 		var parts []event.MessagePart
 		if err := json.Unmarshal(m.Parts, &parts); err != nil {
-			return nil, fmt.Errorf("message %d: %w", m.Seq, err)
+			return in, fmt.Errorf("message %d: %w", m.Seq, err)
 		}
-		text := textOf(parts)
-		if m.Role == "assistant" && text == "" {
-			continue
+		in.Messages = append(in.Messages, budget.Message{Seq: m.Seq, Role: m.Role, Parts: parts, Failed: m.Failed,
+			Retracted: m.Retracted})
+		if m.Role == "assistant" && !m.Failed && !m.Retracted {
+			if k, ok := known(m); ok {
+				in.Known = k
+			}
 		}
-		turns = append(turns, budget.Turn{Role: m.Role, Text: text})
 	}
-	return turns, nil
+	return in, nil
+}
+
+// summary reads the compaction behind a summary row: the row has its text, the event its first kept message.
+func (e *Engine) summary(ctx context.Context, row store.MessageRow) (budget.Summary, error) {
+	events, err := e.c.Log.Read(ctx, row.Seq-1, event.Filter{Streams: []string{"run:" + row.RunID}}, 1)
+	if err != nil {
+		return budget.Summary{}, err
+	}
+	if len(events) == 0 || events[0].Seq != row.Seq {
+		return budget.Summary{}, fmt.Errorf("summary %d: no compaction event", row.Seq)
+	}
+	var p event.CompactionCompleted
+	if err := json.Unmarshal(events[0].Data, &p); err != nil {
+		return budget.Summary{}, fmt.Errorf("summary %d: %w", row.Seq, err)
+	}
+	return budget.Summary{Text: p.Summary, FirstKeptSeq: p.FirstKeptSeq, Seq: row.Seq}, nil
+}
+
+// known is the exact prompt size an answer reports, if it does.
+func known(m store.MessageRow) (budget.Known, bool) {
+	var s event.MessageStats
+	if len(m.Stats) == 0 || json.Unmarshal(m.Stats, &s) != nil || !s.Exact {
+		return budget.Known{}, false
+	}
+	return budget.Known{PromptTokens: s.PromptTokens, Seq: m.Seq}, true
 }
 
 // conversation puts msgs (by seq) in the order the model reads them, ending with the input runID answers now.
@@ -639,7 +863,7 @@ func conversation(msgs []store.MessageRow, runID string) []store.MessageRow {
 			case "assistant":
 				answers = append(answers, m)
 			default:
-				other = append(other, m) // summaries: dropped by the caller in this step
+				other = append(other, m) // summaries: input reads the latest one apart
 			}
 		}
 		out = append(out, other...)
