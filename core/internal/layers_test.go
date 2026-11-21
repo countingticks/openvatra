@@ -55,6 +55,7 @@ var layers = map[string]pkg{
 	"models":    {layer: application},
 	"profile":   {layer: application},
 	"removal":   {layer: application},
+	"sched":     {layer: application},
 
 	"api":         {layer: adapter},
 	"api/openapi": {layer: adapter},
