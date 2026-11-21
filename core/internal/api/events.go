@@ -38,6 +38,23 @@ var eventDocs = []eventDoc{
 	{event.ConfigChanged{}.EventType(), reflect.TypeFor[event.ConfigChanged]()},
 	{event.ModelState{}.EventType(), reflect.TypeFor[feed.StateBody]()},
 	{event.DownloadProgress{}.EventType(), reflect.TypeFor[feed.DownloadsBody]()},
+	{event.ChatCreated{}.EventType(), reflect.TypeFor[event.ChatCreated]()},
+	{event.ChatTitled{}.EventType(), reflect.TypeFor[event.ChatTitled]()},
+	{event.ChatModel{}.EventType(), reflect.TypeFor[event.ChatModel]()},
+	{event.TurnRetracted{}.EventType(), reflect.TypeFor[event.TurnRetracted]()},
+	{event.ChatDeleted{}.EventType(), reflect.TypeFor[event.ChatDeleted]()},
+	{event.RunQueued{}.EventType(), reflect.TypeFor[event.RunQueued]()},
+	{event.InputReceived{}.EventType(), reflect.TypeFor[event.InputReceived]()},
+	{event.RunStarted{}.EventType(), reflect.TypeFor[event.RunStarted]()},
+	{event.RunPaused{}.EventType(), reflect.TypeFor[event.RunPaused]()},
+	{event.RunResumed{}.EventType(), reflect.TypeFor[event.RunResumed]()},
+	{event.RunFinished{}.EventType(), reflect.TypeFor[event.RunFinished]()},
+	{event.MessageDelta{}.EventType(), reflect.TypeFor[event.MessageDelta]()},
+	{event.ReasoningDelta{}.EventType(), reflect.TypeFor[event.ReasoningDelta]()},
+	{event.MessagePartial{}.EventType(), reflect.TypeFor[event.MessagePartial]()},
+	{event.MessageCompleted{}.EventType(), reflect.TypeFor[event.MessageCompleted]()},
+	{event.CompactionCompleted{}.EventType(), reflect.TypeFor[event.CompactionCompleted]()},
+	{event.SchedState{}.EventType(), reflect.TypeFor[event.SchedState]()},
 }
 
 // eventStreamSchema is the schema of one stream frame's data: the hello, or an event of any type.

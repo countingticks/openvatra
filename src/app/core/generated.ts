@@ -458,7 +458,276 @@ export type DownloadProgressEvent = {
   type: 'download.progress'
   v: number
 }
-export type Event = ConfigChangedEvent | ModelStateEvent | DownloadProgressEvent
+export type ChatCreated = {
+  model: string
+  profile: string
+}
+export type ChatCreatedEvent = {
+  data: ChatCreated
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.created'
+  v: number
+}
+export type ChatTitled = {
+  source: 'auto' | 'user'
+  title: string
+}
+export type ChatTitledEvent = {
+  data: ChatTitled
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.titled'
+  v: number
+}
+export type ChatModel = {
+  model: string
+}
+export type ChatModelEvent = {
+  data: ChatModel
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.model'
+  v: number
+}
+export type TurnRetracted = {
+  runId: string
+}
+export type TurnRetractedEvent = {
+  data: TurnRetracted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'turn.retracted'
+  v: number
+}
+export type ChatDeleted = {
+  chatId: string
+}
+export type ChatDeletedEvent = {
+  data: ChatDeleted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'chat.deleted'
+  v: number
+}
+export type RunQueued = {
+  chatId: string
+  model: string
+  origin: 'user'
+  profile: string
+  requestId: string
+}
+export type RunQueuedEvent = {
+  data: RunQueued
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.queued'
+  v: number
+}
+export type InputReceived = {
+  chatId: string
+  requestId: string
+  text: string
+}
+export type InputReceivedEvent = {
+  data: InputReceived
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'input.received'
+  v: number
+}
+export type RunStarted = {
+  chatId: string
+}
+export type RunStartedEvent = {
+  data: RunStarted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.started'
+  v: number
+}
+export type RunPaused = {
+  chatId: string
+  reason: 'interrupted'
+}
+export type RunPausedEvent = {
+  data: RunPaused
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.paused'
+  v: number
+}
+export type RunResumed = {
+  chatId: string
+}
+export type RunResumedEvent = {
+  data: RunResumed
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.resumed'
+  v: number
+}
+export type RunError = {
+  code: string
+  message: string
+}
+export type RunFinished = {
+  chatId: string
+  error?: RunError | null
+  state: 'done' | 'stopped' | 'failed'
+}
+export type RunFinishedEvent = {
+  data: RunFinished
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'run.finished'
+  v: number
+}
+export type MessageDelta = {
+  n: number
+  text: string
+}
+export type MessageDeltaEvent = {
+  data: MessageDelta
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'message.delta'
+  v: number
+}
+export type ReasoningDelta = {
+  n: number
+  text: string
+}
+export type ReasoningDeltaEvent = {
+  data: ReasoningDelta
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'reasoning.delta'
+  v: number
+}
+export type MessagePartial = {
+  n: number
+  reasoning: string
+  text: string
+}
+export type MessagePartialEvent = {
+  data: MessagePartial
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'message.partial'
+  v: number
+}
+export type MessagePart = {
+  kind: 'text' | 'reasoning'
+  text: string
+}
+export type MessageStats = {
+  answerTokens: number
+  contextSize: number
+  durationMs: number
+  exact: boolean
+  firstTokenMs: number
+  promptTokens: number
+  tokensPerSecond: number
+}
+export type MessageCompleted = {
+  chatId: string
+  model: string
+  partial: boolean
+  parts: MessagePart[]
+  stats: MessageStats
+}
+export type MessageCompletedEvent = {
+  data: MessageCompleted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'message.completed'
+  v: number
+}
+export type CompactionCompleted = {
+  chatId: string
+  firstKeptSeq: number
+  summary: string
+  tokensAfter: number
+  tokensBefore: number
+}
+export type CompactionCompletedEvent = {
+  data: CompactionCompleted
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'compaction.completed'
+  v: number
+}
+export type SchedWaiting = {
+  runId: string
+  why: string
+}
+export type SchedState = {
+  holder?: string
+  waiting: SchedWaiting[]
+}
+export type SchedStateEvent = {
+  data: SchedState
+  /** durable events only */
+  seq?: number
+  stream: string
+  time: number
+  type: 'sched.state'
+  v: number
+}
+export type Event =
+  | ConfigChangedEvent
+  | ModelStateEvent
+  | DownloadProgressEvent
+  | ChatCreatedEvent
+  | ChatTitledEvent
+  | ChatModelEvent
+  | TurnRetractedEvent
+  | ChatDeletedEvent
+  | RunQueuedEvent
+  | InputReceivedEvent
+  | RunStartedEvent
+  | RunPausedEvent
+  | RunResumedEvent
+  | RunFinishedEvent
+  | MessageDeltaEvent
+  | ReasoningDeltaEvent
+  | MessagePartialEvent
+  | MessageCompletedEvent
+  | CompactionCompletedEvent
+  | SchedStateEvent
 export type Gpu = {
   freeBytes: number
   name: string

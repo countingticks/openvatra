@@ -81,11 +81,14 @@ func TestDocumentListsEveryRoute(t *testing.T) {
 func TestDocumentEvents(t *testing.T) {
 	doc := decodeDoc(t, Document(Deps{}))
 	schemas := at(t, doc, "components", "schemas")
-	if n := len(at(t, schemas, "Event", "oneOf").([]any)); n != 3 {
-		t.Errorf("Event.oneOf has %d branches, want 3", n)
+	if n := len(at(t, schemas, "Event", "oneOf").([]any)); n != 20 {
+		t.Errorf("Event.oneOf has %d branches, want 20", n)
 	}
-	for _, name := range []string{"ConfigChangedEvent", "ModelStateEvent", "DownloadProgressEvent"} {
+	for _, name := range []string{"ConfigChangedEvent", "ModelStateEvent", "DownloadProgressEvent", "MessageCompletedEvent", "SchedStateEvent"} {
 		at(t, schemas, name)
+	}
+	if got := at(t, schemas, "RunFinishedEvent", "properties", "data", "$ref"); got != "#/components/schemas/RunFinished" {
+		t.Errorf("RunFinishedEvent data = %v", got)
 	}
 	if got := at(t, schemas, "ModelStateEvent", "properties", "type", "enum"); !slices.Equal(anyStrings(got), []string{"model.state"}) {
 		t.Errorf("ModelStateEvent type enum = %v", got)

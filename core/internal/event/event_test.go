@@ -1,6 +1,7 @@
 package event
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -61,6 +62,47 @@ func TestNewPanicsOnInvalidStream(t *testing.T) {
 		}
 	}()
 	New("Chat:a", ConfigChanged{}, time.Now())
+}
+
+func TestEveryPayloadInTypesHasUniqueNameVersionAndClass(t *testing.T) {
+	seen := map[string]bool{}
+	for _, p := range Types {
+		ty := p.EventType()
+		t.Run(ty.Name, func(t *testing.T) {
+			if seen[ty.Name] {
+				t.Errorf("%q is listed twice", ty.Name)
+			}
+			seen[ty.Name] = true
+			if ty.V < 1 {
+				t.Errorf("V = %d, want ≥ 1", ty.V)
+			}
+			if ty.Class != Durable && ty.Class != Ephemeral && ty.Class != Retained {
+				t.Errorf("Class = %v, want one of the three", ty.Class)
+			}
+		})
+	}
+}
+
+func TestNonDurablePanicsInAppendAndDurableInPublish(t *testing.T) {
+	log := MemoryLog(NewBus(4))
+	tests := []struct {
+		name string
+		call func()
+	}{
+		{"ephemeral Append", func() { _, _ = log.Append(context.Background(), "run:r1", MessageDelta{Text: "a", N: 1}) }},
+		{"retained Append", func() { _, _ = log.Append(context.Background(), "system", SchedState{}) }},
+		{"durable Publish", func() { log.Publish("run:r1", RunStarted{ChatID: "c1"}) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Error("did not panic")
+				}
+			}()
+			tt.call()
+		})
+	}
 }
 
 func TestZeroClassIsDurable(t *testing.T) {
