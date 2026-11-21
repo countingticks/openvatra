@@ -1,0 +1,6 @@
+{"type":"chat.created","stream":"chat:chat1","data":{"model":"m1","profile":"chat"}}
+{"type":"chat.model","stream":"chat:chat1","data":{"model":"m1"}}
+{"type":"run.queued","stream":"run:run1","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-1"}}
+{"type":"input.received","stream":"run:run1","data":{"chatId":"chat1","requestId":"req-1","text":"hi"}}
+{"type":"run.started","stream":"run:run1","data":{"chatId":"chat1"}}
+{"type":"run.paused","stream":"run:run1","data":{"chatId":"chat1","reason":"interrupted"}}

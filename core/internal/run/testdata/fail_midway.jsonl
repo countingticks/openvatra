@@ -1,0 +1,7 @@
+{"type":"chat.created","stream":"chat:chat1","data":{"model":"m1","profile":"chat"}}
+{"type":"chat.model","stream":"chat:chat1","data":{"model":"m1"}}
+{"type":"run.queued","stream":"run:run1","data":{"chatId":"chat1","model":"m1","origin":"user","profile":"chat","requestId":"req-1"}}
+{"type":"input.received","stream":"run:run1","data":{"chatId":"chat1","requestId":"req-1","text":"hi"}}
+{"type":"run.started","stream":"run:run1","data":{"chatId":"chat1"}}
+{"type":"message.completed","stream":"run:run1","data":{"chatId":"chat1","model":"m1","partial":true,"parts":[{"kind":"text","text":"half"}],"stats":{"answerTokens":2,"contextSize":8192,"durationMs":0,"exact":false,"firstTokenMs":0,"promptTokens":46,"tokensPerSecond":0}}}
+{"type":"run.finished","stream":"run:run1","data":{"chatId":"chat1","error":{"code":"backend_failed","message":"The model stopped answering."},"state":"failed"}}

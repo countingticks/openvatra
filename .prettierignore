@@ -14,6 +14,7 @@ src/app/ui/assets/
 
 # Golden files written by Go tests; byte-exact, not Prettier style
 core/internal/api/openapi/testdata/
+core/internal/run/testdata/
 
 # Generated from the route table by `go -C core test . -run TestOpenAPI -update`
 core/api/openapi.json
