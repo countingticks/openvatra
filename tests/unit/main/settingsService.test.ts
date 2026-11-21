@@ -4,12 +4,7 @@ import { ZodError } from 'zod'
 import type { saveSettings } from '../../../src/main/settings'
 import { createSettingsService, type SettingsService } from '../../../src/main/settingsService'
 import { createSettingsStore, type SettingsStore } from '../../../src/main/settingsStore'
-import {
-  defaultSettings,
-  defaultSettingsFile,
-  legacyModelsSchema,
-  type SettingsFile
-} from '../../../src/shared/settings'
+import { defaultSettings, defaultSettingsFile, type SettingsFile } from '../../../src/shared/settings'
 
 type Save = typeof saveSettings
 
@@ -26,17 +21,6 @@ function setUp(file: SettingsFile = defaultSettingsFile): Fixture {
 }
 
 describe('settings service', () => {
-  it('get drops legacyModels', () => {
-    const { service } = setUp({
-      ...defaultSettingsFile,
-      cudaOfferDismissed: true,
-      legacyModels: legacyModelsSchema.parse({ modelsDir: 'D:/Models' })
-    })
-
-    expect(service.get()).toEqual({ ...defaultSettings, cudaOfferDismissed: true })
-    expect(service.get()).not.toHaveProperty('legacyModels')
-  })
-
   it('update saves the file and answers the new settings', async () => {
     const { service, store, save } = setUp()
 

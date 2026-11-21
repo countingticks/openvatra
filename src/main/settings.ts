@@ -3,19 +3,14 @@
 // point it at a temporary folder.
 import { randomUUID } from 'crypto'
 import { open, readFile, rename, rm } from 'fs/promises'
-import { joinArgs, legacyReservedFlags, splitArgs } from '../shared/args'
 import {
   defaultSettingsFile,
-  legacyModelsSchema,
   type SettingsFile,
   settingsFileSchema,
   settingsSchemaVersion
 } from '../shared/settings'
 
 type Migration = (old: Record<string, unknown>) => Record<string, unknown>
-
-/** The `models` keys that moved to core in v7. */
-const legacyModelKeys = Object.keys(legacyModelsSchema.shape)
 
 /** `migrations[n]` turns a version-n file into a version-(n + 1) file; `migrate` sets the new version number. */
 const migrations: Readonly<Record<number, Migration>> = {
@@ -25,50 +20,21 @@ const migrations: Readonly<Record<number, Migration>> = {
   // 2 → 3: `models` is new. Nothing to move; the schema fills in its defaults. Listed anyway so the chain has no
   // gap, and so a future change to the defaults has an obvious place to go.
   2: (old) => old,
-  // 3 → 4: the number fields and the argument list became one line of argument text per model.
-  3: (old) => {
-    const models = old['models']
-    if (!isRecord(models) || !isRecord(models['options'])) return old
-    const options = Object.fromEntries(
-      Object.entries(models['options']).map(([id, value]) => [
-        id,
-        isRecord(value) ? argsFromV3(value) : value
-      ])
-    )
-    return { ...old, models: { ...models, options } }
-  },
-  // 4 → 5: no arguments for every model, no per-model unload time or projector switch. An options entry left
-  // without `args` is removed, so the file doesn't keep empty objects.
-  4: (old) => {
-    const models = old['models']
-    if (!isRecord(models)) return old
-    const rest = { ...models }
-    delete rest['sharedArgs']
-    const options = isRecord(rest['options'])
-      ? Object.fromEntries(
-          Object.entries(rest['options']).flatMap(([id, value]) => {
-            if (!isRecord(value) || typeof value['args'] !== 'string' || value['args'] === '') return []
-            return [[id, { args: value['args'] }]]
-          })
-        )
-      : undefined
-    return { ...old, models: { ...rest, ...(options && { options }) } }
-  },
+  // 3 → 4: model options became argument text. Nothing to move: 6 → 7 drops `models` anyway.
+  3: (old) => old,
+  // 4 → 5: the shared arguments and per-model unload time and projector switch were removed. 6 → 7 drops `models`
+  // anyway.
+  4: (old) => old,
   // 5 → 6: `engine`, `showAdvanced` and `cudaOfferDismissed` are new; the schema fills in their defaults.
   5: (old) => old,
-  // 6 → 7: core owns the model settings. The two view preferences move to the top level; the rest waits in
-  // `legacyModels` until core has taken it, so a crash before the import loses nothing.
+  // 6 → 7: core owns the model settings, so `models` is dropped. Only the two view preferences move to the top level.
   6: (old) => {
     const { models, ...rest } = old
     if (!isRecord(models)) return rest
-    const legacyModels = Object.fromEntries(
-      legacyModelKeys.filter((key) => key in models).map((key) => [key, models[key]])
-    )
     return {
       ...rest,
       ...('showAdvanced' in models && { showAdvancedModels: models['showAdvanced'] }),
-      ...('cudaOfferDismissed' in models && { cudaOfferDismissed: models['cudaOfferDismissed'] }),
-      legacyModels
+      ...('cudaOfferDismissed' in models && { cudaOfferDismissed: models['cudaOfferDismissed'] })
     }
   },
   // 7 → 8: `lastTab` became `lastRoute`, a route path. A tab id is already a valid path.
@@ -78,21 +44,9 @@ const migrations: Readonly<Record<number, Migration>> = {
   }
 }
 
-/** `{ contextSize, gpuLayers, extraArgs }` → `{ args: '-c … -ngl … …' }`; `{}` if nothing was set. */
-function argsFromV3(options: Record<string, unknown>): Record<string, unknown> {
-  const { contextSize, gpuLayers, extraArgs } = options
-  const args: string[] = []
-  if (typeof contextSize === 'number') args.push('-c', String(contextSize))
-  if (typeof gpuLayers === 'number') args.push('-ngl', String(gpuLayers))
-  if (Array.isArray(extraArgs)) args.push(...extraArgs.filter((arg) => typeof arg === 'string'))
-  const text = joinArgs(args)
-  // v3 never checked for flags core sets itself; drop such a model's arguments rather than set the whole file aside.
-  return text && splitArgs(text, legacyReservedFlags).ok ? { args: text } : {}
-}
-
 /** What happened while loading, so the caller can log it. */
 export type LoadOutcome =
-  | { kind: 'loaded'; droppedSharedArgs?: true }
+  | { kind: 'loaded'; droppedModels?: true }
   | { kind: 'missing' }
   | { kind: 'recovered'; reason: 'corrupt' | 'invalid'; backupPath: string }
   | { kind: 'unreadable'; error: unknown }
@@ -106,11 +60,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** A v4 file whose shared arguments v5 throws away; worth one log line, because the user typed them. */
-function hadSharedArgs(raw: unknown): boolean {
-  if (!isRecord(raw) || raw['schemaVersion'] !== 4 || !isRecord(raw['models'])) return false
-  const text = raw['models']['sharedArgs']
-  return typeof text === 'string' && text.trim() !== ''
+/** The `models` keys that stay in settings.json after v7; core owns every other one. */
+const keptModelKeys = ['showAdvanced', 'cudaOfferDismissed']
+
+/** A file that still holds model settings core owns: worth one log line, because the user set them. */
+function hadModelSettings(raw: unknown): boolean {
+  if (!isRecord(raw)) return false
+  if ('legacyModels' in raw) return true
+  const { schemaVersion, models } = raw
+  return (
+    typeof schemaVersion === 'number' &&
+    schemaVersion < 7 &&
+    isRecord(models) &&
+    Object.keys(models).some((key) => !keptModelKeys.includes(key))
+  )
 }
 
 /** Upgrades an older file step by step. Anything it doesn't recognise is returned unchanged for zod to reject. */
@@ -152,7 +115,7 @@ export async function loadSettings(filePath: string): Promise<LoadResult> {
   if (!parsed.success) return setAside(filePath, 'invalid')
   return {
     settings: parsed.data,
-    outcome: { kind: 'loaded', ...(hadSharedArgs(raw) && { droppedSharedArgs: true }) }
+    outcome: { kind: 'loaded', ...(hadModelSettings(raw) && { droppedModels: true }) }
   }
 }
 
@@ -174,8 +137,8 @@ export function logLoadOutcome(logger: Logger, filePath: string, outcome: LoadOu
   switch (outcome.kind) {
     case 'loaded':
       logger.info(`Settings loaded from ${filePath}`)
-      if (outcome.droppedSharedArgs)
-        logger.info('Dropped the arguments for every model (removed in settings v5)')
+      if (outcome.droppedModels)
+        logger.info('Dropped the model settings left from settings v6 or older (core owns them since v7)')
       break
     case 'missing':
       logger.info(`No settings file at ${filePath} yet; using defaults`)

@@ -32,7 +32,7 @@ describe('defaultSettings', () => {
 })
 
 describe('settingsFileSchema', () => {
-  it('fills in the file defaults: the view flags at the top level, no models and no legacyModels', () => {
+  it('fills in the file defaults: the view flags at the top level and no models', () => {
     expect(settingsFileSchema.parse({ schemaVersion: 8 })).toEqual({
       schemaVersion: 8,
       theme: 'system',
@@ -49,17 +49,10 @@ describe('settingsFileSchema', () => {
     expect(Object.isFrozen(defaultSettingsFile)).toBe(true)
   })
 
-  it('fills the keys legacyModels leaves out with the v6 defaults', () => {
-    expect(
-      settingsFileSchema.parse({ schemaVersion: 8, legacyModels: { modelsDir: 'D:/models' } }).legacyModels
-    ).toEqual({
-      llamaServerPath: null,
-      modelsDir: 'D:/models',
-      embeddingModel: null,
-      idleUnloadMinutes: 15,
-      options: {},
-      engine: 'bundled'
-    })
+  it('strips a legacyModels key a file still has', () => {
+    const parsed = settingsFileSchema.parse({ schemaVersion: 8, legacyModels: { modelsDir: 'D:/models' } })
+    expect(parsed).not.toHaveProperty('legacyModels')
+    expect(parsed).toEqual(settingsFileSchema.parse({ schemaVersion: 8 }))
   })
 })
 
@@ -67,21 +60,6 @@ describe('the window settings', () => {
   it('has the two model view flags and no models', () => {
     expect(defaultSettings).toMatchObject({ showAdvancedModels: false, cudaOfferDismissed: false })
     expect(defaultSettings).not.toHaveProperty('models')
-  })
-
-  it.each([
-    ['an idle time that is not offered', { idleUnloadMinutes: 7 }],
-    ['an empty path', { modelsDir: '' }],
-    ['an unknown engine', { engine: 'rocm' }],
-    ['arguments with an unclosed quote', { options: { m: { args: '--alias "my qwen' } } }],
-    ['an unknown option', { options: { m: { shell: 'cmd' } } }]
-  ])('legacyModels rejects %s', (_case, models) => {
-    expect(settingsFileSchema.safeParse({ schemaVersion: 8, legacyModels: models }).success).toBe(false)
-  })
-
-  it('legacyModels accepts the size flags v6 allowed, for the import to move', () => {
-    const models = { options: { qwen: { args: '-c 8192' } } }
-    expect(settingsFileSchema.safeParse({ schemaVersion: 8, legacyModels: models }).success).toBe(true)
   })
 
   it('the patch schema accepts the two flags and rejects models', () => {

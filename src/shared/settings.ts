@@ -2,7 +2,6 @@
 // zod checks data at runtime (a file on disk or an IPC message can hold anything), and `z.infer` derives the
 // TypeScript type from the same schema, so the check and the type can never disagree.
 import { z } from 'zod'
-import { legacyReservedFlags, splitArgs } from './args'
 
 // Settings is a dialog, not a tab (since schema version 2).
 export const tabIds = ['chat', 'code', 'automations'] as const
@@ -14,8 +13,7 @@ export type TabId = (typeof tabIds)[number]
  * 4: model options became llama-swap style argument text (`sharedArgs`, `options[id].args`).
  * 5: `sharedArgs` and the per-model unload time and projector switch were removed.
  * 6: added `models.engine`, `showAdvanced` and `cudaOfferDismissed` (model setup).
- * 7: model settings moved to core; the file keeps `legacyModels` until they are imported, and the two view
- * preferences at the top level.
+ * 7: model settings moved to core; the two view preferences moved to the top level.
  * 8: `lastTab` became `lastRoute`, a route path.
  */
 export const settingsSchemaVersion = 8
@@ -40,34 +38,8 @@ const closeAction = z.enum(closeActions)
 const sidebarOpen = z.boolean()
 const motion = z.enum(motions)
 
-/** Minutes a model may sit unused before core unloads it; null means never. */
-export const idleUnloadMinutesChoices = [5, 15, 30, 60] as const
-
-/**
- * llama-server arguments as the user typed them (`-c 131072 --jinja`). Kept as text so the box shows exactly what
- * was typed; main splits it into a list for core (src/shared/args.ts), and text that doesn't split is never saved.
- */
-const argsText = z
-  .string()
-  // v6's own list: a v6 file with -c still loads, and the import moves the size flags into core's fields.
-  .refine((text) => splitArgs(text, legacyReservedFlags).ok, { message: 'invalid llama-server arguments' })
-
-// Bare field schemas, shared by the file schema (with defaults) and the UI patch (without).
-const modelId = z.string().min(1)
-const idleUnloadMinutes = z.union(idleUnloadMinutesChoices.map((minutes) => z.literal(minutes))).nullable()
-
-/**
- * One model's own settings. Arguments are the only option: the projector is passed whenever one is found
- * (`--no-mmproj` in the arguments turns that off), and models unload by the global time.
- */
-export const modelOptionsSchema = z.strictObject({
-  args: argsText.optional()
-})
-const modelOptionsById = z.record(modelId, modelOptionsSchema)
-
 /** Which llama.cpp build runs the models: the one shipped with the app, or the faster NVIDIA (CUDA) one. */
 export const engines = ['bundled', 'cuda'] as const
-const engine = z.enum(engines)
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
 export const windowBoundsSchema = z.object({
@@ -91,7 +63,7 @@ const topLevelShape = {
   closeToTrayNoticeShown: z.boolean().default(false)
 }
 
-/** The window's Settings (IPC): the file's keys without `legacyModels`. Core owns everything about models. */
+/** The window's Settings (IPC). Core owns everything about models. */
 export const settingsSchema = z.object({
   ...topLevelShape,
   /** Show the full model list and technical details instead of the simple view. */
@@ -100,29 +72,14 @@ export const settingsSchema = z.object({
   cudaOfferDismissed: z.boolean().default(false)
 })
 
-/** A v6 user's six model keys, with the v6 defaults; the shape of `legacyModels` until core has taken them. */
-export const legacyModelsSchema = z.object({
-  /** Full path to llama-server.exe; null = the default engine. */
-  llamaServerPath: z.string().min(1).nullable().default(null),
-  /** null = the default folder (`%USERPROFILE%\OpenVatra\Models`). */
-  modelsDir: z.string().min(1).nullable().default(null),
-  /** A model id (its file name without .gguf). */
-  embeddingModel: modelId.nullable().default(null),
-  idleUnloadMinutes: idleUnloadMinutes.default(15),
-  options: modelOptionsById.default({}),
-  engine: engine.default('bundled')
-})
-
-/** settings.json (v7). */
-export const settingsFileSchema = settingsSchema.extend({
-  /** A v6 user's model settings, kept until core has taken them (src/main/core/legacyImport.ts). */
-  legacyModels: legacyModelsSchema.optional()
-})
+/**
+ * settings.json (v8): the file holds exactly the window's Settings. zod strips any other key, so a leftover
+ * `legacyModels` is dropped on load.
+ */
+export const settingsFileSchema = settingsSchema
 
 export type Settings = z.infer<typeof settingsSchema>
 export type SettingsFile = z.infer<typeof settingsFileSchema>
-export type LegacyModels = z.infer<typeof legacyModelsSchema>
-export type ModelOptions = z.infer<typeof modelOptionsSchema>
 export type WindowBounds = z.infer<typeof windowBoundsSchema>
 
 // Frozen so no caller can change the defaults everyone else gets.
