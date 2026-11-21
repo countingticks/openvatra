@@ -108,6 +108,9 @@ type live struct {
 	stream          string
 	n               int // the run's delta counter, from 1; never reset within the run
 	text, reasoning strings.Builder
+	// reasoningFrom and reasoningTo bound the answer's thinking: the first reasoning delta to the first text delta
+	// (or the last reasoning delta when no text follows).
+	reasoningFrom, reasoningTo time.Time
 }
 
 // New returns an engine; call Recover once before serving.
@@ -511,7 +514,7 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 		}
 
 		started = time.Now()
-		res, err = e.c.Chat.Complete(lease.Context(), plan.Request, w.live.add(e.c.Log))
+		res, err = e.c.Chat.Complete(lease.Context(), plan.Request, w.live.add(e.c.Log, e.now))
 		if !errors.Is(err, provider.ErrContextExceeded) || w.live.hasText() || w.ctx.Err() != nil {
 			break
 		}
@@ -526,7 +529,7 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	if w.ctx.Err() != nil || err != nil {
 		var partial *partialAnswer
 		if parts := w.live.parts(); textOf(parts) != "" {
-			partial = &partialAnswer{parts: parts, stats: statsOf(res.Usage, plan.Tokens, parts, elapsed, contextSize)}
+			partial = &partialAnswer{parts: parts, stats: statsOf(res.Usage, plan.Tokens, parts, elapsed, contextSize, w.live.reasoningMs())}
 		}
 		if w.ctx.Err() != nil {
 			err = nil
@@ -535,7 +538,7 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	}
 
 	parts := messageParts(res.Parts)
-	stats := statsOf(res.Usage, plan.Tokens, parts, elapsed, contextSize)
+	stats := statsOf(res.Usage, plan.Tokens, parts, elapsed, contextSize, w.live.reasoningMs())
 	if _, err := e.appendCompleted(w.ctx, st, parts, false, stats); err != nil {
 		return st, stepOutcome{end: true, err: w.ctxErr(err)}
 	}
@@ -669,6 +672,7 @@ func (e *Engine) appendCompleted(ctx context.Context, st State, parts []event.Me
 	if err == nil && w != nil {
 		w.text.Reset()
 		w.reasoning.Reset()
+		w.reasoningFrom, w.reasoningTo = time.Time{}, time.Time{}
 	}
 	return events, err
 }
@@ -909,10 +913,10 @@ func messageParts(parts []provider.Part) []event.MessagePart {
 
 // statsOf is the provider's usage plus the step's timing; without exact counts both are estimated.
 func statsOf(u provider.Usage, promptEstimate int, parts []event.MessagePart, elapsed time.Duration,
-	contextSize int) event.MessageStats {
+	contextSize int, reasoningMs int64) event.MessageStats {
 	s := event.MessageStats{
 		PromptTokens: u.PromptTokens, AnswerTokens: u.AnswerTokens, Exact: u.Exact,
-		TokensPerSecond: u.TokensPerSecond, FirstTokenMs: u.FirstTokenMs,
+		TokensPerSecond: u.TokensPerSecond, FirstTokenMs: u.FirstTokenMs, ReasoningMs: reasoningMs,
 		DurationMs: elapsed.Milliseconds(), ContextSize: contextSize,
 	}
 	if !u.Exact {
@@ -926,7 +930,7 @@ func statsOf(u provider.Usage, promptEstimate int, parts []event.MessagePart, el
 }
 
 // add numbers the delta, keeps its text and publishes it, all under the live lock.
-func (l *live) add(log event.Log) func(provider.Delta) {
+func (l *live) add(log event.Log, now func() time.Time) func(provider.Delta) {
 	return func(d provider.Delta) {
 		if d.Text == "" || (d.Kind != provider.PartText && d.Kind != provider.PartReasoning) {
 			return
@@ -935,13 +939,32 @@ func (l *live) add(log event.Log) func(provider.Delta) {
 		defer l.mu.Unlock()
 		l.n++
 		if d.Kind == provider.PartText {
+			if l.text.Len() == 0 && !l.reasoningFrom.IsZero() {
+				l.reasoningTo = now()
+			}
 			l.text.WriteString(d.Text)
 			log.Publish(l.stream, event.MessageDelta{Text: d.Text, N: l.n})
 		} else {
+			if l.text.Len() == 0 {
+				if l.reasoningFrom.IsZero() {
+					l.reasoningFrom = now()
+				}
+				l.reasoningTo = now()
+			}
 			l.reasoning.WriteString(d.Text)
 			log.Publish(l.stream, event.ReasoningDelta{Text: d.Text, N: l.n})
 		}
 	}
+}
+
+// reasoningMs is how long the model thought for the answer so far.
+func (l *live) reasoningMs() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.reasoningFrom.IsZero() {
+		return 0
+	}
+	return l.reasoningTo.Sub(l.reasoningFrom).Milliseconds()
 }
 
 func (l *live) hasText() bool {

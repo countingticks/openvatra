@@ -103,6 +103,9 @@ type fixture struct {
 	eng       *Engine
 	events    <-chan event.Event
 	seen      []event.Event // every event waitFor has read, in order
+	step      time.Duration // when set, each call of the engine's clock moves it forward by this much
+	clockMu   sync.Mutex
+	ticks     time.Duration
 }
 
 // newFixture is an engine over a real store in a temporary folder, answering with turns.
@@ -142,7 +145,13 @@ func (f *fixture) newEngine(turns ...providertest.Turn) *Engine {
 		Sched:    f.sched,
 		Profiles: profile.Builtin(),
 		Counter:  f.counter,
-		Now:      func() time.Time { return clock },
+		Now: func() time.Time {
+			f.clockMu.Lock()
+			defer f.clockMu.Unlock()
+			t := clock.Add(f.ticks)
+			f.ticks += f.step
+			return t
+		},
 	})
 	return f.eng
 }
@@ -473,6 +482,73 @@ func TestStart(t *testing.T) {
 		f.finished(a.RunID)
 		if n := len(f.storedOf("run.queued")); n != 2 {
 			t.Fatalf("%d runs queued, want 2", n)
+		}
+	})
+}
+
+func TestReasoningMs(t *testing.T) {
+	reasoningMs := func(f *fixture) []int64 {
+		var out []int64
+		for _, e := range f.storedOf("message.completed") {
+			out = append(out, decodeAs[event.MessageCompleted](t, e).Stats.ReasoningMs)
+		}
+		return out
+	}
+
+	t.Run("an answer with reasoning then text says how long the model thought", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Reasoning: []string{"a", "b"}, Text: []string{"x"}})
+		f.step = time.Millisecond
+		f.finished(f.send("hi", "req-1").RunID)
+		if got := reasoningMs(f); len(got) != 1 || got[0] <= 0 {
+			t.Fatalf("reasoningMs %v", got)
+		}
+	})
+
+	t.Run("an answer with text only has no thinking time", func(t *testing.T) {
+		f := newFixture(t, answer("x"))
+		f.step = time.Millisecond
+		f.finished(f.send("hi", "req-1").RunID)
+		if got := reasoningMs(f); !slices.Equal(got, []int64{0}) {
+			t.Fatalf("reasoningMs %v", got)
+		}
+	})
+
+	t.Run("the second answer of a run measures its own reasoning", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Reasoning: []string{"a", "b"}, Text: []string{"one"}}, answer("two"))
+		f.step = time.Millisecond
+		release := f.model.holdCall(1)
+		ref := f.send("one", "req-1")
+		f.entered()
+		f.start(Spec{ChatID: ref.ChatID, Text: "two", RequestID: "req-2"})
+		release()
+		f.finished(ref.RunID)
+		if got := reasoningMs(f); len(got) != 2 || got[0] <= 0 || got[1] != 0 {
+			t.Fatalf("reasoningMs %v", got)
+		}
+	})
+
+	t.Run("a stop after some text keeps the thinking time on the partial answer", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Reasoning: []string{"a"}, Text: []string{"par"}, Hang: true})
+		f.step = time.Millisecond
+		ref := f.send("hi", "req-1")
+		f.waitFor("message.delta", ref.RunID)
+		if err := f.eng.Stop(bg, ref.RunID); err != nil {
+			t.Fatal(err)
+		}
+		if got := reasoningMs(f); len(got) != 1 || got[0] <= 0 {
+			t.Fatalf("reasoningMs %v", got)
+		}
+	})
+
+	t.Run("a stop during reasoning keeps no answer", func(t *testing.T) {
+		f := newFixture(t, providertest.Turn{Reasoning: []string{"a"}, Hang: true})
+		ref := f.send("hi", "req-1")
+		f.waitFor("reasoning.delta", ref.RunID)
+		if err := f.eng.Stop(bg, ref.RunID); err != nil {
+			t.Fatal(err)
+		}
+		if got := reasoningMs(f); len(got) != 0 {
+			t.Fatalf("reasoningMs %v", got)
 		}
 	})
 }
