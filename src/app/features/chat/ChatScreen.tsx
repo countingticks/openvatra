@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   useGetChatQuery,
   useResumeRunMutation,
@@ -9,12 +9,14 @@ import { ModelButton, WelcomeCard } from '@app/features/models'
 import { answerState, Transcript, useLiveAnswer, useRunView, type RunView } from '@app/features/runs'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import { modelsDialogOpened, routeReplaced, selectRoute, settingsOpened } from '@app/store/uiSlice'
+import { Button } from '@app/ui/button'
 import { Ember } from '@app/ui/Ember'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
 import { Composer } from './Composer'
 import { ContextMeter } from './ContextMeter'
 import { useAnnouncer } from './useAnnouncer'
 import { useChatModel } from './useChatModel'
+import { useFollowEnd } from './useFollowEnd'
 
 /** The polite status region: one sentence when an answer finishes or fails, never word by word. */
 function Announcer({ view }: { view: RunView | null }): React.JSX.Element {
@@ -28,7 +30,22 @@ function Announcer({ view }: { view: RunView | null }): React.JSX.Element {
 /** The Chat tab: one chat's transcript and its message box. The welcome card replaces it while no chat model is installed. */
 export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX.Element {
   const dispatch = useAppDispatch()
+  if (!showWelcome) return <ChatView />
+  return (
+    <div className="relative h-full overflow-hidden">
+      <PixelBackdrop />
+      <div className="relative flex h-full items-center justify-center p-8">
+        <WelcomeCard onSeeOtherModels={() => dispatch(modelsDialogOpened())} />
+      </div>
+    </div>
+  )
+}
+
+/** The open chat (or a new one). Its own component, so the conversation's scroll hooks mount with their element. */
+function ChatView(): React.JSX.Element {
+  const dispatch = useAppDispatch()
   const route = useAppSelector(selectRoute)
+  const scroller = useRef<HTMLDivElement>(null)
   const chatId = route.tab === 'chat' && route.chatId ? route.chatId : undefined
   const { view, context, status } = useRunView(chatId)
   const { data: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: chatId === undefined })
@@ -39,6 +56,7 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
   const [startRun] = useStartRunMutation()
   const [stopRun] = useStopRunMutation()
   const [resumeRun] = useResumeRunMutation()
+  const { following, jumpToLatest } = useFollowEnd(scroller, chatId)
 
   // A saved route to a chat that is gone (deleted elsewhere): open a new chat in its place.
   useEffect(() => {
@@ -66,17 +84,6 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
       .catch((error: unknown) => console.error('Could not continue the answer', error))
   }
 
-  if (showWelcome) {
-    return (
-      <div className="relative h-full overflow-hidden">
-        <PixelBackdrop />
-        <div className="relative flex h-full items-center justify-center p-8">
-          <WelcomeCard onSeeOtherModels={() => dispatch(modelsDialogOpened())} />
-        </div>
-      </div>
-    )
-  }
-
   // The backdrop belongs to the conversation area only (design decision), under the content.
   return (
     <div className="relative h-full overflow-hidden">
@@ -89,20 +96,24 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
           </h1>
         </div>
         <div
+          ref={scroller}
           role="log"
           aria-label="Conversation"
           aria-live="off"
           className="flex-1 overflow-auto px-7 pt-3 pb-6"
         >
-          {view !== null && (
-            <Transcript
-              view={view}
-              model={model ?? ''}
-              modelLoading={loading}
-              onContinue={resume}
-              onOpenModelSettings={() => dispatch(settingsOpened('models'))}
-            />
-          )}
+          {/* Always there: useFollowEnd watches this one element grow. */}
+          <div>
+            {view !== null && (
+              <Transcript
+                view={view}
+                model={model ?? ''}
+                modelLoading={loading}
+                onContinue={resume}
+                onOpenModelSettings={() => dispatch(settingsOpened('models'))}
+              />
+            )}
+          </div>
         </div>
         <Announcer key={chatId ?? 'new'} view={view} />
         <div className="px-7 pb-4">
@@ -110,6 +121,16 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
             <div className="absolute -top-[30px] left-[18px]">
               <Ember state={answerState(activeRun, live)} scale={2} />
             </div>
+            {!following && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={jumpToLatest}
+                className="absolute -top-11 left-1/2 -translate-x-1/2 bg-background"
+              >
+                Jump to latest
+              </Button>
+            )}
             <Composer
               chatId={chatId}
               model={model}
