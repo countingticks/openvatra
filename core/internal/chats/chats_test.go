@@ -51,7 +51,7 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 	model := providertest.NewScripted(turns...)
 	models := func(context.Context) ([]provider.Model, error) { return list, nil }
 	eng := run.New(run.Config{
-		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: profile.Builtin(),
+		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: noTitles(),
 		Model: func(_ context.Context, id string) (provider.Model, error) {
 			return provider.Model{ID: id, Kind: provider.ModelChat, Context: 8192}, nil
 		},
@@ -66,6 +66,13 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 }
 
 var answer = providertest.Turn{Text: []string{"hi"}}
+
+// noTitles is the built-in profiles with chat titles off, so a scripted turn is never spent on a title.
+func noTitles() *profile.Registry {
+	chat, _ := profile.Builtin().Get("chat")
+	chat.Title = false
+	return profile.Builtin().With(chat)
+}
 
 func (f *fixture) send(in SendInput) run.Ref {
 	f.t.Helper()

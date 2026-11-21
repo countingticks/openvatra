@@ -33,6 +33,13 @@ type runsFixture struct {
 
 var chatModels = []provider.Model{{ID: "m1", Kind: provider.ModelChat, Context: 8192}}
 
+// noTitles is the built-in profiles with chat titles off, so a scripted turn is never spent on a title.
+func noTitles() *profile.Registry {
+	chat, _ := profile.Builtin().Get("chat")
+	chat.Title = false
+	return profile.Builtin().With(chat)
+}
+
 // newRunsFixture is the full handler over a real store, engine and chats service, the model answering with turns.
 // list is the installed model list.
 func newRunsFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn) *runsFixture {
@@ -55,7 +62,7 @@ func newRunsFixtureWith(t *testing.T, list []provider.Model, model provider.Chat
 	cfg := config.New(st, slog.New(slog.DiscardHandler))
 	config.Register[chats.Settings, struct{}](cfg, chats.ID, chats.DefaultSettings(), nil)
 	eng := run.New(run.Config{
-		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: profile.Builtin(),
+		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: noTitles(),
 		Model: func(_ context.Context, id string) (provider.Model, error) {
 			return provider.Model{ID: id, Kind: provider.ModelChat, Context: 8192}, nil
 		},

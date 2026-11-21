@@ -27,7 +27,11 @@ type State struct {
 	ID, ChatID, Profile, Model string
 	Status                     Status
 	Inbox                      []string // input texts received and not yet answered, oldest first
+	Answers                    int      // message.completed events so far
 	LastSeq                    int64
+
+	// WantTitle is never folded: the engine sets it when the run should title its chat after the first answer.
+	WantTitle bool
 }
 
 // Fold applies one event of the run's stream. It is pure; unknown types only raise LastSeq.
@@ -46,6 +50,7 @@ func Fold(s State, e event.Event) State {
 			s.Inbox = append(s.Inbox[:len(s.Inbox):len(s.Inbox)], p.Text)
 		}
 	case "message.completed":
+		s.Answers++
 		// With Steps: 1, one answer per input: the answer is to the oldest input waiting.
 		if len(s.Inbox) > 0 {
 			s.Inbox = s.Inbox[1:]
@@ -72,6 +77,7 @@ const (
 	Idle     Action = iota // nothing to do: the worker exits
 	AskModel               // answer the oldest input in the inbox
 	Finish                 // every input is answered: end the run
+	Title                  // ask the model for the chat's title, once, after the run's first answer
 )
 
 // Next picks the action for s under profile p. It is pure.
@@ -79,6 +85,9 @@ func Next(s State, p profile.Profile) Action {
 	switch s.Status {
 	case Done, Stopped, Failed, Interrupted:
 		return Idle
+	}
+	if p.Title && s.WantTitle && s.Answers > 0 {
+		return Title
 	}
 	if len(s.Inbox) > 0 {
 		return AskModel

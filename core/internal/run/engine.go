@@ -378,6 +378,7 @@ func (e *Engine) work(w *worker) {
 		e.exit(w, State{ID: w.runID}, nil, err)
 		return
 	}
+	e.decideTitle(w, &st)
 	for {
 		if w.ctx.Err() != nil { // stopped or closed between steps
 			e.exit(w, st, nil, nil)
@@ -388,14 +389,18 @@ func (e *Engine) work(w *worker) {
 			e.exit(w, st, nil, fmt.Errorf("unknown profile %q", st.Profile))
 			return
 		}
-		if Next(st, p) != AskModel {
+		var out stepOutcome
+		switch Next(st, p) {
+		case AskModel:
+			st, out = e.ask(w, st, p)
+		case Title: // ask titles right after the first answer; this is only reached if it could not
+			st, out = e.titleStep(w, st)
+		default:
 			if e.settle(w, &st, p) {
 				return
 			}
 			continue
 		}
-		var out stepOutcome
-		st, out = e.ask(w, st, p)
 		if out.end {
 			e.exit(w, st, out.partial, out.err)
 			return
@@ -544,13 +549,131 @@ func (e *Engine) ask(w *worker, st State, p profile.Profile) (State, stepOutcome
 	}
 	e.log.Info("run answered", "run", st.ID, "chat", st.ChatID, "promptTokens", stats.PromptTokens,
 		"answerTokens", stats.AnswerTokens, "exact", stats.Exact, "durationMs", stats.DurationMs)
-	lease.Release()
 
 	next, err := e.catchUp(w.ctx, st, st.ID)
 	if err != nil {
 		return st, stepOutcome{end: true, err: w.ctxErr(err)}
 	}
+	// The title is asked under this answer's lease, before any input queued behind it (decision 27).
+	if Next(next, p) == Title {
+		e.title(w, lease, next)
+		next.WantTitle = false
+	}
 	return next, stepOutcome{}
+}
+
+// decideTitle sets st.WantTitle once, when the worker starts: a run titles its chat when its profile asks for
+// titles, it is the chat's first run, it has no answer yet and the user has not named the chat. A run resumed after
+// its answer gets no title.
+func (e *Engine) decideTitle(w *worker, st *State) {
+	p, ok := e.c.Profiles.Get(st.Profile)
+	if !ok || !p.Title || st.Answers > 0 {
+		return
+	}
+	want, err := e.firstUntitledRun(w.ctx, *st)
+	if err != nil {
+		if w.ctx.Err() == nil {
+			e.log.Warn("run title check failed", "run", st.ID, "chat", st.ChatID, "err", err)
+		}
+		return
+	}
+	st.WantTitle = want
+}
+
+// firstUntitledRun reports whether st is its chat's first run and the chat's title is not the user's.
+func (e *Engine) firstUntitledRun(ctx context.Context, st State) (bool, error) {
+	chat, _, err := e.c.Views.Chat(ctx, st.ChatID)
+	if err != nil || chat.TitleSource == "user" {
+		return false, err
+	}
+	_, runs, _, err := e.c.Views.Transcript(ctx, st.ChatID)
+	if err != nil {
+		return false, err
+	}
+	return len(runs) > 0 && runs[0].ID == st.ID, nil
+}
+
+// titleStep asks for the title under a lease of its own.
+func (e *Engine) titleStep(w *worker, st State) (State, stepOutcome) {
+	lease, err := e.c.Sched.Acquire(w.ctx, sched.Request{RunID: st.ID, Model: st.Model, Class: sched.Interactive, Why: waitWhy})
+	if err != nil {
+		return st, stepOutcome{end: true} // only a cancelled ctx ends Acquire
+	}
+	defer lease.Release()
+	e.title(w, lease, st)
+	st.WantTitle = false
+	return st, stepOutcome{}
+}
+
+var (
+	errEmptyTitle = errors.New("empty title")
+	errUserTitled = errors.New("the user named the chat")
+)
+
+// title asks the model for a short title from the run's first input and stores it as the chat's auto title.
+// Nothing streams. On any failure nothing is written and the title cut from the first message stays.
+func (e *Engine) title(w *worker, lease sched.Lease, st State) {
+	title, err := e.askTitle(w, lease, st)
+	if err == nil && title == "" {
+		err = errEmptyTitle
+	}
+	if err == nil {
+		_, err = e.c.Log.Append(w.ctx, "chat:"+st.ChatID, event.ChatTitled{Title: title, Source: "auto"})
+	}
+	switch {
+	case errors.Is(err, errUserTitled):
+	case err != nil:
+		e.log.Warn("chat title not made", "run", st.ID, "chat", st.ChatID, "err", err)
+	default:
+		e.log.Info("chat titled", "run", st.ID, "chat", st.ChatID)
+	}
+}
+
+func (e *Engine) askTitle(w *worker, lease sched.Lease, st State) (string, error) {
+	// Checked again here: the user may have renamed the chat while its first answer was being written.
+	chat, _, err := e.c.Views.Chat(w.ctx, st.ChatID)
+	if err != nil {
+		return "", err
+	}
+	if chat.TitleSource == "user" {
+		return "", errUserTitled
+	}
+	msgs, _, _, err := e.c.Views.Transcript(w.ctx, st.ChatID)
+	if err != nil {
+		return "", err
+	}
+	first := ""
+	for _, m := range msgs { // by seq: the run's first user row is its first input
+		if m.RunID == st.ID && m.Role == "user" {
+			var parts []event.MessagePart
+			if err := json.Unmarshal(m.Parts, &parts); err != nil {
+				return "", fmt.Errorf("message %d: %w", m.Seq, err)
+			}
+			first = textOf(parts)
+			break
+		}
+	}
+	if first == "" {
+		return "", errors.New("no first input")
+	}
+	ctx, cancel := context.WithTimeout(lease.Context(), titleTimeout)
+	defer cancel()
+	res, err := e.c.Chat.Complete(ctx, provider.Request{
+		Model: st.Model,
+		Messages: []provider.Message{
+			provider.TextMessage("system", titlePrompt),
+			provider.TextMessage("user", firstRunes(first, titleInputRunes)),
+		},
+		MaxOut:     titleMaxOut,
+		NoThinking: true,
+	}, func(provider.Delta) {})
+	if err == nil {
+		err = ctx.Err() // a cancelled or timed-out call returns what it had without an error
+	}
+	if err != nil {
+		return "", err
+	}
+	return cleanTitle(textOf(messageParts(res.Parts))), nil
 }
 
 // ctxErr hides an error caused by the step being cancelled: the run then ends as stopped or closed, not failed.

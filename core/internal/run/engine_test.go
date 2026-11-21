@@ -106,6 +106,7 @@ type fixture struct {
 	step      time.Duration // when set, each call of the engine's clock moves it forward by this much
 	clockMu   sync.Mutex
 	ticks     time.Duration
+	profiles  *profile.Registry // the engine's profiles: noTitles unless a test wants titles
 }
 
 // newFixture is an engine over a real store in a temporary folder, answering with turns.
@@ -118,7 +119,7 @@ func newFixture(t *testing.T, turns ...providertest.Turn) *fixture {
 	}
 	_, events, cancel := bus.Subscribe(event.Filter{})
 	f := &fixture{t: t, store: st, bus: bus, events: events, modelErrs: map[string]error{}, size: contextSize,
-		counter: &counter{}}
+		counter: &counter{}, profiles: noTitles()}
 	f.eng = f.newEngine(turns...)
 	t.Cleanup(func() {
 		f.eng.Close()
@@ -143,7 +144,7 @@ func (f *fixture) newEngine(turns ...providertest.Turn) *Engine {
 			return provider.Model{ID: id, Kind: provider.ModelChat, Context: f.size}, nil
 		},
 		Sched:    f.sched,
-		Profiles: profile.Builtin(),
+		Profiles: f.profiles,
 		Counter:  f.counter,
 		Now: func() time.Time {
 			f.clockMu.Lock()
@@ -154,6 +155,22 @@ func (f *fixture) newEngine(turns ...providertest.Turn) *Engine {
 		},
 	})
 	return f.eng
+}
+
+// noTitles is the built-in profiles with chat titles off, so a scripted turn is never spent on a title.
+func noTitles() *profile.Registry {
+	chat, _ := profile.Builtin().Get("chat")
+	chat.Title = false
+	return profile.Builtin().With(chat)
+}
+
+// newTitleFixture is newFixture with the built-in profiles: a chat's first run asks for a title.
+func newTitleFixture(t *testing.T, turns ...providertest.Turn) *fixture {
+	t.Helper()
+	f := newFixture(t)
+	f.profiles = profile.Builtin()
+	f.newEngine(turns...)
+	return f
 }
 
 func (f *fixture) start(s Spec) Ref {
@@ -1150,6 +1167,184 @@ func TestCompaction(t *testing.T) {
 		}
 		if n := len(f.storedOf("compaction.completed")); n != 1 {
 			t.Fatalf("%d compactions stored", n)
+		}
+	})
+}
+
+// titleRequests is every request that asked for a title, in order.
+func (f *fixture) titleRequests() []provider.Request {
+	var out []provider.Request
+	for _, r := range f.model.Requests() {
+		if len(r.Messages) > 0 && r.Messages[0].Parts[0].Text == titlePrompt {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func (f *fixture) chatTitle(chatID string) (title, source string) {
+	f.t.Helper()
+	chat, _, err := f.store.Chat(bg, chatID)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return chat.Title, chat.TitleSource
+}
+
+func TestTitle(t *testing.T) {
+	t.Run("a chat's first answer is followed by a title request and chat.titled auto, then run.finished done", func(t *testing.T) {
+		f := newTitleFixture(t, answer("Lifetimes are scopes."), answer(`"Rust Borrow Checker Basics."`))
+		ref := f.send("How does the borrow checker work?", "req-1")
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		reqs := f.model.Requests()
+		if len(reqs) != 2 {
+			t.Fatalf("%d requests, want 2", len(reqs))
+		}
+		r := reqs[1]
+		if !r.NoThinking || r.MaxOut != 24 || r.Model != "m1" || len(r.Messages) != 2 ||
+			r.Messages[0].Role != "system" || r.Messages[0].Parts[0].Text != titlePrompt ||
+			r.Messages[1].Role != "user" || r.Messages[1].Parts[0].Text != "How does the borrow checker work?" {
+			t.Fatalf("title request %+v", r)
+		}
+		if title, source := f.chatTitle(ref.ChatID); title != "Rust Borrow Checker Basics" || source != "auto" {
+			t.Fatalf("title %q (%s)", title, source)
+		}
+		for _, e := range f.seen {
+			if (e.Type == "message.delta" || e.Type == "message.partial") && strings.Contains(string(e.Data), "Basics") {
+				t.Fatalf("%s carries the title: %s", e.Type, e.Data)
+			}
+		}
+		f.checkLog("title")
+	})
+
+	t.Run("a second run of the same chat makes no title request", func(t *testing.T) {
+		f := newTitleFixture(t, answer("a1"), answer("Title One"), answer("a2"))
+		first, _ := f.say("", "q1")
+		if _, fin := f.say(first.ChatID, "q2"); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.titleRequests()); n != 1 {
+			t.Fatalf("%d title requests, want 1", n)
+		}
+	})
+
+	t.Run("a chat renamed by the user before its first answer gets no title request", func(t *testing.T) {
+		f := newTitleFixture(t, answer("a1"), answer("Unwanted"))
+		release := f.model.holdCall(1)
+		ref := f.send("q1", "req-1")
+		f.entered()
+		if _, err := f.store.Log().Append(bg, "chat:"+ref.ChatID, event.ChatTitled{Title: "Mine", Source: "user"}); err != nil {
+			t.Fatal(err)
+		}
+		release()
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.titleRequests()); n != 0 {
+			t.Fatalf("%d title requests", n)
+		}
+		if title, source := f.chatTitle(ref.ChatID); title != "Mine" || source != "user" {
+			t.Fatalf("title %q (%s)", title, source)
+		}
+	})
+
+	t.Run("a failing title call leaves the cut title and the run finishes done", func(t *testing.T) {
+		f := newTitleFixture(t, answer("a1"), providertest.Turn{Err: errors.New("connection reset")})
+		ref := f.send("tell me a story about a fox", "req-1")
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if title, source := f.chatTitle(ref.ChatID); title != "tell me a story about a fox" || source != "auto" {
+			t.Fatalf("title %q (%s)", title, source)
+		}
+		if n := len(f.storedOf("chat.titled")); n != 0 {
+			t.Fatalf("%d chat.titled stored", n)
+		}
+	})
+
+	t.Run("a title call that never ends is cut at the timeout", func(t *testing.T) {
+		old := titleTimeout
+		titleTimeout = 50 * time.Millisecond
+		t.Cleanup(func() { titleTimeout = old })
+		f := newTitleFixture(t, answer("a1"), providertest.Turn{Text: []string{"Half"}, Hang: true})
+		ref := f.send("q1", "req-1")
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.storedOf("chat.titled")); n != 0 {
+			t.Fatalf("%d chat.titled stored", n)
+		}
+		if title, _ := f.chatTitle(ref.ChatID); title != "q1" {
+			t.Fatalf("title %q", title)
+		}
+	})
+
+	t.Run("an input queued during the first answer is answered after the title, in the same run", func(t *testing.T) {
+		f := newTitleFixture(t, answer("one!"), answer("Numbers"), answer("two!"))
+		release := f.model.holdCall(1)
+		ref := f.send("one", "req-1")
+		f.entered()
+		second := f.start(Spec{ChatID: ref.ChatID, Text: "two", RequestID: "req-2"})
+		release()
+		if fin := f.finished(ref.RunID); fin.State != "done" || second.RunID != ref.RunID {
+			t.Fatalf("finished %+v; second run %s", fin, second.RunID)
+		}
+		reqs := f.model.Requests()
+		if len(reqs) != 3 || reqs[0].NoThinking || !reqs[1].NoThinking || reqs[2].NoThinking {
+			t.Fatalf("%d requests: %+v", len(reqs), reqs)
+		}
+		if got := f.prompt(2); !slices.Equal(got, []string{"user:one", "assistant:one!", "user:two"}) {
+			t.Fatalf("second answer's prompt %v", got)
+		}
+		if title, _ := f.chatTitle(ref.ChatID); title != "Numbers" {
+			t.Fatalf("title %q", title)
+		}
+	})
+
+	t.Run("Stop while the title call hangs finishes stopped with the answer kept and no title", func(t *testing.T) {
+		f := newTitleFixture(t, answer("a1"), providertest.Turn{Text: []string{"Half"}, Hang: true})
+		ref := f.send("q1", "req-1")
+		waitUntil(t, func() bool { return len(f.titleRequests()) == 1 })
+		if err := f.eng.Stop(bg, ref.RunID); err != nil {
+			t.Fatal(err)
+		}
+		if s := f.runState(ref.RunID); s != "stopped" {
+			t.Fatalf("state %s", s)
+		}
+		completed := f.storedOf("message.completed")
+		if len(completed) != 1 || decodeAs[event.MessageCompleted](t, completed[0]).Partial {
+			t.Fatalf("answers %+v", completed)
+		}
+		if n := len(f.storedOf("chat.titled")); n != 0 {
+			t.Fatalf("%d chat.titled stored", n)
+		}
+	})
+
+	t.Run("Close during the title call, then Recover and Resume, finishes done with no title", func(t *testing.T) {
+		f := newTitleFixture(t, answer("a1"), providertest.Turn{Text: []string{"Half"}, Hang: true})
+		ref := f.send("q1", "req-1")
+		waitUntil(t, func() bool { return len(f.titleRequests()) == 1 })
+		f.eng.Close()
+		if s := f.runState(ref.RunID); s != "running" {
+			t.Fatalf("state after Close %s", s)
+		}
+		f.newEngine()
+		if err := f.eng.Recover(bg); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.eng.Resume(bg, ref.RunID); err != nil {
+			t.Fatal(err)
+		}
+		if fin := f.finished(ref.RunID); fin.State != "done" {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.model.Requests()); n != 0 {
+			t.Fatalf("the new engine asked %d times", n)
+		}
+		if n := len(f.storedOf("chat.titled")); n != 0 {
+			t.Fatalf("%d chat.titled stored", n)
 		}
 	})
 }
