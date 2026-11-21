@@ -290,11 +290,144 @@ func TestRunAndChatRoutesWithoutADatabaseAre503(t *testing.T) {
 		{http.MethodGet, "/api/chats/x/messages", ""},
 		{http.MethodPatch, "/api/chats/x", `{"title":"t"}`},
 		{http.MethodDelete, "/api/chats/x", ""},
+		{http.MethodGet, "/api/chats/x/export", ""},
 	} {
 		t.Run(c.method+" "+c.path, func(t *testing.T) {
 			wantErrorCode(t, callHandler(h, c.method, c.path, c.body), 503, "chat_unavailable")
 		})
 	}
+}
+
+// inputs is the text of each input in the chat's transcript, in order.
+func (f *runsFixture) inputs(chatID string) []string {
+	f.t.Helper()
+	var tr Transcript
+	f.get("/api/chats/"+chatID+"/messages", &tr)
+	var out []string
+	for _, it := range tr.Items {
+		if it.Kind == "input" {
+			out = append(out, it.Text)
+		}
+	}
+	return out
+}
+
+func TestStartRunWithReplaceLastSendsTheLastTurnAgain(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn, hiTurn, hiTurn)
+	first := f.start(`{"requestId":"r1","text":"hello"}`)
+	f.waitFor("run.finished", first.RunID)
+
+	regen := f.start(`{"requestId":"r2","chatId":"` + first.ChatID + `","replace":"last"}`)
+	if regen.RunID == first.RunID || regen.ChatID != first.ChatID {
+		t.Fatalf("regenerate = %+v, want a new run of chat %s", regen, first.ChatID)
+	}
+	f.waitFor("run.finished", regen.RunID)
+	if got := f.inputs(first.ChatID); len(got) != 1 || got[0] != "hello" {
+		t.Errorf("inputs after regenerate = %v, want [hello]", got)
+	}
+
+	edit := f.start(`{"requestId":"r3","chatId":"` + first.ChatID + `","replace":"last","text":"hello again"}`)
+	f.waitFor("run.finished", edit.RunID)
+	if got := f.inputs(first.ChatID); len(got) != 1 || got[0] != "hello again" {
+		t.Errorf("inputs after edit = %v, want [hello again]", got)
+	}
+}
+
+func TestStartRunWithReplaceErrors(t *testing.T) {
+	f := newRunsFixture(t, chatModels, providertest.Turn{Text: []string{"so far"}, Hang: true})
+	ref := f.start(`{"requestId":"r1","text":"hello"}`)
+	f.answering()
+	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r2","chatId":"`+ref.ChatID+`","replace":"first"}`),
+		400, "invalid_request")
+	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r3","chatId":"`+ref.ChatID+`","replace":"last"}`),
+		409, "chat_busy")
+	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r4","replace":"last"}`), 400, "bad_request")
+}
+
+func TestListChatsWithQFindsMatchingChatsWithASnippet(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn, hiTurn)
+	match := f.start(`{"requestId":"r1","text":"the quick brown fox"}`)
+	f.waitFor("run.finished", match.RunID)
+	other := f.start(`{"requestId":"r2","text":"something else"}`)
+	f.waitFor("run.finished", other.RunID)
+
+	var list ChatList
+	f.get("/api/chats?q=brow", &list)
+	if len(list.Chats) != 1 || list.Chats[0].ID != match.ChatID || list.Seq == 0 {
+		t.Fatalf("q=brow: %+v, want only chat %s", list, match.ChatID)
+	}
+	var matched []string
+	for _, p := range list.Chats[0].Snippet {
+		if p.Match {
+			matched = append(matched, p.Text)
+		}
+	}
+	if len(matched) != 1 || matched[0] != "brown" {
+		t.Errorf("snippet = %+v, want brown marked", list.Chats[0].Snippet)
+	}
+
+	rec := f.call(http.MethodGet, "/api/chats?q=", "")
+	var all ChatList
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &all) != nil || len(all.Chats) != 2 {
+		t.Fatalf("q= : %d %s, want both chats", rec.Code, rec.Body)
+	}
+	if strings.Contains(rec.Body.String(), `"snippet"`) {
+		t.Errorf("a plain list carries snippets: %s", rec.Body)
+	}
+}
+
+func TestChatItemsCarryTheirTitleSource(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn, hiTurn)
+	renamed := f.start(`{"requestId":"r1","text":"hello"}`)
+	f.waitFor("run.finished", renamed.RunID)
+	fresh := f.start(`{"requestId":"r2","text":"again"}`)
+	f.waitFor("run.finished", fresh.RunID)
+	if rec := f.call(http.MethodPatch, "/api/chats/"+renamed.ChatID, `{"title":"Trip"}`); rec.Code != http.StatusOK {
+		t.Fatalf("PATCH = %d %s", rec.Code, rec.Body)
+	}
+
+	var list ChatList
+	f.get("/api/chats", &list)
+	sources := map[string]string{}
+	for _, c := range list.Chats {
+		sources[c.ID] = c.TitleSource
+	}
+	if sources[renamed.ChatID] != "user" || sources[fresh.ChatID] != "auto" {
+		t.Errorf("title sources = %v, want user for the renamed chat and auto for the other", sources)
+	}
+}
+
+func TestExportChatIsMarkdownInReadingOrder(t *testing.T) {
+	models := []provider.Model{{ID: "tiny", Kind: provider.ModelChat, Context: 8192}}
+	f := newRunsFixture(t, models,
+		providertest.Turn{Reasoning: []string{"secret thoughts"}, Text: []string{"first answer"}},
+		providertest.Turn{Text: []string{"old answer"}},
+		providertest.Turn{Text: []string{"new answer"}},
+		providertest.Turn{Text: []string{"half"}, Hang: true})
+	first := f.start(`{"requestId":"r1","text":"hello"}`)
+	f.waitFor("run.finished", first.RunID)
+	chat := first.ChatID
+	second := f.start(`{"requestId":"r2","chatId":"` + chat + `","text":"second"}`)
+	f.waitFor("run.finished", second.RunID)
+	regen := f.start(`{"requestId":"r3","chatId":"` + chat + `","replace":"last"}`)
+	f.waitFor("run.finished", regen.RunID)
+	stopped := f.start(`{"requestId":"r4","chatId":"` + chat + `","text":"third"}`)
+	f.waitFor("message.delta", stopped.RunID)
+	if rec := f.call(http.MethodPost, "/api/runs/"+stopped.RunID+"/stop", ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("stop = %d %s", rec.Code, rec.Body)
+	}
+
+	rec := f.call(http.MethodGet, "/api/chats/"+chat+"/export", "")
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/markdown; charset=utf-8" {
+		t.Fatalf("export = %d %q", rec.Code, rec.Header().Get("Content-Type"))
+	}
+	want := "# hello\n\n## You\n\nhello\n\n## tiny\n\nfirst answer\n\n## You\n\nsecond\n\n## tiny\n\nnew answer\n\n" +
+		"## You\n\nthird\n\n## tiny\n\nhalf\n\n_(stopped)_\n"
+	if got := rec.Body.String(); got != want {
+		t.Errorf("export =\n%s\nwant\n%s", got, want)
+	}
+
+	wantErrorCode(t, f.call(http.MethodGet, "/api/chats/nope/export", ""), 404, "chat_not_found")
 }
 
 // twoPhase answers "ab", waits for resume, then plays its scripted turns ("c" and a hang): a stream can attach

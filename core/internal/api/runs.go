@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"reflect"
+	"strings"
 
 	"github.com/countingticks/openvatra/core/internal/chats"
 	"github.com/countingticks/openvatra/core/internal/event"
@@ -16,7 +19,8 @@ type StartRun struct {
 	RequestID string `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
 	ChatID    string `json:"chatId,omitempty" doc:"omit to start a new chat"`
 	Model     string `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
-	Text      string `json:"text"`
+	Text      string `json:"text,omitempty"`
+	Replace   string `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
 }
 
 type RunRef struct {
@@ -48,12 +52,23 @@ type ActiveRun struct {
 	State string `json:"state" enum:"queued,running,interrupted"`
 }
 
+type ListChatsQuery struct {
+	Q string `query:"q" doc:"words to find in titles and messages"`
+}
+
+type SnippetPart struct {
+	Text  string `json:"text"`
+	Match bool   `json:"match"`
+}
+
 type ChatItem struct {
-	ID        string     `json:"id"`
-	Title     string     `json:"title"`
-	Model     string     `json:"model"`
-	UpdatedAt int64      `json:"updatedAt" doc:"Unix ms"`
-	ActiveRun *ActiveRun `json:"activeRun,omitempty"`
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	TitleSource string        `json:"titleSource" enum:"auto,user"`
+	Model       string        `json:"model"`
+	UpdatedAt   int64         `json:"updatedAt" doc:"Unix ms"`
+	ActiveRun   *ActiveRun    `json:"activeRun,omitempty"`
+	Snippet     []SnippetPart `json:"snippet,omitempty" doc:"search only: the best matching message"`
 }
 
 type ChatList struct {
@@ -112,12 +127,12 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 					return RunRef{}, err
 				}
 				ref, err := svc.Send(ctx, chats.SendInput{RequestID: in.RequestID, ChatID: in.ChatID, Model: in.Model,
-					Text: in.Text})
+					Text: in.Text, Replace: in.Replace == "last"})
 				return RunRef{RunID: ref.RunID, ChatID: ref.ChatID, Seq: ref.Seq}, err
 			}).
 			WithStatus(http.StatusAccepted).
 			WithErrors("invalid_request", "bad_request", "chat_not_found", "model_not_found", "no_chat_model",
-				"chat_unavailable"),
+				"chat_busy", "chat_unavailable"),
 		JSON(http.MethodGet, "/api/runs/{id}", UI, "getRun", "One run's state",
 			func(ctx context.Context, in RunPath) (RunSnapshot, error) {
 				if err := ready(); err != nil {
@@ -144,10 +159,14 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 			}).
 			WithErrors("run_not_found", "run_not_interrupted", "chat_unavailable"),
 
-		JSON(http.MethodGet, "/api/chats", UI, "listChats", "List the chats, most recently updated first",
-			func(ctx context.Context, _ struct{}) (ChatList, error) {
+		JSON(http.MethodGet, "/api/chats", UI, "listChats",
+			"List the chats, most recently updated first; with q, the ones that match it",
+			func(ctx context.Context, in ListChatsQuery) (ChatList, error) {
 				if err := ready(); err != nil {
 					return ChatList{}, err
+				}
+				if strings.TrimSpace(in.Q) != "" {
+					return searchChats(ctx, svc, in.Q)
 				}
 				rows, seq, err := svc.List(ctx)
 				if err != nil {
@@ -168,6 +187,22 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 				c, seq, err := svc.Get(ctx, in.ID)
 				return ChatBody{Seq: seq, Chat: chatItem(c)}, err
 			}).
+			WithErrors("chat_not_found", "chat_unavailable"),
+		Raw(http.MethodGet, "/api/chats/{id}/export", UI, "exportChat", "A chat as Markdown",
+			func(w http.ResponseWriter, r *http.Request) {
+				if err := ready(); err != nil {
+					writeError(w, r, err)
+					return
+				}
+				text, err := svc.Export(r.Context(), r.PathValue("id"))
+				if err != nil {
+					writeError(w, r, err)
+					return
+				}
+				w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+				io.WriteString(w, text)
+			}).
+			WithDoc(reflect.TypeFor[ChatPath](), reflect.TypeFor[string](), "text/markdown").
 			WithErrors("chat_not_found", "chat_unavailable"),
 		JSON(http.MethodGet, "/api/chats/{id}/messages", UI, "getTranscript", "A chat's messages and runs, oldest first",
 			func(ctx context.Context, in ChatPath) (Transcript, error) {
@@ -216,8 +251,24 @@ func runSnapshot(r store.RunRow, seq int64) RunSnapshot {
 	return s
 }
 
+func searchChats(ctx context.Context, svc *chats.Service, q string) (ChatList, error) {
+	hits, seq, err := svc.Search(ctx, q)
+	if err != nil {
+		return ChatList{}, err
+	}
+	items := make([]ChatItem, 0, len(hits))
+	for _, h := range hits {
+		item := chatItem(h.Chat)
+		for _, p := range h.Snippet {
+			item.Snippet = append(item.Snippet, SnippetPart{Text: p.Text, Match: p.Match})
+		}
+		items = append(items, item)
+	}
+	return ChatList{Seq: seq, Chats: items}, nil
+}
+
 func chatItem(c store.ChatRow) ChatItem {
-	item := ChatItem{ID: c.ID, Title: c.Title, Model: c.Model, UpdatedAt: c.UpdatedAt}
+	item := ChatItem{ID: c.ID, Title: c.Title, TitleSource: c.TitleSource, Model: c.Model, UpdatedAt: c.UpdatedAt}
 	if c.ActiveRun != "" {
 		item.ActiveRun = &ActiveRun{ID: c.ActiveRun, State: c.ActiveState}
 	}

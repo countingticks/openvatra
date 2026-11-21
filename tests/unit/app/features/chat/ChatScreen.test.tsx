@@ -70,7 +70,7 @@ const transcript = (overrides: Partial<Transcript> = {}): Transcript => ({
 
 const chatBody = (title = 'Quantization formats'): ChatBody => ({
   seq: 0,
-  chat: { id: 'c1', title, model: 'tiny', updatedAt: 0 }
+  chat: { id: 'c1', title, titleSource: 'auto', model: 'tiny', updatedAt: 0 }
 })
 
 const event = (type: string, seq: number | undefined, data: object, stream = 'run:r1'): Event =>

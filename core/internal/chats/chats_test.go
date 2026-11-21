@@ -33,6 +33,7 @@ type fixture struct {
 	store  *store.Store
 	cfg    *config.Store
 	model  *providertest.Scripted
+	eng    *run.Engine
 	svc    *Service
 	events <-chan event.Event
 }
@@ -63,7 +64,7 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 		st.Close()
 	})
 	svc := New(Config{Store: st, Engine: eng, Config: cfg, Models: models})
-	return &fixture{t: t, store: st, cfg: cfg, model: model, svc: svc, events: events}
+	return &fixture{t: t, store: st, cfg: cfg, model: model, eng: eng, svc: svc, events: events}
 }
 
 var answer = providertest.Turn{Text: []string{"hi"}}
@@ -272,6 +273,27 @@ func TestReplaceNeedsAChatAndAppendsANewModelBeforeTheRun(t *testing.T) {
 	}
 	if row, _, err := f.store.Run(bg, second.RunID); err != nil || row.Model != "m2" {
 		t.Errorf("run = %+v, %v; want model m2", row, err)
+	}
+}
+
+func TestExportPutsAQueuedInputAfterTheAnswerItWasSentDuring(t *testing.T) {
+	f := newFixture(t, installed, providertest.Turn{Text: []string{"so far"}, Hang: true})
+	ref := f.send(SendInput{RequestID: "r1", Model: "m1", Text: "one"})
+	f.waitFor("message.delta", "run:"+ref.RunID)
+	f.send(SendInput{RequestID: "r2", ChatID: ref.ChatID, Text: "two"})
+	if err := f.eng.Stop(bg, ref.RunID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := f.svc.Export(bg, ref.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "# one\n\n## You\n\none\n\n## m1\n\nso far\n\n_(stopped)_\n\n## You\n\ntwo\n"; got != want {
+		t.Errorf("export =\n%s\nwant\n%s", got, want)
+	}
+	if _, err := f.svc.Export(bg, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("Export(nope) = %v, want ErrNotFound", err)
 	}
 }
 

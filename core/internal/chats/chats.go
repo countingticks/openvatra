@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"unicode/utf8"
@@ -189,6 +190,62 @@ func (s *Service) rememberModel(model string) {
 // List is every chat with a message, most recently updated first, and the log position it was read at.
 func (s *Service) List(ctx context.Context) ([]store.ChatRow, int64, error) {
 	return s.c.Store.Chats(ctx)
+}
+
+// Search is the chats whose title or messages hold every word of q, most recently updated first, with the log
+// position it was read at.
+func (s *Service) Search(ctx context.Context, q string) ([]store.ChatHit, int64, error) {
+	return s.c.Store.SearchChats(ctx, q)
+}
+
+// Export is the chat as Markdown, in the order a person reads it: its title, then each input under "You" and each
+// answer under its run's model. Retracted turns, summaries and reasoning are left out. store.ErrNotFound for an
+// unknown chat.
+func (s *Service) Export(ctx context.Context, id string) (string, error) {
+	chat, _, err := s.c.Store.Chat(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	msgs, runs, _, err := s.c.Store.Transcript(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	models := make(map[string]string, len(runs))
+	for _, r := range runs {
+		models[r.ID] = r.Model
+	}
+	sections := []string{"# " + chat.Title}
+	for _, m := range run.Conversation(msgs, "") {
+		if m.Retracted || m.Role == "summary" {
+			continue
+		}
+		var parts []event.MessagePart
+		if err := json.Unmarshal(m.Parts, &parts); err != nil {
+			return "", fmt.Errorf("message %d: %w", m.Seq, err)
+		}
+		var text strings.Builder
+		for _, p := range parts {
+			if p.Kind == "text" {
+				text.WriteString(p.Text)
+			}
+		}
+		heading := "## You"
+		if m.Role == "assistant" {
+			heading = "## " + models[m.RunID]
+		}
+		sections = append(sections, heading)
+		if t := strings.TrimRight(text.String(), " \t\r\n"); t != "" {
+			sections = append(sections, t)
+		}
+		switch {
+		case m.Role != "assistant":
+		case m.Failed:
+			sections = append(sections, "_(cut off)_")
+		case m.Partial:
+			sections = append(sections, "_(stopped)_")
+		}
+	}
+	return strings.Join(sections, "\n\n") + "\n", nil
 }
 
 // Get is one chat, or store.ErrNotFound.

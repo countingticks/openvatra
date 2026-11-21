@@ -149,7 +149,7 @@ describe('registerRuns', () => {
     const { store, http, push, flush } = await connect()
     const body: ChatBody = {
       seq: 2,
-      chat: { id: 'c1', model: 'tiny', title: 'Hello', updatedAt: 0, activeRun: null }
+      chat: { id: 'c1', model: 'tiny', title: 'Hello', titleSource: 'auto', updatedAt: 0, activeRun: null }
     }
     http.answer('/api/chats/c1', body)
     await store.dispatch(coreApi.endpoints.getChat.initiate({ id: 'c1' }))

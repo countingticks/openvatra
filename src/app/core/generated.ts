@@ -27,7 +27,12 @@ const injectedRtkApi = api
         invalidatesTags: ['catalog']
       }),
       listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
-        query: () => ({ url: `/api/chats` }),
+        query: (queryArg) => ({
+          url: `/api/chats`,
+          params: {
+            q: queryArg.q
+          }
+        }),
         providesTags: ['chats']
       }),
       deleteChat: build.mutation<DeleteChatApiResponse, DeleteChatApiArg>({
@@ -41,6 +46,10 @@ const injectedRtkApi = api
       updateChat: build.mutation<UpdateChatApiResponse, UpdateChatApiArg>({
         query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'PATCH', body: queryArg.body }),
         invalidatesTags: ['chats']
+      }),
+      exportChat: build.query<ExportChatApiResponse, ExportChatApiArg>({
+        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/export` }),
+        providesTags: ['chats']
       }),
       getTranscript: build.query<GetTranscriptApiResponse, GetTranscriptApiArg>({
         query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/messages` }),
@@ -186,7 +195,9 @@ export type RemoveCatalogEntryApiArg = {
   id: string
 }
 export type ListChatsApiResponse = /** status 200 OK */ ChatList
-export type ListChatsApiArg = void
+export type ListChatsApiArg = {
+  q?: string
+}
 export type DeleteChatApiResponse = unknown
 export type DeleteChatApiArg = {
   id: string
@@ -202,6 +213,10 @@ export type UpdateChatApiArg = {
     model?: string | null
     title?: string | null
   }
+}
+export type ExportChatApiResponse = /** status 200 OK */ string
+export type ExportChatApiArg = {
+  id: string
 }
 export type GetTranscriptApiResponse = /** status 200 OK */ Transcript
 export type GetTranscriptApiArg = {
@@ -358,11 +373,18 @@ export type ActiveRun = {
   id: string
   state: 'queued' | 'running' | 'interrupted'
 }
+export type SnippetPart = {
+  match: boolean
+  text: string
+}
 export type ChatItem = {
   activeRun?: ActiveRun | null
   id: string
   model: string
+  /** search only: the best matching message */
+  snippet?: SnippetPart[]
   title: string
+  titleSource: 'auto' | 'user'
   /** Unix ms */
   updatedAt: number
 }
@@ -826,9 +848,11 @@ export type StartRun = {
   chatId?: string
   /** omit for the chat's model, or for a new chat the last one named */
   model?: string
+  /** last: retract the chat's last turn and send it again (with text: edited) */
+  replace?: 'last'
   /** the client's id for this send; the same id again answers the same run */
   requestId: string
-  text: string
+  text?: string
 }
 export type VersionBody = {
   api: number
@@ -841,6 +865,7 @@ export const {
   useDeleteChatMutation,
   useGetChatQuery,
   useUpdateChatMutation,
+  useExportChatQuery,
   useGetTranscriptQuery,
   useGetConfigQuery,
   useGetConfigChatQuery,

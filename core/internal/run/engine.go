@@ -990,7 +990,7 @@ func (e *Engine) input(ctx context.Context, st State, system string) (budget.Inp
 	}
 
 	var rows []store.MessageRow
-	for _, m := range conversation(msgs, st.ID) {
+	for _, m := range Conversation(msgs, st.ID) {
 		if m.Role != "summary" {
 			rows = append(rows, m)
 		}
@@ -1044,13 +1044,14 @@ func known(m store.MessageRow) (budget.Known, bool) {
 	return budget.Known{PromptTokens: s.PromptTokens, Seq: m.Seq}, true
 }
 
-// conversation puts msgs (by seq) in the order the model reads them, ending with the input runID answers now.
+// Conversation puts msgs (by seq) in the order the model reads them, ending with the input runID answers now (every
+// message when runID is "": the order a person reads the chat in).
 //
 // A run answers its inputs one at a time and in order (Steps: 1), so its n-th answer belongs to its n-th input. By
 // seq, an input sent mid-answer lands before that answer; here each answer follows its own input instead. The
 // input being answered is the run's first one without an answer; the inputs queued behind it are left out. Runs of
 // one chat never overlap, so each run's messages stay together.
-func conversation(msgs []store.MessageRow, runID string) []store.MessageRow {
+func Conversation(msgs []store.MessageRow, runID string) []store.MessageRow {
 	var order []string
 	byRun := map[string][]store.MessageRow{}
 	for _, m := range msgs {
