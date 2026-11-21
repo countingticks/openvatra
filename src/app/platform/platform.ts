@@ -1,6 +1,12 @@
 import type { CoreState } from '@shared/core'
 import type { AppWindowApi, FilesApi, SettingsApi } from '@shared/ipc'
 
+/** A small string store; `set(key, null)` removes the key. */
+export interface PlatformStorage {
+  get(key: string): string | null
+  set(key: string, value: string | null): void
+}
+
 /** Everything the UI needs from the host it runs in. The desktop shell fills all of it; a host may leave out the optional parts. */
 export interface Platform {
   kind: 'desktop' | 'web'
@@ -13,6 +19,8 @@ export interface Platform {
   }
   /** The host's own preferences (desktop: settings.json through main). */
   prefs: SettingsApi
+  /** Small per-window values that survive a restart, like drafts; not settings. */
+  storage: PlatformStorage
   /** Desktop only: our own title bar buttons and the Edit commands. */
   window?: AppWindowApi
   /** Desktop only: pickers and opening folders. */

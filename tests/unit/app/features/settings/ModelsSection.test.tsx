@@ -262,7 +262,9 @@ describe('Settings → Models', () => {
       expect(screen.getByRole('radiogroup', { name: 'Unload models after' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Browse for llama-server.exe' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
-      expect(screen.queryByText('Qwen3-8B-Q4_K_M')).not.toBeInTheDocument()
+      // In the dialog: the Chat tab's model button behind it names the model too.
+      const dialog = screen.getByRole('dialog', { name: 'Settings' })
+      expect(within(dialog).queryByText('Qwen3-8B-Q4_K_M')).not.toBeInTheDocument()
     })
 
     it('"Show advanced" is saved and reveals the engine, the log and every model file', async () => {
@@ -276,7 +278,8 @@ describe('Settings → Models', () => {
       await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ showAdvancedModels: true }))
       expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument()
-      expect(await screen.findByText('Qwen3-8B-Q4_K_M')).toBeInTheDocument()
+      const dialog = screen.getByRole('dialog', { name: 'Settings' })
+      expect(await within(dialog).findByText('Qwen3-8B-Q4_K_M')).toBeInTheDocument()
     })
 
     it('removes a downloaded model only after confirming', async () => {

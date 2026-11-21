@@ -3,6 +3,7 @@ import { createAppStore } from '@app/store/store'
 import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
 import {
   navigated,
+  routeReplaced,
   selectActiveTab,
   selectRoute,
   selectSidebarOpen,
@@ -57,6 +58,16 @@ describe('app store', () => {
     await settle()
 
     expect(fake.prefs.update).toHaveBeenCalledWith({ lastRoute: 'chat/a' })
+  })
+
+  it('saves the route a new chat is replaced with', async () => {
+    const fake = fakePlatform()
+    const store = createAppStore({ platform: fake.platform }).store
+
+    store.dispatch(routeReplaced({ tab: 'chat', chatId: 'c1' }))
+    await settle()
+
+    expect(fake.prefs.update).toHaveBeenCalledWith({ lastRoute: 'chat/c1' })
   })
 
   it('opens on Chat when nothing was saved', () => {

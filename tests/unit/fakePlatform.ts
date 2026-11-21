@@ -56,6 +56,12 @@ export interface FakePlatform {
     pick: Mock<FilesApi['pick']>
   }
   quit: Mock<() => Promise<void>>
+  /** A Map-backed storage: `values` is what it holds now. */
+  storage: {
+    values: Map<string, string>
+    get: Mock<(key: string) => string | null>
+    set: Mock<(key: string, value: string | null) => void>
+  }
 }
 
 function subscribers<T>(): {
@@ -119,6 +125,16 @@ export function fakePlatform(options: FakePlatformOptions = {}): FakePlatform {
   }
   const quit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 
+  const values = new Map<string, string>()
+  const storage: FakePlatform['storage'] = {
+    values,
+    get: vi.fn((key: string) => values.get(key) ?? null),
+    set: vi.fn((key: string, value: string | null) => {
+      if (value === null) values.delete(key)
+      else values.set(key, value)
+    })
+  }
+
   const platform: Platform = {
     kind: 'desktop',
     core: {
@@ -128,6 +144,7 @@ export function fakePlatform(options: FakePlatformOptions = {}): FakePlatform {
       ...(omit.has('openLog') ? {} : { openLog: core.openLog })
     },
     prefs: { get: prefs.get, update: prefs.update, onChange: settingsPushes.add },
+    storage: { get: storage.get, set: storage.set },
     ...(omit.has('window')
       ? {}
       : {
@@ -144,5 +161,5 @@ export function fakePlatform(options: FakePlatformOptions = {}): FakePlatform {
     ...(omit.has('quit') ? {} : { quit })
   }
 
-  return { platform, prefs, core, window: windowFake, files, quit }
+  return { platform, prefs, core, window: windowFake, files, quit, storage }
 }

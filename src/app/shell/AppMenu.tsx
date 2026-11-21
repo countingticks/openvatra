@@ -20,6 +20,7 @@ import {
   selectActiveTab,
   selectCanGoBack,
   selectCanGoForward,
+  navigated,
   sidebarToggled,
   settingsOpened,
   tabSelected,
@@ -141,7 +142,7 @@ export function AppMenu(): React.JSX.Element {
             <DropdownMenuSubContent data-app-menu aria-label={name} className="min-w-56">
               {name === 'File' && (
                 <>
-                  <DropdownMenuItem disabled>
+                  <DropdownMenuItem onClick={() => dispatch(navigated({ tab: 'chat' }))}>
                     New chat <DropdownMenuShortcut>Ctrl+N</DropdownMenuShortcut>
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => dispatch(settingsOpened())}>

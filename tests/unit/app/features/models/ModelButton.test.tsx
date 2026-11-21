@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
+import { ModelButton } from '@app/features/models'
 import { defaultEngineSettings } from '@app/features/models/modelSettings'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
@@ -25,30 +26,30 @@ async function openPopover(): Promise<HTMLElement> {
 }
 
 describe('model button', () => {
-  it('sits in the Chat tab and says "No model" with the state in words', async () => {
-    renderWithStore(
-      <Shell />,
-      {},
-      { coreState: { status: 'ready', port: 1234, version: '1', connection: exampleConnection } }
-    )
+  it("names a new chat's model with its load state in words", async () => {
+    const { core } = renderWithStore(<Shell />, {}, { coreState: ready, models: [qwen] })
 
-    expect(button()).toHaveTextContent('No model')
-    await waitFor(() => expect(button()).toHaveAccessibleName('Model: no model, Ready'))
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, not loaded. Change model'))
+    expect(button()).toHaveTextContent('Qwen3-8B')
+
+    core.emitModels([{ ...qwen, state: 'ready' }])
+
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, loaded. Change model'))
   })
 
-  it('starts as Starting and follows every state change', async () => {
+  it('reads starting, then follows every state change', async () => {
     const { core } = renderWithStore(<Shell />)
-    expect(button()).toHaveAccessibleName('Model: no model, Starting')
+    expect(button()).toHaveAccessibleName('Model: no model, starting. Change model')
 
     core.emitState({ status: 'problem', reason: 'llama-server.exe not found' })
 
-    expect(button()).toHaveAccessibleName('Model: no model, Problem')
+    expect(button()).toHaveAccessibleName('Model: no model, problem. Change model')
     const popover = await openPopover()
     expect(popover).toHaveTextContent('Problem: llama-server.exe not found')
   })
 
   it('restarts the service and opens the log', async () => {
-    const { core } = renderWithStore(<Shell />)
+    const { core } = renderWithStore(<Shell />, {}, { models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Restart' }))
@@ -59,7 +60,7 @@ describe('model button', () => {
   })
 
   it('opens Settings on Models from "Model settings…" and closes the popover', async () => {
-    renderWithStore(<Shell />)
+    renderWithStore(<Shell />, {}, { models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Model settings…' }))
@@ -69,7 +70,7 @@ describe('model button', () => {
   })
 
   it('closes with Esc', async () => {
-    renderWithStore(<Shell />)
+    renderWithStore(<Shell />, {}, { models: [qwen] })
     const popover = await openPopover()
 
     fireEvent.keyDown(popover, { key: 'Escape' })
@@ -102,10 +103,10 @@ describe('model button', () => {
     expect(within(popover).queryByText('nomic-embed')).not.toBeInTheDocument()
     expect(within(popover).queryByText('junk')).not.toBeInTheDocument()
     // A loaded embedding model is not "the model" the button names.
-    expect(button()).toHaveAccessibleName('Model: no model, Ready')
+    expect(button()).toHaveAccessibleName('Model: Qwen3-8B, not loaded. Change model')
   })
 
-  it('names the loaded model on the button, highlights its row and unloads it on click', async () => {
+  it("marks the chat's model in the list, says which is loaded, and unloads it from its button", async () => {
     const { coreHttp } = renderWithStore(
       <Shell />,
       {},
@@ -118,17 +119,20 @@ describe('model button', () => {
       }
     )
 
-    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Ready'))
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, loaded. Change model'))
     expect(button()).toHaveTextContent('Qwen3-8B')
     const popover = await openPopover()
     expect(popover).not.toHaveTextContent('Ready —')
 
-    const loaded = within(popover).getByRole('button', { name: 'Unload Qwen3-8B' })
-    expect(loaded).toHaveAttribute('aria-current', 'true')
-    expect(loaded).toHaveClass('bg-success/10')
-    expect(within(popover).getByRole('button', { name: 'Load Gemma' })).not.toHaveAttribute('aria-current')
+    expect(within(popover).getByRole('button', { name: 'Use Qwen3-8B' })).toHaveAttribute(
+      'aria-current',
+      'true'
+    )
+    expect(within(popover).getByRole('button', { name: 'Use Gemma' })).not.toHaveAttribute('aria-current')
+    expect(within(popover).getAllByText('Loaded')).toHaveLength(1)
+    expect(within(popover).getByRole('button', { name: 'Load Gemma' })).toBeEnabled()
 
-    fireEvent.click(loaded)
+    fireEvent.click(within(popover).getByRole('button', { name: 'Unload Qwen3-8B' }))
     await waitFor(() =>
       expect(coreWrites(coreHttp)).toEqual([
         { method: 'POST', path: '/api/models/Qwen3-8B/unload', body: undefined }
@@ -136,12 +140,13 @@ describe('model button', () => {
     )
   })
 
-  it('shows a disabled spinner row while a model loads, and no state words', async () => {
+  it('disables only the Load button of a loading model, and shows no state words', async () => {
     renderWithStore(<Shell />, {}, { coreState: ready, models: [{ ...qwen, state: 'loading' }] })
-    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, Loading'))
+    await waitFor(() => expect(button()).toHaveAccessibleName('Model: Qwen3-8B, loading. Change model'))
     const popover = await openPopover()
 
-    expect(within(popover).getByRole('button', { name: 'Loading Qwen3-8B' })).toBeDisabled()
+    expect(within(popover).getByRole('button', { name: 'Load Qwen3-8B' })).toBeDisabled()
+    expect(within(popover).getByRole('button', { name: 'Use Qwen3-8B' })).toBeEnabled()
     expect(popover).not.toHaveTextContent(/Loaded|Not loaded|Loading…/)
   })
 
@@ -205,7 +210,14 @@ describe('model button', () => {
   })
 
   it('explains an empty list, and lists nothing while core is not ready', async () => {
-    const { core } = renderWithStore(<Shell />, {}, { coreState: ready })
+    // In the Chat tab the welcome card stands in for an empty list; the button on its own still explains one.
+    const { core } = renderWithStore(
+      <ModelButton model={null} onPick={async () => {}} />,
+      {},
+      {
+        coreState: ready
+      }
+    )
     const popover = await openPopover()
     expect(popover).toHaveTextContent('No models found')
 
@@ -216,7 +228,8 @@ describe('model button', () => {
 
 describe('model button on a host without service actions', () => {
   it('has no Restart and no Open log without restart and openLog', async () => {
-    renderWithStore(<Shell />, {}, { omit: ['restart', 'openLog'] })
+    // With no chat model, the welcome card replaces the Chat tab, button and all.
+    renderWithStore(<Shell />, {}, { omit: ['restart', 'openLog'], models: [qwen] })
     const popover = await openPopover()
 
     expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()
@@ -224,7 +237,7 @@ describe('model button on a host without service actions', () => {
   })
 
   it('keeps Open log when only restart is missing', async () => {
-    renderWithStore(<Shell />, {}, { omit: ['restart'] })
+    renderWithStore(<Shell />, {}, { omit: ['restart'], models: [qwen] })
     const popover = await openPopover()
 
     expect(within(popover).queryByRole('button', { name: 'Restart' })).toBeNull()

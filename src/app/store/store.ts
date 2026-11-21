@@ -20,6 +20,7 @@ import { parseRoute, routePath } from './route'
 import {
   initialUiState,
   navigated,
+  routeReplaced,
   sidebarToggled,
   tabSelected,
   uiSlice,
@@ -74,7 +75,7 @@ export function createAppStore({ platform, initialSettings }: AppStoreOptions): 
 
   listener.startListening({
     // Every move changes the route, and the app should reopen on it.
-    matcher: isAnyOf(navigated, tabSelected, wentBack, wentForward),
+    matcher: isAnyOf(navigated, routeReplaced, tabSelected, wentBack, wentForward),
     effect: async (_action, api) => {
       const route = api.getState().ui.route
       // Selecting the open tab, or Back with no history, changes nothing, so there's nothing to save.

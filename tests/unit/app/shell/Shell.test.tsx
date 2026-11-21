@@ -1,7 +1,7 @@
 import { fireEvent, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { Shell } from '@app/shell/Shell'
-import { selectActiveTab } from '@app/store/uiSlice'
+import { selectActiveTab, selectRoute } from '@app/store/uiSlice'
 import { renderWithStore } from '../../renderWithStore'
 
 const sidebar = (): HTMLElement => screen.getByRole('navigation', { name: 'Main' })
@@ -21,7 +21,7 @@ describe('Shell', () => {
     renderWithStore(<Shell />)
 
     expect(tabButton('Chat')).toHaveAttribute('aria-current', 'page')
-    expect(screen.getByRole('heading', { level: 1, name: 'Chat' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'New chat' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: 'Ember, idle' })).toBeInTheDocument()
   })
 
@@ -54,6 +54,15 @@ describe('Shell', () => {
     fireEvent.keyDown(window, { key, ctrlKey: true })
 
     expect(tabButton(name)).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('Ctrl+N opens the Chat tab on a new chat', () => {
+    const { store } = renderWithStore(<Shell />, { lastRoute: 'code' })
+
+    fireEvent.keyDown(window, { key: 'n', ctrlKey: true })
+
+    expect(tabButton('Chat')).toHaveAttribute('aria-current', 'page')
+    expect(selectRoute(store.getState())).toEqual({ tab: 'chat' })
   })
 
   it('ignores the digit without Ctrl, and Ctrl with other modifiers or digits', () => {

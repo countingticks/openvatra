@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { desktopPlatform } from '../../../src/renderer/src/desktopPlatform'
 import type { Api } from '@shared/ipc'
 import type { CoreState } from '@shared/core'
@@ -77,6 +77,39 @@ describe('desktopPlatform', () => {
   it('hands out the settings api object itself as prefs', () => {
     const api = buildApi()
     expect(desktopPlatform(api).prefs).toBe(api.settings)
+  })
+
+  describe('storage', () => {
+    afterEach(() => {
+      localStorage.clear()
+      vi.restoreAllMocks()
+    })
+
+    it('reads back what was set, and forgets a key set to null', () => {
+      const { storage } = desktopPlatform(buildApi())
+
+      storage.set('chat.draft:new', 'Hello')
+      expect(storage.get('chat.draft:new')).toBe('Hello')
+
+      storage.set('chat.draft:new', null)
+      expect(storage.get('chat.draft:new')).toBeNull()
+    })
+
+    it('reads nothing and does not throw when localStorage does', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('blocked')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('blocked')
+      })
+      const { storage } = desktopPlatform(buildApi())
+
+      expect(() => storage.set('chat.draft:new', 'Hello')).not.toThrow()
+      expect(storage.get('chat.draft:new')).toBeNull()
+      expect(warn).toHaveBeenCalledOnce()
+      expect(warn).toHaveBeenCalledWith('storage unavailable')
+    })
   })
 
   it('passes a core state through unchanged', async () => {
