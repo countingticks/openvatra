@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { coreEvent } from '@app/core/events'
 import type {
@@ -56,13 +56,20 @@ const frame = (type: string, data: object, stream = 'run:r1'): Event =>
 interface Shown extends ReturnType<typeof renderWithStore> {
   onContinue: Mock<(runId: string) => void>
   onOpenModelSettings: Mock<() => void>
+  onRegenerate: Mock<() => void>
+  onEdit: Mock<(text: string) => Promise<void>>
   /** Dispatches a core event and lets the next animation frame render it. */
   push(event: Event): void
 }
 
-function show(wire: Wire, options: { modelLoading?: boolean } = {}): Shown {
+function show(
+  wire: Wire,
+  options: { modelLoading?: boolean; onEdit?: Mock<(text: string) => Promise<void>> } = {}
+): Shown {
   const onContinue = vi.fn<(runId: string) => void>()
   const onOpenModelSettings = vi.fn<() => void>()
+  const onRegenerate = vi.fn<() => void>()
+  const onEdit = options.onEdit ?? vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
   const rendered = renderWithStore(
     <Transcript
       view={runView(wire)}
@@ -70,6 +77,8 @@ function show(wire: Wire, options: { modelLoading?: boolean } = {}): Shown {
       modelLoading={options.modelLoading ?? false}
       onContinue={onContinue}
       onOpenModelSettings={onOpenModelSettings}
+      onRegenerate={onRegenerate}
+      onEdit={onEdit}
     />
   )
   const push = (event: Event): void => {
@@ -78,7 +87,7 @@ function show(wire: Wire, options: { modelLoading?: boolean } = {}): Shown {
     })
     act(() => vi.advanceTimersToNextFrame())
   }
-  return { ...rendered, onContinue, onOpenModelSettings, push }
+  return { ...rendered, onContinue, onOpenModelSettings, onRegenerate, onEdit, push }
 }
 
 describe('Transcript', () => {
@@ -246,5 +255,79 @@ describe('Transcript', () => {
     )
     expect(screen.getByText('The model stopped answering.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Open model settings' })).toBeNull()
+  })
+
+  it('offers Regenerate under the last answer only, and not while a run is active', () => {
+    const two = [input(1, 'A'), answer(2), input(3, 'B'), answer(4)]
+    const idle = show(transcript(two))
+    expect(screen.getAllByRole('button', { name: 'Regenerate' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+    expect(idle.onRegenerate).toHaveBeenCalled()
+    idle.unmount()
+
+    const running = run({ state: 'running' })
+    show(transcript([...two, input(5, 'C')], [running], running))
+    expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+  })
+
+  it('offers Retry, not Regenerate, for a failed last turn', () => {
+    const failed = show(
+      transcript(
+        [input(1, 'Hi'), answer(2, { partial: true, failed: true })],
+        [run({ state: 'failed', error: { code: 'backend_failed', message: 'The model stopped answering.' } })]
+      )
+    )
+
+    expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(failed.onRegenerate).toHaveBeenCalled()
+  })
+
+  describe('editing the last message', () => {
+    const two = (): Wire => transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)])
+    const editor = (): HTMLElement => screen.getByRole('textbox', { name: 'Edit message' })
+
+    it('offers Edit on the last input only, and Esc restores the bubble', () => {
+      show(two())
+      expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(1)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      expect(editor()).toHaveValue('B')
+      expect(editor()).toHaveFocus()
+      fireEvent.keyDown(editor(), { key: 'Escape' })
+
+      expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull()
+      expect(screen.getByText('B')).toBeInTheDocument()
+    })
+
+    it('sends the new text with Enter, closes on success, and sends nothing when empty', async () => {
+      const shown = show(two())
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+
+      fireEvent.change(editor(), { target: { value: '  ' } })
+      fireEvent.keyDown(editor(), { key: 'Enter' })
+      expect(shown.onEdit).not.toHaveBeenCalled()
+
+      fireEvent.change(editor(), { target: { value: 'B2' } })
+      fireEvent.keyDown(editor(), { key: 'Enter', shiftKey: true })
+      expect(shown.onEdit).not.toHaveBeenCalled()
+      fireEvent.keyDown(editor(), { key: 'Enter' })
+
+      expect(shown.onEdit).toHaveBeenCalledWith('B2')
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
+    })
+
+    it('stays open with its text when sending fails', async () => {
+      const onEdit = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('no'))
+      show(two(), { onEdit })
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.change(editor(), { target: { value: 'B2' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+      await waitFor(() => expect(editor()).not.toBeDisabled())
+      expect(editor()).toHaveValue('B2')
+    })
   })
 })

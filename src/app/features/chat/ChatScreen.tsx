@@ -79,6 +79,23 @@ function ChatView(): React.JSX.Element {
       .catch((error: unknown) => console.error('Could not stop the answer', error))
   }
 
+  function regenerate(): void {
+    if (chatId === undefined) return
+    startRun({ startRun: { requestId: crypto.randomUUID(), chatId, replace: 'last' } })
+      .unwrap()
+      .catch((error: unknown) => console.error('Could not regenerate the answer', error))
+  }
+
+  async function edit(text: string): Promise<void> {
+    if (chatId === undefined) return
+    try {
+      await startRun({ startRun: { requestId: crypto.randomUUID(), chatId, text, replace: 'last' } }).unwrap()
+    } catch (error) {
+      console.error('Could not send the edited message', error)
+      throw error
+    }
+  }
+
   function resume(runId: string): void {
     resumeRun({ id: runId })
       .unwrap()
@@ -112,6 +129,8 @@ function ChatView(): React.JSX.Element {
                 modelLoading={loading}
                 onContinue={resume}
                 onOpenModelSettings={() => dispatch(settingsOpened('models'))}
+                onRegenerate={regenerate}
+                onEdit={edit}
               />
             )}
           </div>

@@ -440,4 +440,55 @@ describe('ChatScreen', () => {
       })
     )
   })
+
+  describe('redoing the last turn', () => {
+    const done = (): Transcript =>
+      transcript({
+        seq: 3,
+        items: [input(2, 'hi'), answer(3, 'old answer')],
+        runs: [run()]
+      })
+
+    it('regenerates from the button, and edits with the new text', async () => {
+      const { coreHttp } = show({ open: { transcript: done() } })
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Regenerate' }))
+      await waitFor(() =>
+        expect(runPosts(coreHttp)).toEqual([{ requestId: expect.any(String), chatId: 'c1', replace: 'last' }])
+      )
+
+      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.change(screen.getByRole('textbox', { name: 'Edit message' }), { target: { value: 'hello' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await waitFor(() =>
+        expect(runPosts(coreHttp)).toContainEqual({
+          requestId: expect.any(String),
+          chatId: 'c1',
+          text: 'hello',
+          replace: 'last'
+        })
+      )
+    })
+
+    it('swaps the old turn for the new one as the events arrive', async () => {
+      const { push } = show({ open: { transcript: done() } })
+      expect(await within(conversation()).findByText('old answer')).toBeInTheDocument()
+
+      await push(
+        event('turn.retracted', 4, { runId: 'r1' }, 'chat:c1'),
+        event('run.queued', 5, { chatId: 'c1', profile: 'chat', model: 'tiny' }, 'run:r2'),
+        event('input.received', 6, { chatId: 'c1', requestId: 'x', text: 'hi' }, 'run:r2'),
+        event(
+          'message.completed',
+          7,
+          { chatId: 'c1', parts: [{ kind: 'text', text: 'new answer' }], stats, partial: false },
+          'run:r2'
+        ),
+        event('run.finished', 8, { chatId: 'c1', state: 'done' }, 'run:r2')
+      )
+
+      expect(await within(conversation()).findByText('new answer')).toBeInTheDocument()
+      expect(within(conversation()).queryByText('old answer')).toBeNull()
+    })
+  })
 })

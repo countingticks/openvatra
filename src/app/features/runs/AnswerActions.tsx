@@ -6,10 +6,12 @@ import { answerCopyText, statsLine } from './answerText'
 /** Copy and the stats line under a finished answer; shown on hover or focus, always in the accessibility tree. */
 export function AnswerActions({
   parts,
-  stats
+  stats,
+  onRegenerate
 }: {
   parts: MessagePart[]
   stats: MessageStats | null
+  onRegenerate?: () => void
 }): React.JSX.Element {
   const [copied, setCopied] = useState(false)
 
@@ -31,6 +33,11 @@ export function AnswerActions({
       <Button variant="ghost" size="xs" aria-label="Copy answer" onClick={copy}>
         {copied ? 'Copied' : 'Copy'}
       </Button>
+      {onRegenerate && (
+        <Button variant="ghost" size="xs" onClick={onRegenerate}>
+          Regenerate
+        </Button>
+      )}
       {stats && <span className="text-xs text-muted-foreground tabular-nums">{statsLine(stats)}</span>}
     </div>
   )

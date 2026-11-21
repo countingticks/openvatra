@@ -1,12 +1,14 @@
+import { useState } from 'react'
 import { cn } from '@app/lib/utils'
 import { Button } from '@app/ui/button'
 import { AnswerActions } from './AnswerActions'
 import { AnswerBlock } from './AnswerBlock'
 import { thoughtLabel } from './answerText'
+import { LastInputEditor } from './LastInputEditor'
 import { LiveEntry } from './LiveEntry'
 import type { RunView, TranscriptEntry } from './runView'
 
-// Failures the model settings can fix (decision 20); Retry comes with slice 4.
+// Failures the model settings can fix (decision 20).
 const settingsFixes = new Set(['model_not_found', 'model_load_failed', 'context_too_small'])
 
 interface TranscriptProps {
@@ -16,6 +18,10 @@ interface TranscriptProps {
   modelLoading: boolean
   onContinue(runId: string): void
   onOpenModelSettings(): void
+  /** Answers the last turn again (also what Retry does). */
+  onRegenerate(): void
+  /** Sends the last message again with this text; rejects when it could not be sent. */
+  onEdit(text: string): Promise<void>
 }
 
 const joined = (entry: Extract<TranscriptEntry, { kind: 'answer' }>, kind: 'text' | 'reasoning'): string =>
@@ -30,13 +36,32 @@ export function Transcript({
   model,
   modelLoading,
   onContinue,
-  onOpenModelSettings
+  onOpenModelSettings,
+  onRegenerate,
+  onEdit
 }: TranscriptProps): React.JSX.Element {
+  const [editing, setEditing] = useState(false)
+  // Only the last turn can be redone, and not while a run is at work.
+  const last = view.entries.at(-1)
+  const idle = view.activeRun === null
+  const lastInput =
+    idle && last
+      ? view.entries.findLast((entry) => entry.kind === 'input' && entry.runId === last.runId)
+      : undefined
   const render = (entry: TranscriptEntry): React.JSX.Element | null => {
     switch (entry.kind) {
       case 'input':
+        if (editing && entry === lastInput) {
+          return (
+            <LastInputEditor
+              text={entry.text}
+              onSend={(text) => onEdit(text).then(() => setEditing(false))}
+              onCancel={() => setEditing(false)}
+            />
+          )
+        }
         return (
-          <div className="flex flex-col items-end gap-1">
+          <div className="group flex flex-col items-end gap-1">
             <div
               className={cn(
                 'max-w-[80%] rounded-2xl bg-bubble px-4 py-2.5 text-[15px] leading-[1.55] whitespace-pre-wrap',
@@ -46,6 +71,16 @@ export function Transcript({
               {entry.text}
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}
+            {entry === lastInput && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+                onClick={() => setEditing(true)}
+              >
+                Edit
+              </Button>
+            )}
           </div>
         )
       case 'answer':
@@ -58,7 +93,11 @@ export function Transcript({
             {entry.partial && !entry.failed && (
               <p className="mt-2 font-sans text-sm text-muted-foreground">Stopped</p>
             )}
-            <AnswerActions parts={entry.parts} stats={entry.stats} />
+            <AnswerActions
+              parts={entry.parts}
+              stats={entry.stats}
+              onRegenerate={idle && entry === last && !entry.failed ? onRegenerate : undefined}
+            />
           </AnswerBlock>
         )
       case 'summary':
@@ -92,6 +131,11 @@ export function Transcript({
             {settingsFixes.has(entry.error.code) && (
               <Button variant="outline" size="sm" onClick={onOpenModelSettings}>
                 Open model settings
+              </Button>
+            )}
+            {idle && entry === last && (
+              <Button variant="outline" size="sm" onClick={onRegenerate}>
+                Retry
               </Button>
             )}
           </div>
