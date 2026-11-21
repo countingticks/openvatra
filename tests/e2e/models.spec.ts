@@ -130,16 +130,16 @@ test('a custom context size is passed to llama-server', async () => {
 
 test('loads a model from the popover, and quitting leaves no core.exe behind', async () => {
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
-  await expect(modelButton).toHaveAccessibleName('Model: no model, Ready')
+  await expect(modelButton).toHaveAccessibleName('Model: tiny, not loaded. Change model')
 
   await modelButton.click()
   await mainWindow.getByRole('button', { name: 'Load tiny' }).click()
 
-  await expect(modelButton).toHaveAccessibleName('Model: tiny, Ready')
+  await expect(modelButton).toHaveAccessibleName('Model: tiny, loaded. Change model')
   await expect(modelButton).toHaveText('tiny')
-  // The loaded row is the unload button and carries the highlight state; no "Ready — …" sentence any more.
-  const row = mainWindow.getByRole('button', { name: 'Unload tiny' })
-  await expect(row).toHaveAttribute('aria-current', 'true')
+  // The chat's model is the current row; the loaded one says so; no "Ready — …" sentence any more.
+  await expect(mainWindow.getByRole('button', { name: 'Use tiny' })).toHaveAttribute('aria-current', 'true')
+  await expect(mainWindow.getByRole('button', { name: 'Unload tiny' })).toBeVisible()
   await expect(mainWindow.getByText(/Ready —/)).toHaveCount(0)
 
   const corePid = await coreExePid()

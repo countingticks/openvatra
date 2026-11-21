@@ -336,6 +336,87 @@ describe('ChatScreen', () => {
     })
   })
 
+  it('picks the model of a new chat, and the first send uses it', async () => {
+    const { coreHttp } = show({ models: [model('tiny'), model('m2')] })
+    await screen.findByPlaceholderText('Reply to tiny…')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Model:/ }))
+    const popover = await screen.findByRole('dialog', { name: 'Models service' })
+    fireEvent.click(within(popover).getByRole('button', { name: 'Use m2' }))
+
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
+    )
+    expect(screen.getByRole('button', { name: 'Model: m2, not loaded. Change model' })).toBeInTheDocument()
+    await type('hi')
+    enter()
+    await waitFor(() =>
+      expect(runPosts(coreHttp)).toEqual([{ requestId: expect.any(String), text: 'hi', model: 'm2' }])
+    )
+  })
+
+  it("sets a saved chat's model through core, and shows why it could not", async () => {
+    const { coreHttp } = show({ open: {}, models: [model('tiny'), model('m2')] })
+    coreHttp.respond('PATCH', '/api/chats/c1', () => ({
+      status: 404,
+      body: { error: 'model_not_found', message: 'm2 is no longer installed.' }
+    }))
+    await screen.findByRole('button', { name: 'Model: tiny, not loaded. Change model' })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Model:/ }))
+    const popover = await screen.findByRole('dialog', { name: 'Models service' })
+    fireEvent.click(within(popover).getByRole('button', { name: 'Use m2' }))
+
+    expect(await within(popover).findByRole('alert')).toHaveTextContent('m2 is no longer installed.')
+    expect(coreWrites(coreHttp)).toContainEqual({
+      method: 'PATCH',
+      path: '/api/chats/c1',
+      body: { model: 'm2' }
+    })
+    expect(screen.getByRole('dialog', { name: 'Models service' })).toBeInTheDocument()
+  })
+
+  it('shows how full the context is, and nothing for a new chat', async () => {
+    const { store } = show({
+      open: { transcript: transcript({ context: { used: 3174, size: 32768 } }) }
+    })
+
+    expect(await screen.findByText('3.1k / 32k context')).toBeInTheDocument()
+    expect(screen.getByLabelText('3174 of 32768 tokens of context used')).toBeInTheDocument()
+
+    act(() => {
+      store.dispatch(navigated({ tab: 'chat' }))
+    })
+    expect(screen.queryByText(/context$/)).not.toBeInTheDocument()
+  })
+
+  it("follows the answer's token counts into the meter", async () => {
+    const running = run({ state: 'running' })
+    const { push } = show({
+      open: {
+        transcript: transcript({
+          seq: 2,
+          items: [input(2, 'hi')],
+          runs: [running],
+          activeRun: running,
+          context: { used: 20, size: 32768 }
+        })
+      }
+    })
+    await screen.findByText('20 / 32k context')
+
+    await push(
+      event('message.completed', 3, {
+        chatId: 'c1',
+        parts: [{ kind: 'text', text: 'Hello' }],
+        stats: { ...stats, promptTokens: 900, answerTokens: 100, contextSize: 32768 },
+        partial: false
+      })
+    )
+
+    expect(await screen.findByText('1000 / 32k context')).toBeInTheDocument()
+  })
+
   it('continues an interrupted run', async () => {
     const interrupted = run({ state: 'interrupted' })
     const { coreHttp } = show({

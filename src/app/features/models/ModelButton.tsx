@@ -16,22 +16,25 @@ import type { ModelInfo } from '@app/core/types'
 /** The words come first so the dot's colour is never the only signal (colour-blind users, screen readers). */
 function describe(
   state: CoreState | null,
-  active: ModelInfo | undefined
-): { label: string; detail: string | null; dot: string } {
+  model: ModelInfo | undefined
+): { status: string; detail: string | null; dot: string } {
   switch (state?.status) {
     case 'ready':
-      if (active?.state === 'loading') return { label: 'Loading', detail: null, dot: stateDot('loading') }
-      return {
-        label: 'Ready',
-        detail: null,
-        // Green only while a model is loaded; the service being up with nothing loaded stays grey.
-        dot: stateDot(active ? 'ready' : 'stopped')
+      switch (model?.state) {
+        case 'ready':
+          return { status: 'loaded', detail: null, dot: stateDot('ready') }
+        case 'loading':
+          return { status: 'loading', detail: null, dot: stateDot('loading') }
+        case 'error':
+          return { status: 'failed to load', detail: null, dot: stateDot('stopped') }
+        default:
+          return { status: 'not loaded', detail: null, dot: stateDot('stopped') }
       }
     case 'problem':
-      return { label: 'Problem', detail: `Problem: ${state.reason}`, dot: 'bg-destructive' }
+      return { status: 'problem', detail: `Problem: ${state.reason}`, dot: 'bg-destructive' }
     default:
       return {
-        label: 'Starting',
+        status: 'starting',
         detail: 'Starting the models service…',
         // Pulses only while something is happening; the app's motion setting (data-motion on <html>) turns it off.
         dot: 'animate-pulse bg-primary in-data-[motion=reduce]:animate-none'
@@ -45,34 +48,49 @@ function run(action: () => Promise<void>): void {
 }
 
 /**
- * Status dot + model name under the message box; click for the models (a click loads or unloads one) and the
- * service's actions. A sentence appears only when there is no list to look at: starting, or a problem.
- * The name is the model that is loaded or loading (the first, if several), else "No model".
+ * Status dot + the chat's model under the message box (decision 19). Click for the models: choosing one makes it
+ * the chat's model, and each row loads or unloads its model. A sentence appears only when there is no list to look
+ * at: starting, or a problem.
  */
-export function ModelButton(): React.JSX.Element {
+export function ModelButton({
+  model,
+  onPick
+}: {
+  model: string | null
+  onPick(id: string): Promise<void>
+}): React.JSX.Element {
   const { core } = usePlatform()
   const state = useCoreState()
   const dispatch = useAppDispatch()
   const [open, setOpen] = useState(false)
   // Embedding models load on demand for document search; the button and its list are about chat models.
-  const models = useModels().filter((model) => model.kind === 'chat')
-  const active =
-    models.find((model) => model.state === 'ready') ?? models.find((model) => model.state === 'loading')
-  const { label, detail, dot } = describe(state, active)
-  const name = state?.status === 'ready' && active ? active.id : 'No model'
+  const models = useModels().filter((entry) => entry.kind === 'chat')
+  const { status, detail, dot } = describe(
+    state,
+    models.find((entry) => entry.id === model)
+  )
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        aria-label={`Model: ${name === 'No model' ? 'no model' : name}, ${label}`}
-        className="flex h-8 items-center gap-2 rounded-sm px-2 text-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent data-popup-open:text-foreground"
+        aria-label={`Model: ${model ?? 'no model'}, ${status}. Change model`}
+        className="flex h-7 items-center gap-2 rounded-sm px-2 text-xs font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-accent data-popup-open:text-foreground"
       >
-        <span aria-hidden className={cn('size-2 rounded-full', dot)} />
-        {name}
+        <span aria-hidden className={cn('size-[7px] rounded-full', dot)} />
+        {model ?? 'No model'}
       </PopoverTrigger>
       <PopoverContent side="top" align="end" aria-label="Models service">
         {detail && <p>{detail}</p>}
-        {state?.status === 'ready' && <ModelPicker models={models} />}
+        {state?.status === 'ready' && (
+          <ModelPicker
+            models={models}
+            selected={model}
+            onPick={async (id) => {
+              await onPick(id)
+              setOpen(false)
+            }}
+          />
+        )}
         <CudaEngineOffer variant="card" />
         <div className="flex flex-wrap gap-2">
           {core.restart && (

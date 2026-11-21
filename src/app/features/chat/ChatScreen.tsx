@@ -12,6 +12,7 @@ import { modelsDialogOpened, routeReplaced, selectRoute, settingsOpened } from '
 import { Ember } from '@app/ui/Ember'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
 import { Composer } from './Composer'
+import { ContextMeter } from './ContextMeter'
 import { useAnnouncer } from './useAnnouncer'
 import { useChatModel } from './useChatModel'
 
@@ -29,9 +30,9 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
   const dispatch = useAppDispatch()
   const route = useAppSelector(selectRoute)
   const chatId = route.tab === 'chat' && route.chatId ? route.chatId : undefined
-  const { view, status } = useRunView(chatId)
+  const { view, context, status } = useRunView(chatId)
   const { data: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: chatId === undefined })
-  const { model, loading } = useChatModel(chatId)
+  const { model, loading, pick } = useChatModel(chatId)
   const activeRun = view?.activeRun ?? null
   const live = useLiveAnswer(activeRun?.id)
   const answering = activeRun !== null && (activeRun.state === 'queued' || activeRun.state === 'running')
@@ -117,7 +118,8 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
               onStop={stop}
               footer={
                 <div className="flex items-center justify-end gap-1 px-1.5">
-                  <ModelButton />
+                  <ModelButton model={model} onPick={pick} />
+                  <ContextMeter used={context?.used ?? 0} size={context?.size ?? 0} />
                 </div>
               }
             />
