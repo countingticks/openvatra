@@ -356,6 +356,33 @@ func TestStart(t *testing.T) {
 		f.checkLog("send_done")
 	})
 
+	t.Run("Start rejects bad input and an unknown chat", func(t *testing.T) {
+		f := newFixture(t)
+		cases := []struct {
+			name string
+			spec Spec
+			want error
+		}{
+			{"empty request id", Spec{Model: "m1", Text: "hi"}, ErrBadInput},
+			{"empty text", Spec{Model: "m1", RequestID: "r"}, ErrBadInput},
+			{"all-space text", Spec{Model: "m1", Text: " \n\t ", RequestID: "r"}, ErrBadInput},
+			{"text of 200,001 runes", Spec{Model: "m1", Text: strings.Repeat("ă", 200_001), RequestID: "r"}, ErrBadInput},
+			{"new chat without a model", Spec{Text: "hi", RequestID: "r"}, ErrBadInput},
+			{"unknown profile", Spec{Model: "m1", Text: "hi", RequestID: "r", Profile: "nope"}, ErrBadInput},
+			{"unknown chat", Spec{ChatID: "missing", Text: "hi", RequestID: "r"}, store.ErrNotFound},
+		}
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				if _, err := f.eng.Start(bg, tc.spec); !errors.Is(err, tc.want) {
+					t.Fatalf("err = %v, want %v", err, tc.want)
+				}
+				if n := len(f.stored()); n != 0 {
+					t.Fatalf("%d events appended", n)
+				}
+			})
+		}
+	})
+
 	t.Run("the same request id twice returns the first run and writes nothing", func(t *testing.T) {
 		f := newFixture(t, providertest.Turn{Text: []string{"a"}})
 		first := f.send("hi", "req-1")
