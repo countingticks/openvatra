@@ -26,6 +26,7 @@
   --secondary: oklch(0.967 0.001 286.4); /* #F4F4F5 */
   --secondary-foreground: oklch(0.21 0.006 285.9); /* #18181B */
   --muted: oklch(0.967 0.001 286.4); /* #F4F4F5 */
+  --bubble: oklch(0.967 0.001 286.4); /* #F4F4F5, the user's messages in a chat */
   --muted-foreground: oklch(0.442 0.015 285.8); /* #52525B */
   --accent: oklch(0.92 0.004 286.3); /* #E4E4E7 */
   --accent-foreground: oklch(0.21 0.006 285.9); /* #18181B */
@@ -70,6 +71,7 @@
   --secondary: oklch(0.274 0.005 286); /* #27272A */
   --secondary-foreground: oklch(0.985 0 0); /* #FAFAFA */
   --muted: oklch(0.274 0.005 286); /* #27272A */
+  --bubble: oklch(0.241 0.008 285.8); /* #1F1F23 */
   --muted-foreground: oklch(0.712 0.013 286.1); /* #A1A1AA */
   --accent: oklch(0.274 0.005 286); /* #27272A */
   --accent-foreground: oklch(0.985 0 0); /* #FAFAFA */
@@ -128,6 +130,7 @@
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
+  --color-bubble: var(--bubble);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
