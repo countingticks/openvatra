@@ -1,12 +1,14 @@
 import { emptyApi as api } from './emptyApi'
 export const addTagTypes = [
   'catalog',
+  'chats',
   'config',
   'downloads',
   'engines',
   'events',
   'hardware',
   'models',
+  'runs',
   'version',
   'core'
 ] as const
@@ -23,6 +25,26 @@ const injectedRtkApi = api
       removeCatalogEntry: build.mutation<RemoveCatalogEntryApiResponse, RemoveCatalogEntryApiArg>({
         query: (queryArg) => ({ url: `/api/catalog/${queryArg.id}/remove`, method: 'POST' }),
         invalidatesTags: ['catalog']
+      }),
+      listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
+        query: () => ({ url: `/api/chats` }),
+        providesTags: ['chats']
+      }),
+      deleteChat: build.mutation<DeleteChatApiResponse, DeleteChatApiArg>({
+        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'DELETE' }),
+        invalidatesTags: ['chats']
+      }),
+      getChat: build.query<GetChatApiResponse, GetChatApiArg>({
+        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}` }),
+        providesTags: ['chats']
+      }),
+      updateChat: build.mutation<UpdateChatApiResponse, UpdateChatApiArg>({
+        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'PATCH', body: queryArg.body }),
+        invalidatesTags: ['chats']
+      }),
+      getTranscript: build.query<GetTranscriptApiResponse, GetTranscriptApiArg>({
+        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/messages` }),
+        providesTags: ['chats']
       }),
       getConfig: build.query<GetConfigApiResponse, GetConfigApiArg>({
         query: () => ({ url: `/api/config` }),
@@ -129,6 +151,22 @@ const injectedRtkApi = api
         query: (queryArg) => ({ url: `/api/models/${queryArg.id}/unload`, method: 'POST' }),
         invalidatesTags: ['models']
       }),
+      startRun: build.mutation<StartRunApiResponse, StartRunApiArg>({
+        query: (queryArg) => ({ url: `/api/runs`, method: 'POST', body: queryArg.startRun }),
+        invalidatesTags: ['runs']
+      }),
+      getRun: build.query<GetRunApiResponse, GetRunApiArg>({
+        query: (queryArg) => ({ url: `/api/runs/${queryArg.id}` }),
+        providesTags: ['runs']
+      }),
+      resumeRun: build.mutation<ResumeRunApiResponse, ResumeRunApiArg>({
+        query: (queryArg) => ({ url: `/api/runs/${queryArg.id}/resume`, method: 'POST' }),
+        invalidatesTags: ['runs']
+      }),
+      stopRun: build.mutation<StopRunApiResponse, StopRunApiArg>({
+        query: (queryArg) => ({ url: `/api/runs/${queryArg.id}/stop`, method: 'POST' }),
+        invalidatesTags: ['runs']
+      }),
       getVersion: build.query<GetVersionApiResponse, GetVersionApiArg>({
         query: () => ({ url: `/api/version` }),
         providesTags: ['version']
@@ -145,6 +183,28 @@ export type GetCatalogApiResponse = /** status 200 OK */ View
 export type GetCatalogApiArg = void
 export type RemoveCatalogEntryApiResponse = unknown
 export type RemoveCatalogEntryApiArg = {
+  id: string
+}
+export type ListChatsApiResponse = /** status 200 OK */ ChatList
+export type ListChatsApiArg = void
+export type DeleteChatApiResponse = unknown
+export type DeleteChatApiArg = {
+  id: string
+}
+export type GetChatApiResponse = /** status 200 OK */ ChatBody
+export type GetChatApiArg = {
+  id: string
+}
+export type UpdateChatApiResponse = /** status 200 OK */ ChatBody
+export type UpdateChatApiArg = {
+  id: string
+  body: {
+    model?: string | null
+    title?: string | null
+  }
+}
+export type GetTranscriptApiResponse = /** status 200 OK */ Transcript
+export type GetTranscriptApiArg = {
   id: string
 }
 export type GetConfigApiResponse = /** status 200 OK */ ConfigAll
@@ -242,6 +302,22 @@ export type UnloadModelApiResponse = /** status 202 Accepted */ StatusBody
 export type UnloadModelApiArg = {
   id: string
 }
+export type StartRunApiResponse = /** status 202 Accepted */ RunRef
+export type StartRunApiArg = {
+  startRun: StartRun
+}
+export type GetRunApiResponse = /** status 200 OK */ RunSnapshot
+export type GetRunApiArg = {
+  id: string
+}
+export type ResumeRunApiResponse = unknown
+export type ResumeRunApiArg = {
+  id: string
+}
+export type StopRunApiResponse = unknown
+export type StopRunApiArg = {
+  id: string
+}
 export type GetVersionApiResponse = /** status 200 OK */ VersionBody
 export type GetVersionApiArg = void
 export type HealthApiResponse = /** status 200 OK */ StatusBody
@@ -277,6 +353,72 @@ export type ErrorBody = {
   current?: any
   error: string
   message: string
+}
+export type ActiveRun = {
+  id: string
+  state: 'queued' | 'running' | 'interrupted'
+}
+export type ChatItem = {
+  activeRun?: ActiveRun | null
+  id: string
+  model: string
+  title: string
+  /** Unix ms */
+  updatedAt: number
+}
+export type ChatList = {
+  chats: ChatItem[]
+  seq: number
+}
+export type ChatBody = {
+  chat: ChatItem
+  seq: number
+}
+export type RunError = {
+  code: string
+  message: string
+}
+export type RunSnapshot = {
+  chatId: string
+  error?: RunError | null
+  id: string
+  model: string
+  profile: string
+  seq: number
+  state: 'queued' | 'running' | 'interrupted' | 'done' | 'stopped' | 'failed'
+}
+export type MessagePart = {
+  kind: 'text' | 'reasoning'
+  text: string
+}
+export type MessageStats = {
+  answerTokens: number
+  contextSize: number
+  durationMs: number
+  exact: boolean
+  firstTokenMs: number
+  promptTokens: number
+  tokensPerSecond: number
+}
+export type TranscriptItem = {
+  failed?: boolean
+  kind: 'input' | 'answer' | 'summary'
+  /** the answer was cut off by a stop or a failure */
+  partial?: boolean
+  /** answer */
+  parts?: MessagePart[]
+  runId: string
+  seq: number
+  /** answer */
+  stats?: MessageStats | null
+  /** input and summary */
+  text?: string
+}
+export type Transcript = {
+  activeRun?: RunSnapshot | null
+  items: TranscriptItem[]
+  runs: RunSnapshot[]
+  seq: number
 }
 export type SectionEntry = {
   effective?: any
@@ -531,10 +673,6 @@ export type RunResumedEvent = {
   type: 'run.resumed'
   v: number
 }
-export type RunError = {
-  code: string
-  message: string
-}
 export type RunFinished = {
   chatId: string
   error?: RunError | null
@@ -588,19 +726,6 @@ export type MessagePartialEvent = {
   time: number
   type: 'message.partial'
   v: number
-}
-export type MessagePart = {
-  kind: 'text' | 'reasoning'
-  text: string
-}
-export type MessageStats = {
-  answerTokens: number
-  contextSize: number
-  durationMs: number
-  exact: boolean
-  firstTokenMs: number
-  promptTokens: number
-  tokensPerSecond: number
 }
 export type MessageCompleted = {
   chatId: string
@@ -683,6 +808,21 @@ export type Report = {
   gpu: Gpu | null
   ramBytes: number
 }
+export type RunRef = {
+  chatId: string
+  runId: string
+  /** read the run's events on /api/events from after this seq */
+  seq: number
+}
+export type StartRun = {
+  /** omit to start a new chat */
+  chatId?: string
+  /** omit for the chat's model, or for a new chat the last one named */
+  model?: string
+  /** the client's id for this send; the same id again answers the same run */
+  requestId: string
+  text: string
+}
 export type VersionBody = {
   api: number
   version: string
@@ -690,6 +830,11 @@ export type VersionBody = {
 export const {
   useGetCatalogQuery,
   useRemoveCatalogEntryMutation,
+  useListChatsQuery,
+  useDeleteChatMutation,
+  useGetChatQuery,
+  useUpdateChatMutation,
+  useGetTranscriptQuery,
   useGetConfigQuery,
   useGetConfigChatQuery,
   usePutConfigChatMutation,
@@ -710,6 +855,10 @@ export const {
   useGetModelFitQuery,
   useLoadModelMutation,
   useUnloadModelMutation,
+  useStartRunMutation,
+  useGetRunQuery,
+  useResumeRunMutation,
+  useStopRunMutation,
   useGetVersionQuery,
   useHealthQuery
 } = injectedRtkApi

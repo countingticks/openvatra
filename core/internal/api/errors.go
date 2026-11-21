@@ -8,10 +8,13 @@ import (
 	"net/http"
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
+	"github.com/countingticks/openvatra/core/internal/chats"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/removal"
+	"github.com/countingticks/openvatra/core/internal/run"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -62,6 +65,13 @@ var errorTable = []mapped{
 	{provider.ErrUnknownModel, http.StatusNotFound, "model_not_found", "no model with that name in the models folder"},
 	{provider.ErrNoEmbeddingModel, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen"},
 	{store.ErrNotFound, http.StatusNotFound, "chat_not_found", "no chat with that id"},
+	{run.ErrBadInput, http.StatusBadRequest, "bad_request",
+		"the request id and text are required, the text at most 200,000 characters, a title 1 to 200"},
+	{run.ErrRunNotFound, http.StatusNotFound, "run_not_found", "no run with that id"},
+	{run.ErrNotInterrupted, http.StatusConflict, "run_not_interrupted", "only a run a restart cut off can be resumed"},
+	{chats.ErrNoChatModel, http.StatusConflict, "no_chat_model", "no chat model is installed"},
+	{store.ErrReadOnly, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available"},
+	{event.ErrUnavailable, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available"},
 }
 
 // toError turns any error into the answer the client gets; an error with no mapping is 500 internal.

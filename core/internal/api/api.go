@@ -9,11 +9,13 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/countingticks/openvatra/core/internal/chats"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/run"
 )
 
 // Deps is everything the routes reach.
@@ -38,7 +40,10 @@ type Deps struct {
 	Downloads Downloads
 	Engines   func() downloads.EnginesBody // the llama.cpp builds on disk; nil = an unknown bundled build only
 	Log       event.Log
-	Logger    *slog.Logger // nil = discard
+	// Chats and Runs are nil without a writable database: the run and chat routes then answer 503.
+	Chats  *chats.Service
+	Runs   *run.Engine
+	Logger *slog.Logger // nil = discard
 }
 
 // APILevel is the contract's major version; it changes only when a change breaks existing clients.
@@ -87,6 +92,7 @@ func routes(d Deps, t *tokens) []Route {
 	routes = append(routes, downloadRoutes(d.Downloads)...)
 	routes = append(routes, engineRoutes(d.Engines)...)
 	routes = append(routes, configRoutes(d.Config)...)
+	routes = append(routes, runRoutes(d.Chats, d.Runs)...)
 	return append(routes,
 		Raw(http.MethodGet, "/v1/models", UI, "openaiModels", "List the models on disk, OpenAI style",
 			modelList(d.ListModels)).

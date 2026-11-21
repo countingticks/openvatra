@@ -195,6 +195,15 @@ func (s *Service) Transcript(ctx context.Context, id string) ([]store.MessageRow
 	return s.c.Store.Transcript(ctx, id)
 }
 
+// Run is one run, or run.ErrRunNotFound.
+func (s *Service) Run(ctx context.Context, id string) (store.RunRow, int64, error) {
+	row, seq, err := s.c.Store.Run(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.RunRow{}, 0, run.ErrRunNotFound
+	}
+	return row, seq, err
+}
+
 // Update renames the chat as the user and/or moves it to another installed chat model, and returns it after.
 func (s *Service) Update(ctx context.Context, id string, title, model *string) (store.ChatRow, int64, error) {
 	chat, seq, err := s.c.Store.Chat(ctx, id)
