@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/sched"
 )
 
 // stubRouter always answers with one backend and records what was asked.
@@ -71,7 +72,7 @@ func TestChatProxyPicksModelFromBodyAndStripsToken(t *testing.T) {
 	rt := &stubRouter{baseURL: backend.URL}
 
 	body := `{"model":"qwen","messages":[]}`
-	resp := post(t, proxy(rt, provider.KindChat), body)
+	resp := post(t, proxy(rt, provider.KindChat, nil), body)
 
 	if resp.StatusCode != 200 {
 		t.Fatalf("status = %d", resp.StatusCode)
@@ -102,9 +103,78 @@ func TestEmbeddingsProxyDoesNotNeedModelField(t *testing.T) {
 	defer backend.Close()
 	rt := &stubRouter{baseURL: backend.URL}
 
-	resp := post(t, proxy(rt, provider.KindEmbedding), `{"input":"hi"}`)
+	resp := post(t, proxy(rt, provider.KindEmbedding, nil), `{"input":"hi"}`)
 	if resp.StatusCode != 200 || rt.kind != provider.KindEmbedding {
 		t.Fatalf("status = %d, kind = %v", resp.StatusCode, rt.kind)
+	}
+}
+
+// waitUntil polls cond for at most 2 s.
+func waitUntil(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting until %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestChatProxyWaitsWhileARunHoldsTheLease(t *testing.T) {
+	var hits atomic.Int32
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits.Add(1)
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer backend.Close()
+	fifo := sched.NewFIFO(nil)
+	held, err := fifo.Acquire(context.Background(), sched.Request{RunID: "run1", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan *http.Response, 1)
+	h := proxy(&stubRouter{baseURL: backend.URL}, provider.KindChat, fifo)
+	go func() { done <- post(t, h, `{"model":"m"}`) }()
+	waitUntil(t, "the request waits for the lease", func() bool {
+		w := fifo.State().Waiting
+		return len(w) == 1 && w[0].RunID == "openai"
+	})
+	if hits.Load() != 0 {
+		t.Fatal("the request reached the model server while a run held the lease")
+	}
+
+	held.Release()
+	select {
+	case resp := <-done:
+		if resp.StatusCode != 200 || hits.Load() != 1 {
+			t.Fatalf("status = %d, hits = %d", resp.StatusCode, hits.Load())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("the request did not go through once the lease was released")
+	}
+	waitUntil(t, "the lease is released after the reply", func() bool { return fifo.State().Holder == "" })
+}
+
+func TestEmbeddingsNeverWaitForTheLease(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":[]}`)
+	}))
+	defer backend.Close()
+	fifo := sched.NewFIFO(nil)
+	held, err := fifo.Acquire(context.Background(), sched.Request{RunID: "run1", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	resp := post(t, proxy(&stubRouter{baseURL: backend.URL}, provider.KindEmbedding, fifo), `{"input":"hi"}`)
+	if resp.StatusCode != 200 {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	if w := fifo.State().Waiting; len(w) != 0 {
+		t.Errorf("waiting = %+v, want none", w)
 	}
 }
 
@@ -119,7 +189,7 @@ func TestChatProxyStreamsChunksAsTheyArrive(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	resp := post(t, proxy(&stubRouter{baseURL: backend.URL}, provider.KindChat), `{"model":"m"}`)
+	resp := post(t, proxy(&stubRouter{baseURL: backend.URL}, provider.KindChat, nil), `{"model":"m"}`)
 	r := bufio.NewReader(resp.Body)
 
 	first := make(chan string, 1)
@@ -156,7 +226,7 @@ func TestProxyErrors(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			resp := post(t, proxy(&stubRouter{err: c.err}, c.kind), c.body)
+			resp := post(t, proxy(&stubRouter{err: c.err}, c.kind, nil), c.body)
 			b, _ := io.ReadAll(resp.Body)
 			if resp.StatusCode != c.status || !strings.Contains(string(b), c.code) {
 				t.Fatalf("got %d %s, want %d %s", resp.StatusCode, b, c.status, c.code)

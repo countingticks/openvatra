@@ -16,6 +16,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/run"
+	"github.com/countingticks/openvatra/core/internal/sched"
 )
 
 // Deps is everything the routes reach.
@@ -43,7 +44,8 @@ type Deps struct {
 	// Chats and Runs are nil without a writable database: the run and chat routes then answer 503.
 	Chats  *chats.Service
 	Runs   *run.Engine
-	Logger *slog.Logger // nil = discard
+	Sched  sched.Scheduler // the /v1 chat route takes a lease from it; nil = no lease
+	Logger *slog.Logger    // nil = discard
 }
 
 // APILevel is the contract's major version; it changes only when a change breaks existing clients.
@@ -98,11 +100,11 @@ func routes(d Deps, t *tokens) []Route {
 			modelList(d.ListModels)).
 			WithErrors("models_unreadable"),
 		Raw(http.MethodPost, "/v1/chat/completions", UI, "openaiChatCompletions", "Chat with a model, OpenAI style",
-			proxy(d.Upstream, provider.KindChat)).
+			proxy(d.Upstream, provider.KindChat, d.Sched)).
 			WithErrors("body_unreadable", "bad_request", "model_not_found", "model_load_failed", "bad_backend",
 				"backend_failed"),
 		Raw(http.MethodPost, "/v1/embeddings", UI, "openaiEmbeddings", "Embed text with the embedding model, OpenAI style",
-			proxy(d.Upstream, provider.KindEmbedding)).
+			proxy(d.Upstream, provider.KindEmbedding, d.Sched)).
 			WithErrors("body_unreadable", "no_embedding_model", "model_load_failed", "bad_backend", "backend_failed"),
 		JSON(http.MethodPost, "/api/tokens", Shell, "issueToken", "Issue a token for the app's window",
 			func(_ context.Context, in TokenRequest) (TokenBody, error) {

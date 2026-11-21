@@ -36,9 +36,12 @@ import (
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
 	"github.com/countingticks/openvatra/core/internal/models"
+	"github.com/countingticks/openvatra/core/internal/profile"
 	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/provider/llamacpp"
 	"github.com/countingticks/openvatra/core/internal/removal"
+	runengine "github.com/countingticks/openvatra/core/internal/run"
+	"github.com/countingticks/openvatra/core/internal/sched"
 	"github.com/countingticks/openvatra/core/internal/seam"
 	"github.com/countingticks/openvatra/core/internal/store"
 	"github.com/countingticks/openvatra/core/internal/trash"
@@ -336,13 +339,33 @@ func run(args []string, stdout, stderr io.Writer) error {
 	fitAt := fitFunc(resolve, hardware.Get, needs)
 	feed.Start(ctx, eventLog, lc, listModels, choose, dl)
 	defer lc.Close() // after the server is down, so no request is mid-stream
+	// Runs need a writable database; without one the run and chat routes answer 503 and /v1 takes no lease.
+	var engine *runengine.Engine
+	var chatService *chats.Service
+	var scheduler sched.Scheduler // an untyped nil without a database, never a nil *sched.FIFO inside the interface
+	if chatStore != nil && chatStore.ReadOnly() == nil {
+		fifo := sched.NewFIFO(func(st sched.State) { eventLog.Publish("system", schedState(st)) })
+		engine = runengine.New(runengine.Config{Log: eventLog, Views: chatStore, Chat: lc, Model: lc.Model, Sched: fifo,
+			Profiles: profile.Builtin(), Logger: logger})
+		chatService = chats.New(chats.Config{Store: chatStore, Engine: engine, Config: cfg, Models: lc.Models,
+			Logger: logger})
+		scheduler = fifo
+		// Before serving, so no client sees a run that is open but has no worker. Not fatal: those runs stay open
+		// and the next start tries again.
+		if err := engine.Recover(ctx); err != nil {
+			logger.Error("mark interrupted runs", "err", err)
+		}
+		// Deferred after lc.Close, so it runs first: once the server is down, before the provider and the store
+		// close. It writes nothing, so the next start marks the open runs interrupted.
+		defer engine.Close()
+	}
 	// BaseContext ties every request to ctx: once we are told to exit, long-lived requests (the event stream the UI
 	// keeps open) end at once instead of making Shutdown wait out its whole grace period.
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
 			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Fit: fitAt, Resident: lc, Upstream: lc,
 			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
-			Log: eventLog, Logger: logger,
+			Log: eventLog, Chats: chatService, Runs: engine, Sched: scheduler, Logger: logger,
 		}),
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
@@ -379,6 +402,15 @@ func registerSections(cfg *config.Store, env llamaserver.Env, home string) {
 	config.Register(cfg, llamaserver.ID, llamaserver.DefaultSettings(), llamaserver.Effective(env))
 	config.Register(cfg, llamacpp.ID, llamacpp.DefaultSettings(), llamacpp.Effective(home))
 	config.Register[chats.Settings, struct{}](cfg, chats.ID, chats.DefaultSettings(), nil)
+}
+
+// schedState is the scheduler's state as the retained sched.state event carries it.
+func schedState(st sched.State) event.SchedState {
+	out := event.SchedState{Holder: st.Holder, Waiting: make([]event.SchedWaiting, 0, len(st.Waiting))}
+	for _, w := range st.Waiting {
+		out.Waiting = append(out.Waiting, event.SchedWaiting{RunID: w.RunID, Why: w.Why})
+	}
+	return out
 }
 
 // resolveEmbedding is the id of the embedding model that serves under c: the chosen one if it is an embedding model,

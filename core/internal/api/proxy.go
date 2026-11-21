@@ -9,6 +9,7 @@ import (
 	"net/url"
 
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/sched"
 )
 
 // maxRequestBody caps what we buffer to read the "model" field. Chat requests with
@@ -17,8 +18,9 @@ const maxRequestBody = 64 << 20
 
 // proxy forwards a request to the upstream server the provider picks. Chat requests
 // choose the model by the "model" field of the JSON body; embeddings always go to
-// the chosen embedding model, so their body is passed through unread.
-func proxy(up provider.Upstream, kind provider.Kind) http.HandlerFunc {
+// the chosen embedding model, so their body is passed through unread. A chat request waits for a lease from s (nil =
+// none) so it queues behind the chats answering; embeddings never wait (they do not use the chat model).
+func proxy(up provider.Upstream, kind provider.Kind, s sched.Scheduler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBody))
 		if err != nil {
@@ -36,6 +38,15 @@ func proxy(up provider.Upstream, kind provider.Kind) http.HandlerFunc {
 				return
 			}
 			model = req.Model
+			if s != nil {
+				lease, err := s.Acquire(r.Context(), sched.Request{RunID: "openai", Model: model, Class: sched.Interactive,
+					Why: "an outside tool is using the model"})
+				if err != nil {
+					return // only the client leaving ends Acquire: nobody is listening
+				}
+				// Released after the reply is sent, as the slot below is.
+				defer lease.Release()
+			}
 		}
 
 		base, release, err := up.Acquire(r.Context(), kind, model)
