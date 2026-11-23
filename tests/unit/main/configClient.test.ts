@@ -144,6 +144,15 @@ describe.each(sections)('config client: $name', (section) => {
   })
 })
 
+describe('getEngine', () => {
+  it("reads a section with build 'auto'", async () => {
+    const entry = engineEntry(2, { path: null, build: 'auto' })
+    const request = vi.fn<Request>().mockResolvedValue(json(entry))
+
+    await expect(createConfigClient(request).getEngine()).resolves.toEqual(entry)
+  })
+})
+
 describe('setModelPath', () => {
   const put = (call: unknown[]): { rev: number; value: unknown } =>
     JSON.parse((call[1] as RequestInit).body as string)

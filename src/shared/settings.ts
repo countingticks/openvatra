@@ -38,8 +38,8 @@ const closeAction = z.enum(closeActions)
 const sidebarOpen = z.boolean()
 const motion = z.enum(motions)
 
-/** Which llama.cpp build runs the models: the one shipped with the app, or the faster NVIDIA (CUDA) one. */
-export const engines = ['bundled', 'cuda'] as const
+/** Which llama.cpp build runs the models: automatic (CUDA on an NVIDIA card once downloaded), or always the one shipped with the app, or always CUDA. */
+export const engines = ['auto', 'bundled', 'cuda'] as const
 
 /** The window's last normal (not maximized) position and size, in DIPs. */
 export const windowBoundsSchema = z.object({
