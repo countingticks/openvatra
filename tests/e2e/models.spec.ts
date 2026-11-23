@@ -66,6 +66,8 @@ test('after a core restart the models list fills again without reloading the pag
     )
     .toBe('ready')
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
+  // The button stands in for the welcome card until the list arrives; opening it earlier loses the popover.
+  await expect(modelButton).toHaveAccessibleName(/^Model: tiny,/, { timeout: 20_000 })
   await modelButton.click()
   await expect(mainWindow.getByRole('option', { name: 'tiny' })).toBeVisible()
 
