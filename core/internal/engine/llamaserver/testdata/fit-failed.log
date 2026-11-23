@@ -1,0 +1,2 @@
+0.00.000.001 I common_fit_params: failed to fit params to free device memory: n_gpu_layers already set by user to -2, abort
+0.00.000.002 I load_tensors:   CUDA0 model buffer size =   100.00 MiB

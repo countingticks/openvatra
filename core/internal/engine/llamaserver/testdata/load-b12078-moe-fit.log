@@ -1,0 +1,363 @@
+0.00.003.216 I srv  llama_server: initializing ...
+0.00.124.523 I ggml_cuda_init: found 1 CUDA devices (Total VRAM: 12281 MiB):
+0.00.124.549 I   Device 0: NVIDIA GeForce RTX 4070 SUPER, compute capability 8.9, VMM: yes, VRAM: 12281 MiB
+0.00.124.585 I load_backend: loaded CUDA backend from C:\engines\b12078-cuda\ggml-cuda.dll
+0.00.127.230 I load_backend: loaded RPC backend from C:\engines\b12078-cuda\ggml-rpc.dll
+0.00.150.068 I load_backend: loaded CPU backend from C:\engines\b12078-cuda\ggml-cpu-haswell.dll
+0.00.150.158 I cmn  common_param: common_params_print_info: build 12078 (19e8a86fe) with Clang 20.1.8 for Windows x86_64
+0.00.150.159 I cmn  common_param: common_params_print_info: verbosity = 4 (adjust with the `-lv N` CLI arg)
+0.00.150.159 I cmn  common_param: device_info:
+0.00.243.966 I cmn  common_param:   - CUDA0   : NVIDIA GeForce RTX 4070 SUPER (12281 MiB, 11071 MiB free)
+0.00.243.979 I cmn  common_param:   - CPU     : Intel(R) Core(TM) i9-9900K CPU @ 3.60GHz (32686 MiB, 24967 MiB free)
+0.00.244.043 I cmn  common_param: system_info: n_threads = 8 (n_threads_batch = 8) / 16 | CUDA : ARCHS = 500,610,700,750,800,860,890,900 | USE_GRAPHS = 1 | FA_QUANTS = q4_0-q4_0,q8_0-q8_0,f16-f16,bf16-bf16 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | LLAMAFILE = 1 | OPENMP = 1 | REPACK = 1 | 
+0.00.245.501 I srv  init_listene: running without SSL
+0.00.246.168 I srv          init: using 15 threads for HTTP server
+0.00.246.252 W srv  server_setup: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.259.263 I srv    load_model: loading model 'C:/models/qwen3.6-35b-a3b-q4_K_P.gguf'
+0.00.259.267 I srv    load_model: local path 'C:/models/qwen3.6-35b-a3b-q4_K_P.gguf'
+0.00.259.294 I cmn  common_fit_a: fitting params to device memory ...
+0.00.259.294 I cmn  common_fit_a: (for bugs during this step try to reproduce them with -fit off, or provide --verbose logs if the bug only occurs with -fit on)
+0.00.259.332 I common_params_fit_impl: getting device memory data for initial parameters:
+0.00.581.552 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.00.581.558 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (23161 = 22056 +     745 +     360) +      -21951 |
+0.00.581.559 I common_memory_breakdown_print: |   - Host                   |                    432 =   272 +       0 +     160                |
+0.00.622.434 I common_params_fit_impl: projected to use 23161 MiB of device memory vs. 11071 MiB of free device memory
+0.00.622.440 I common_params_fit_impl: cannot meet free memory target of 384 MiB, need to reduce device memory by 12474 MiB
+0.00.622.441 I common_params_fit_impl: context size set by user to 65536 -> no change
+0.00.622.447 I common_params_fit_impl: getting device memory data with all MoE tensors moved to system memory:
+0.00.953.564 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.00.953.570 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + ( 2685 =  1344 +     745 +     596) +       -1475 |
+0.00.953.571 I common_memory_breakdown_print: |   - Host                   |                  21144 = 20984 +       0 +     160                |
+0.00.995.104 I common_params_fit_impl: with only dense weights in device memory there is a total surplus of 8001 MiB
+0.00.995.111 I common_params_fit_impl: id=0, target=10687 MiB
+0.01.323.797 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.01.323.803 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (  510 =     0 +       0 +     510) +         700 |
+0.01.323.803 I common_memory_breakdown_print: |   - Host                   |                  23250 = 22328 +     745 +     176                |
+0.01.364.190 I common_params_fit_impl: memory for test allocation by device:
+0.01.364.197 I common_params_fit_impl: id=0, n_layer= 0, n_part= 0, overflow_type=4, mem=   510 MiB
+0.01.364.272 I common_params_fit_impl: filling dense-only layers back-to-front:
+0.01.750.463 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.01.750.469 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + ( 3183 =  1842 +     745 +     596) +       -1973 |
+0.01.750.470 I common_memory_breakdown_print: |   - Host                   |                  20646 = 20486 +       0 +     160                |
+0.01.794.601 I common_params_fit_impl: memory for test allocation by device:
+0.01.794.608 I common_params_fit_impl: id=0, n_layer=41, n_part=40, overflow_type=4, mem=  3183 MiB
+0.01.794.930 I common_params_fit_impl: set ngl_per_device[0].n_layer=41
+0.01.794.937 I common_params_fit_impl:   - CUDA0 (NVIDIA GeForce RTX 4070 SUPER): 41 layers,   3183 MiB used,   7887 MiB free
+0.01.794.938 I common_params_fit_impl: converting dense-only layers to full layers and filling them front-to-back with overflow to next device/system memory:
+0.02.114.002 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.02.114.007 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (23161 = 22056 +     745 +     360) +      -21951 |
+0.02.114.008 I common_memory_breakdown_print: |   - Host                   |                    432 =   272 +       0 +     160                |
+0.02.157.900 I common_params_fit_impl: memory for test allocation by device:
+0.02.157.907 I common_params_fit_impl: id=0, n_layer=41, n_part= 0, overflow_type=4, mem= 23161 MiB
+0.02.519.047 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.02.519.053 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (10019 =  8784 +     745 +     490) +       -8809 |
+0.02.519.053 I common_memory_breakdown_print: |   - Host                   |                  13704 = 13544 +       0 +     160                |
+0.02.560.253 I common_params_fit_impl: memory for test allocation by device:
+0.02.560.259 I common_params_fit_impl: id=0, n_layer=41, n_part=25, overflow_type=4, mem= 10019 MiB
+0.02.560.268 I common_params_fit_impl: set ngl_per_device[0].(n_layer, n_part)=(41, 25), id_dense_start=0
+0.02.921.849 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.02.921.855 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (10517 =  9282 +     745 +     490) +       -9307 |
+0.02.921.855 I common_memory_breakdown_print: |   - Host                   |                  13206 = 13046 +       0 +     160                |
+0.02.962.698 I common_params_fit_impl: memory for test allocation by device:
+0.02.962.705 I common_params_fit_impl: id=0, n_layer=41, n_part=24, overflow_type=4, mem= 10517 MiB
+0.02.962.707 I common_params_fit_impl: set ngl_per_device[0].(n_layer, n_part)=(41, 24), id_dense_start=0
+0.03.355.910 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.03.355.915 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (10949 =  9714 +     745 +     490) +       -9739 |
+0.03.355.916 I common_memory_breakdown_print: |   - Host                   |                  12774 = 12614 +       0 +     160                |
+0.03.398.439 I common_params_fit_impl: memory for test allocation by device:
+0.03.398.446 I common_params_fit_impl: id=0, n_layer=41, n_part=23, overflow_type=4, mem= 10949 MiB
+0.03.398.455 I common_params_fit_impl: set ngl_per_device_high[0].(n_layer, n_part)=(41, 23), id_dense_start_high=0
+0.03.398.456 I common_params_fit_impl: trying to fit one extra layer with overflow_type=LAYER_FRACTION_UP
+0.03.754.402 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.03.754.411 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (10658 =  9422 +     745 +     490) +       -9447 |
+0.03.754.411 I common_memory_breakdown_print: |   - Host                   |                  13065 = 12905 +       0 +     160                |
+0.03.796.856 I common_params_fit_impl: memory for test allocation by device:
+0.03.796.863 I common_params_fit_impl: id=0, n_layer=41, n_part=24, overflow_type=2, mem= 10658 MiB
+0.03.796.891 I common_params_fit_impl: set ngl_per_device[0].(n_layer, n_part, overflow_type)=(41, 24, UP), id_dense_start=0
+0.03.796.891 I common_params_fit_impl: trying to fit one extra layer with overflow_type=LAYER_FRACTION_GATE
+0.04.156.682 I common_memory_breakdown_print: | memory breakdown [MiB]     | total    free     self   model   context   compute    unaccounted |
+0.04.156.688 I common_memory_breakdown_print: |   - CUDA0 (RTX 4070 SUPER) | 12281 = 11071 + (10805 =  9569 +     745 +     490) +       -9594 |
+0.04.156.689 I common_memory_breakdown_print: |   - Host                   |                  12919 = 12759 +       0 +     160                |
+0.04.198.060 I common_params_fit_impl: memory for test allocation by device:
+0.04.198.068 I common_params_fit_impl: id=0, n_layer=41, n_part=24, overflow_type=3, mem= 10805 MiB
+0.04.198.097 I common_params_fit_impl:   - CUDA0 (NVIDIA GeForce RTX 4070 SUPER): 41 layers (24 overflowing),  10658 MiB used,    412 MiB free
+0.04.198.100 I common_fit_params: successfully fit params to free device memory
+0.04.198.103 I common_fit_params: fitting params to free memory took 3.94 seconds
+0.04.282.422 I llama_model_loader: loaded meta data with 45 key-value pairs and 733 tensors from C:/models/qwen3.6-35b-a3b-q4_K_P.gguf (version GGUF V3 (latest))
+0.04.282.464 I llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+0.04.282.467 I llama_model_loader: - kv   0:                       general.architecture str              = qwen35moe
+0.04.282.468 I llama_model_loader: - kv   1:                               general.type str              = model
+0.04.282.469 I llama_model_loader: - kv   2:                     general.sampling.top_k i32              = 20
+0.04.282.473 I llama_model_loader: - kv   3:                     general.sampling.top_p f32              = 0.950000
+0.04.282.474 I llama_model_loader: - kv   4:                      general.sampling.temp f32              = 1.000000
+0.04.282.477 I llama_model_loader: - kv   5:                               general.name str              = Qwen3.6-35B-A3B-Uncensored-HauhauCS-A...
+0.04.282.477 I llama_model_loader: - kv   6:                           general.finetune str              = 3Ref
+0.04.282.478 I llama_model_loader: - kv   7:                           general.basename str              = KL0.0764
+0.04.282.479 I llama_model_loader: - kv   8:                      qwen35moe.block_count u32              = 40
+0.04.282.479 I llama_model_loader: - kv   9:                   qwen35moe.context_length u32              = 262144
+0.04.282.480 I llama_model_loader: - kv  10:                 qwen35moe.embedding_length u32              = 2048
+0.04.282.480 I llama_model_loader: - kv  11:             qwen35moe.attention.head_count u32              = 16
+0.04.282.481 I llama_model_loader: - kv  12:          qwen35moe.attention.head_count_kv u32              = 2
+0.04.282.483 I llama_model_loader: - kv  13:          qwen35moe.rope.dimension_sections arr[i32,4]       = [11, 11, 10, 0]
+0.04.282.484 I llama_model_loader: - kv  14:                   qwen35moe.rope.freq_base f32              = 10000000.000000
+0.04.282.486 I llama_model_loader: - kv  15: qwen35moe.attention.layer_norm_rms_epsilon f32              = 0.000001
+0.04.282.487 I llama_model_loader: - kv  16:                     qwen35moe.expert_count u32              = 256
+0.04.282.487 I llama_model_loader: - kv  17:                qwen35moe.expert_used_count u32              = 8
+0.04.282.488 I llama_model_loader: - kv  18:             qwen35moe.attention.key_length u32              = 256
+0.04.282.488 I llama_model_loader: - kv  19:           qwen35moe.attention.value_length u32              = 256
+0.04.282.489 I llama_model_loader: - kv  20:       qwen35moe.expert_feed_forward_length u32              = 512
+0.04.282.489 I llama_model_loader: - kv  21: qwen35moe.expert_shared_feed_forward_length u32              = 512
+0.04.282.490 I llama_model_loader: - kv  22:                  qwen35moe.ssm.conv_kernel u32              = 4
+0.04.282.490 I llama_model_loader: - kv  23:                   qwen35moe.ssm.state_size u32              = 128
+0.04.282.491 I llama_model_loader: - kv  24:                  qwen35moe.ssm.group_count u32              = 16
+0.04.282.491 I llama_model_loader: - kv  25:               qwen35moe.ssm.time_step_rank u32              = 32
+0.04.282.492 I llama_model_loader: - kv  26:                   qwen35moe.ssm.inner_size u32              = 4096
+0.04.282.492 I llama_model_loader: - kv  27:          qwen35moe.full_attention_interval u32              = 4
+0.04.282.493 I llama_model_loader: - kv  28:             qwen35moe.rope.dimension_count u32              = 64
+0.04.282.493 I llama_model_loader: - kv  29:                       tokenizer.ggml.model str              = gpt2
+0.04.282.494 I llama_model_loader: - kv  30:                         tokenizer.ggml.pre str              = qwen35
+0.04.282.497 I llama_model_loader: - kv  31:                      tokenizer.ggml.tokens arr[str,248320]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+0.04.282.499 I llama_model_loader: - kv  32:                  tokenizer.ggml.token_type arr[i32,248320]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+0.04.282.502 I llama_model_loader: - kv  33:                      tokenizer.ggml.merges arr[str,247587]  = ["Ġ Ġ", "ĠĠ ĠĠ", "i n", "Ġ t",...
+0.04.282.503 I llama_model_loader: - kv  34:                tokenizer.ggml.eos_token_id u32              = 248046
+0.04.282.503 I llama_model_loader: - kv  35:            tokenizer.ggml.padding_token_id u32              = 248044
+0.04.282.504 I llama_model_loader: - kv  36:                tokenizer.ggml.bos_token_id u32              = 248044
+0.04.282.508 I llama_model_loader: - kv  37:                    tokenizer.chat_template str              = {%- set image_count = namespace(value...
+0.04.282.509 I llama_model_loader: - kv  38:               general.quantization_version u32              = 2
+0.04.282.510 I llama_model_loader: - kv  39:                          general.file_type u32              = 15
+0.04.282.510 I llama_model_loader: - kv  40:                         general.size_label str              = 35B-A3B
+0.04.282.512 I llama_model_loader: - kv  41:                      quantize.imatrix.file str              = Qwen3.6-35B-A3B-Uncensored-HauhauCS-A...
+0.04.282.513 I llama_model_loader: - kv  42:                   quantize.imatrix.dataset str              = /home/hauhaucs/llama.cpp/groups_merge...
+0.04.282.514 I llama_model_loader: - kv  43:             quantize.imatrix.entries_count u32              = 510
+0.04.282.514 I llama_model_loader: - kv  44:              quantize.imatrix.chunks_count u32              = 93
+0.04.282.515 I llama_model_loader: - type  f32:  301 tensors
+0.04.282.515 I llama_model_loader: - type q4_K:  285 tensors
+0.04.282.516 I llama_model_loader: - type q6_K:  147 tensors
+0.04.282.516 I print_info: file format = GGUF V3 (latest)
+0.04.282.517 I print_info: file type   = Q4_K - Medium
+0.04.282.518 I print_info: file size   = 21.81 GiB (5.40 BPW) 
+0.04.282.554 I llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 4070 SUPER) (0000:01:00.0) - 11071 MiB free
+0.04.404.932 I load: 0 unused tokens
+0.04.447.457 I load: printing all EOG tokens:
+0.04.447.464 I load:   - 248044 ('<|endoftext|>')
+0.04.447.464 I load:   - 248046 ('<|im_end|>')
+0.04.447.465 I load:   - 248063 ('<|fim_pad|>')
+0.04.447.465 I load:   - 248064 ('<|repo_name|>')
+0.04.447.466 I load:   - 248065 ('<|file_sep|>')
+0.04.448.009 I load: special tokens cache size = 33
+0.04.486.828 I load: token to piece cache size = 1.7581 MB
+0.04.486.842 I print_info: arch                  = qwen35moe
+0.04.486.843 I print_info: vocab_only            = 0
+0.04.486.843 I print_info: no_alloc              = 0
+0.04.486.844 I print_info: n_ctx_train           = 262144
+0.04.486.845 I print_info: n_embd_inp            = 2048
+0.04.486.845 I print_info: n_embd                = 2048
+0.04.486.845 I print_info: n_embd_out            = 2048
+0.04.486.846 I print_info: n_layer               = 40
+0.04.486.846 I print_info: n_layer_all           = 40
+0.04.486.855 I print_info: n_head                = 16
+0.04.486.857 I print_info: n_head_kv             = 2
+0.04.486.857 I print_info: n_rot                 = 64
+0.04.486.858 I print_info: n_swa                 = 0
+0.04.486.858 I print_info: is_swa_any            = 0
+0.04.486.858 I print_info: non_causal_type       = 0
+0.04.486.859 I print_info: n_embd_head_k         = 256
+0.04.486.859 I print_info: n_embd_head_v         = 256
+0.04.486.861 I print_info: n_gqa                 = 8
+0.04.486.863 I print_info: n_embd_k_gqa          = 512
+0.04.486.864 I print_info: n_embd_v_gqa          = 512
+0.04.486.865 I print_info: f_norm_eps            = 0.0e+00
+0.04.486.866 I print_info: f_norm_rms_eps        = 1.0e-06
+0.04.486.867 I print_info: f_clamp_kqv           = 0.0e+00
+0.04.486.867 I print_info: f_max_alibi_bias      = 0.0e+00
+0.04.486.867 I print_info: f_logit_scale         = 0.0e+00
+0.04.486.868 I print_info: f_attn_scale          = 0.0e+00
+0.04.486.868 I print_info: f_attn_value_scale    = 0.0000
+0.04.486.871 I print_info: n_ff                  = 0
+0.04.486.871 I print_info: n_expert              = 256
+0.04.486.872 I print_info: n_expert_used         = 8
+0.04.486.872 I print_info: n_expert_groups       = 0
+0.04.486.872 I print_info: n_group_used          = 0
+0.04.486.872 I print_info: causal attn           = 1
+0.04.486.873 I print_info: pooling type          = -1
+0.04.486.873 I print_info: rope type             = 40
+0.04.486.874 I print_info: rope scaling          = linear
+0.04.486.875 I print_info: freq_base_train       = 10000000.0
+0.04.486.876 I print_info: freq_scale_train      = 1
+0.04.486.876 I print_info: n_ctx_orig_yarn       = 262144
+0.04.486.877 I print_info: rope_yarn_log_mul     = 0.0000
+0.04.486.877 I print_info: rope_finetuned        = unknown
+0.04.486.878 I print_info: mrope sections        = [11, 11, 10, 0]
+0.04.486.878 I print_info: ssm_d_conv            = 4
+0.04.486.878 I print_info: ssm_d_inner           = 4096
+0.04.486.879 I print_info: ssm_d_state           = 128
+0.04.486.879 I print_info: ssm_dt_rank           = 32
+0.04.486.879 I print_info: ssm_n_group           = 16
+0.04.486.879 I print_info: ssm_dt_b_c_rms        = 0
+0.04.486.880 I print_info: model type            = 35B.A3B
+0.04.486.881 I print_info: model params          = 34.66 B
+0.04.486.881 I print_info: general.name          = Qwen3.6-35B-A3B-Uncensored-HauhauCS-Aggressive
+0.04.486.882 I print_info: vocab type            = BPE
+0.04.486.882 I print_info: n_vocab               = 248320
+0.04.486.883 I print_info: n_merges              = 247587
+0.04.486.883 I print_info: BOS token             = 248044 '<|endoftext|>'
+0.04.486.884 I print_info: EOS token             = 248046 '<|im_end|>'
+0.04.486.884 I print_info: EOT token             = 248046 '<|im_end|>'
+0.04.486.884 I print_info: PAD token             = 248044 '<|endoftext|>'
+0.04.486.885 I print_info: LF token              = 198 'Ċ'
+0.04.486.885 I print_info: FIM PRE token         = 248060 '<|fim_prefix|>'
+0.04.486.886 I print_info: FIM SUF token         = 248062 '<|fim_suffix|>'
+0.04.486.886 I print_info: FIM MID token         = 248061 '<|fim_middle|>'
+0.04.486.886 I print_info: FIM PAD token         = 248063 '<|fim_pad|>'
+0.04.486.887 I print_info: FIM REP token         = 248064 '<|repo_name|>'
+0.04.486.887 I print_info: FIM SEP token         = 248065 '<|file_sep|>'
+0.04.486.888 I print_info: EOG token             = 248044 '<|endoftext|>'
+0.04.486.888 I print_info: EOG token             = 248046 '<|im_end|>'
+0.04.486.888 I print_info: EOG token             = 248063 '<|fim_pad|>'
+0.04.486.889 I print_info: EOG token             = 248064 '<|repo_name|>'
+0.04.486.889 I print_info: EOG token             = 248065 '<|file_sep|>'
+0.04.486.890 I print_info: max token length      = 256
+0.04.486.914 I load_tensors: loading model tensors, this can take a while... (load_mode = mmap)
+0.04.509.451 W llama_model_loader: tensor overrides to CPU are used with mmap enabled - consider using --load-mode none for better performance
+0.10.088.325 I load_tensors: offloading output layer to GPU
+0.10.088.331 I load_tensors: offloading 39 repeating layers to GPU
+0.10.088.331 I load_tensors: offloaded 41/41 layers to GPU
+0.10.088.335 I load_tensors:   CPU_Mapped model buffer size =   272.81 MiB
+0.10.088.336 I load_tensors:   CPU_Mapped model buffer size =   291.13 MiB
+0.10.088.337 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.337 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.338 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.338 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.339 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.339 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.340 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.340 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.341 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.342 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.342 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.343 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.343 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.344 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.345 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.345 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.346 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.346 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.347 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.347 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.348 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.348 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.349 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.349 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.350 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.351 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.351 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.352 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.352 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.353 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.353 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.354 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.354 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.355 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.355 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.356 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.356 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.357 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.357 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.358 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.358 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.359 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.360 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.360 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.360 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.361 I load_tensors:   CPU_Mapped model buffer size =   144.00 MiB
+0.10.088.361 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.362 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.362 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.363 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.364 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.364 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.365 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.365 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.365 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.366 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.366 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.368 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.369 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.369 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.370 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.370 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.371 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.372 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.372 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.372 I load_tensors:   CPU_Mapped model buffer size =   210.00 MiB
+0.10.088.374 I load_tensors:        CUDA0 model buffer size =  9422.95 MiB
+0.14.297.882 I cmn  common_init_: added <|endoftext|> logit bias = -inf
+0.14.297.887 I cmn  common_init_: added <|im_end|> logit bias = -inf
+0.14.297.889 I cmn  common_init_: added <|fim_pad|> logit bias = -inf
+0.14.297.889 I cmn  common_init_: added <|repo_name|> logit bias = -inf
+0.14.297.890 I cmn  common_init_: added <|file_sep|> logit bias = -inf
+0.14.298.002 I llama_context: constructing llama_context
+0.14.298.010 I llama_context: n_seq_max             = 1
+0.14.298.010 I llama_context: n_ctx                 = 65536
+0.14.298.011 I llama_context: n_ctx_seq             = 65536
+0.14.298.011 I llama_context: n_batch               = 2048
+0.14.298.011 I llama_context: n_ubatch              = 1024
+0.14.298.012 I llama_context: causal_attn           = 1
+0.14.298.012 I llama_context: flash_attn            = enabled
+0.14.298.013 I llama_context: kv_unified            = false
+0.14.298.015 I llama_context: freq_base             = 10000000.0
+0.14.298.016 I llama_context: freq_scale            = 1
+0.14.298.016 I llama_context: n_rs_seq              = 0
+0.14.298.017 I llama_context: n_outputs_max         = 1
+0.14.298.017 I llama_context: n_outputs_max_per_seq = 1
+0.14.298.018 I llama_context: n_ctx_seq (65536) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+0.14.298.431 I llama_context:  CUDA_Host  output buffer size =     0.95 MiB
+0.14.319.783 I llama_kv_cache:      CUDA0 KV buffer size =   680.00 MiB
+0.14.319.791 I llama_kv_cache: size =  680.00 MiB ( 65536 cells,  10 layers,  1/1 seqs), K (q8_0):  340.00 MiB, V (q8_0):  340.00 MiB
+0.14.319.798 I llama_kv_cache: n_rot_k = 256, n_embd_head_k_all = 256
+0.14.319.799 I llama_kv_cache: n_rot_v = 64, n_embd_head_k_all = 256
+0.14.321.041 I init_rotation:      CUDA0 rotation buffer size =     2.66 MiB
+0.14.324.064 I llama_memory_recurrent:      CUDA0 RS buffer size =    62.81 MiB
+0.14.324.072 I llama_memory_recurrent: size =   62.81 MiB (     1 cells,  40 layers,  1 seqs  0 rs_seq), R (f32):    2.81 MiB, S (f32):   60.00 MiB, P (f32):    0.00 MiB
+0.14.324.079 I sched_reserve: reserving ...
+0.14.326.513 I resolve_fused_ops: resolving fused DeepSeek V4 HC support:
+0.14.328.748 I resolve_fused_ops: fused DeepSeek V4 HC pre enabled
+0.14.330.618 I resolve_fused_ops: fused DeepSeek V4 HC comb enabled
+0.14.332.353 I resolve_fused_ops: fused DeepSeek V4 HC post enabled
+0.14.415.871 I sched_reserve:      CUDA0 compute buffer size =   490.04 MiB
+0.14.415.879 I sched_reserve:  CUDA_Host compute buffer size =   160.05 MiB
+0.14.415.886 I sched_reserve: graph (pp bs=1024, tg bs=1): nodes = 3939 / 3939, splits = 73 / 52, input objects = 4 / 4, input tensors = 10 / 10
+0.14.415.887 I sched_reserve: reserve took 91.81 ms, sched copies = 1
+0.14.416.644 I cmn          init: llama threadpool init, n_threads = 8
+0.14.416.669 I cmn  common_init_: warming up the model with an empty run - please wait ... (--no-warmup to disable)
+0.15.117.670 I cmn  common_conte: the context does not support partial sequence removal
+0.15.170.844 I srv    load_model: speculative decoding will use checkpoints
+0.15.170.859 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 65536, kv_unified = 'false'
+0.15.170.878 I spec common_specu: no implementations specified for speculative decoding
+0.15.170.887 I slot   load_model: id  0 | task -1 | new slot, n_ctx = 65536
+0.15.170.956 I srv    load_model: prompt cache is enabled, size limit: 8192 MiB
+0.15.170.957 I srv    load_model: use `--cache-ram 0` to disable the prompt cache
+0.15.170.959 I srv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391
+0.15.170.961 I srv    load_model: context checkpoints enabled, max = 32, min spacing = 8192
+0.15.171.014 I srv          init: idle slots will be saved to prompt cache upon starting a new task
+0.15.187.990 I srv          init: init: chat template, example_format: '<|im_start|>system
+You are a helpful assistant<|im_end|>
+<|im_start|>user
+Hello<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+Hi there<|im_end|>
+<|im_start|>user
+How are you?<|im_end|>
+<|im_start|>assistant
+<think>
+'
+0.15.189.990 I srv          init: init: chat template, thinking = 1
+0.15.190.048 I srv          init: preserve_reasoning kwarg: true
+0.15.190.052 W srv          init: chat template supports preserving reasoning, it is enabled by default (may use more tokens, disable via --no-reasoning-preserve)
+0.15.190.109 I srv  server_run_i: model loaded
+0.15.190.116 I srv  server_on_li: listening on http://127.0.0.1:18099
+0.15.190.283 I srv  update_slots: all slots are idle

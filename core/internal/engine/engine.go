@@ -46,6 +46,7 @@ type Shape struct {
 	FileBytes, ProjectorBytes, ExpertBytes int64
 	Layers, KVHeads, KeyLen, ValueLen      int
 	MaxContext                             int
+	AttentionLayers                        int // layers that keep a KV cache; 0 = all of Layers
 }
 
 type Resources struct {
@@ -53,6 +54,7 @@ type Resources struct {
 	Known               bool
 	Source              string  // "estimate" or "measured"; "" when !Known
 	TokensPerSecond     float64 // measured only; 0 = not known
+	GPUExpertLayers     int     // experts placement, measured: layers whose experts stayed on the GPU; 0 = not known
 }
 
 type State string

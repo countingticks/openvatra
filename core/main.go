@@ -440,7 +440,7 @@ func measuredNeeds(rows []store.ModelFit, needs fit.Needs) fit.Needs {
 			}
 			if row.Memory {
 				return engine.Resources{VRAMBytes: row.VRAMBytes, RAMBytes: row.RAMBytes, Known: true, Source: "measured",
-					TokensPerSecond: row.TokensPerSecond}
+					TokensPerSecond: row.TokensPerSecond, GPUExpertLayers: row.GPUExpertLayers}
 			}
 			res := needs(s)
 			if res.Known {
@@ -453,9 +453,15 @@ func measuredNeeds(rows []store.ModelFit, needs fit.Needs) fit.Needs {
 }
 
 // measuredNeedsFor reads the measured rows of the model spec starts, once per call. Without a database, or when they
-// can't be read, it is plain needs.
+// can't be read, it is plain needs. The estimate always sees spec's arguments (the KV cache types): fit builds its
+// own specs without them.
 func measuredNeedsFor(db *store.Store, needs fit.Needs, logger *slog.Logger) needsFor {
 	return func(spec engine.Spec) fit.Needs {
+		inner := needs
+		needs := func(s engine.Spec) engine.Resources {
+			s.Args = spec.Args
+			return inner(s)
+		}
 		if db == nil {
 			return needs
 		}
@@ -498,7 +504,7 @@ func recordFunc(db *store.Store, logger *slog.Logger) func(llamacpp.Measurement)
 				place.Layers = m.Spec.Placement.Layers
 			}
 			if m.Memory.Known {
-				err = db.RecordFitMemory(context.Background(), key, place, m.Memory.VRAMBytes, m.Memory.RAMBytes)
+				err = db.RecordFitMemory(context.Background(), key, place, m.Memory.VRAMBytes, m.Memory.RAMBytes, m.Memory.GPUExpertLayers)
 			}
 			if err == nil && m.TokensPerSecond > 0 {
 				err = db.RecordFitSpeed(context.Background(), key, place, m.TokensPerSecond)

@@ -26,6 +26,19 @@ var (
 	moe = engine.Shape{
 		FileBytes: 21 * gib, ExpertBytes: 19*gib + gib/2, Layers: 40, KVHeads: 2, KeyLen: 256, ValueLen: 256, MaxContext: 262144,
 	}
+	// the same with the attention layers of a hybrid model: only 10 of 40 keep a KV cache
+	qwen = engine.Shape{
+		FileBytes: 21 * gib, ExpertBytes: 19*gib + gib/2, Layers: 40, AttentionLayers: 10, KVHeads: 2, KeyLen: 256, ValueLen: 256,
+		MaxContext: 262144,
+	}
+	// experts fit at 32K but not at 64K: the KV cache alone is 10 GiB there
+	heavyKV = engine.Shape{
+		FileBytes: 21 * gib, ExpertBytes: 19*gib + gib/2, Layers: 40, KVHeads: 8, KeyLen: 256, ValueLen: 256, MaxContext: 262144,
+	}
+	// a small MoE whose whole model fits a 12 GiB GPU up to 128K tokens, not 256K
+	gpuUpTo128K = engine.Shape{
+		FileBytes: 3 * gib, ExpertBytes: 2 * gib, Layers: 40, AttentionLayers: 20, KVHeads: 8, KeyLen: 128, ValueLen: 128, MaxContext: 262144,
+	}
 	// a 4B model
 	small = engine.Shape{FileBytes: 5 * gib / 2, Layers: 36, KVHeads: 8, KeyLen: 128, ValueLen: 128, MaxContext: 262144}
 	// a model that does not fit 12 GiB of VRAM
@@ -42,8 +55,19 @@ func TestChoose(t *testing.T) {
 		want      Choice // only the fields set here are compared; Layers is checked by layersBetween
 		layers    bool   // Layers must be between 1 and the model's layers - 1
 	}{
+		{"the owner's case: experts at 64K", qwen, machine(12, 32), 0, "auto", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"a MoE that fits whole", engine.Shape{FileBytes: 3 * gib, ExpertBytes: 2 * gib, Layers: 24, AttentionLayers: 6, KVHeads: 2, KeyLen: 128, ValueLen: 128, MaxContext: 262144},
+			machine(12, 32), 0, "auto", Choice{Context: 262144, Placement: PlaceExperts, Fit: FitFits}, false},
+		{"a MoE whose experts fit only below 64K picks the largest that does", heavyKV, machine(12, 64), 0, "auto", Choice{Context: 32768, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"auto context with experts stops at 64K when the gpu does not fit above", qwen, machine(12, 64), 0, "experts", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"auto goes above 64K when the gpu fits there", gpuUpTo128K, machine(12, 32), 0, "auto", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitFits}, false},
+		{"auto context with experts goes above 64K when the gpu fits there", gpuUpTo128K, machine(12, 32), 0, "experts", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitFits}, false},
+		{"a MoE too big everywhere", qwen, machine(12, 8), 0, "auto", Choice{Context: 8192, Placement: PlaceExperts, Fit: FitTooBig}, false},
+		{"a MoE with no GPU is cpu", qwen, machine(0, 64), 0, "auto", Choice{Context: 8192, Placement: PlaceCPU, Fit: FitSlower}, false},
+		{"a number above 64K with auto placement is not capped", qwen, machine(12, 32), 131072, "auto", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"layers chosen on a MoE model stays layers", qwen, machine(12, 64), 8192, "layers", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"moe auto: experts at 64K", moe, machine(12, 64), 0, "auto", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
-		{"dense auto: gpu at 32K", small, machine(12, 32), 0, "auto", Choice{Context: 32768, Placement: PlaceGPU, Fit: FitFits}, false},
+		{"dense auto: gpu at 64K", small, machine(12, 32), 0, "auto", Choice{Context: 65536, Placement: PlaceGPU, Fit: FitFits}, false},
 		{"too big for VRAM: layers at 8K", big, machine(12, 64), 0, "auto", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"no GPU: cpu at 8K", big, machine(0, 64), 0, "auto", Choice{Context: 8192, Placement: PlaceCPU, Fit: FitSlower}, false},
 		{"no GPU, little RAM: too big", big, machine(0, 16), 0, "auto", Choice{Context: 8192, Placement: PlaceCPU, Fit: FitTooBig}, false},
@@ -58,8 +82,8 @@ func TestChoose(t *testing.T) {
 		{"a number with auto placement offloads layers", big, machine(12, 64), 8192, "auto", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"a number with auto placement that fits nowhere is too big", big, machine(12, 8), 8192, "auto", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitTooBig}, true},
 		{"auto context with experts", moe, machine(12, 64), 0, "experts", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
-		{"auto context with cpu", small, machine(12, 64), 0, "cpu", Choice{Context: 131072, Placement: PlaceCPU, Fit: FitSlower}, false},
-		{"auto context with layers", small, machine(12, 32), 0, "layers", Choice{Context: 65536, Placement: PlaceLayers, Fit: FitSlower}, true},
+		{"auto context with cpu", small, machine(12, 64), 0, "cpu", Choice{Context: 262144, Placement: PlaceCPU, Fit: FitSlower}, false},
+		{"auto context with layers", small, machine(12, 32), 0, "layers", Choice{Context: 131072, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"nothing fits with a fixed placement: the smallest step", big, machine(12, 64), 0, "gpu", Choice{Context: 8192, Placement: PlaceGPU, Fit: FitTooBig}, false},
 		{"both fixed", small, machine(12, 32), 16384, "cpu", Choice{Context: 16384, Placement: PlaceCPU, Fit: FitSlower}, false},
 		{"experts on a dense model is gpu", small, machine(12, 32), 8192, "experts", Choice{Context: 8192, Placement: PlaceGPU, Fit: FitFits}, false},
@@ -97,7 +121,8 @@ func TestLabelEdges(t *testing.T) {
 	const context = 8192
 	gpu := needs(engine.Spec{Shape: small, Context: context})
 	cpu := needs(engine.Spec{Shape: small, Context: context, Placement: engine.Placement{Kind: engine.PlaceCPU}})
-	experts := needs(engine.Spec{Shape: moe, Context: context, Placement: engine.Placement{Kind: engine.PlaceExperts}})
+	spread := Check(moe, machine(12, 64), needs, context, PlaceExperts)     // what is left in RAM on a 12 GiB GPU
+	ramFor := func(need int64) uint64 { return uint64((need*5 + 3) / 4) }   // the smallest RAM that need is within 80% of
 	vramFor := func(need int64) uint64 { return uint64((need*10 + 8) / 9) } // the smallest GPU with need ≤ 90% of it
 
 	tests := []struct {
@@ -109,15 +134,15 @@ func TestLabelEdges(t *testing.T) {
 	}{
 		{"90% of VRAM exactly", small, hw.Report{GPU: &hw.GPU{TotalBytes: vramFor(gpu.VRAMBytes)}}, PlaceGPU, FitFits},
 		{"one byte under 90%", small, hw.Report{GPU: &hw.GPU{TotalBytes: vramFor(gpu.VRAMBytes) - 1}}, PlaceGPU, FitTooBig},
-		{"half the RAM exactly", small, hw.Report{RAMBytes: uint64(cpu.RAMBytes) * 2}, PlaceCPU, FitSlower},
-		{"one byte under half the RAM", small, hw.Report{RAMBytes: uint64(cpu.RAMBytes)*2 - 1}, PlaceCPU, FitTooBig},
+		{"80% of the RAM exactly", small, hw.Report{RAMBytes: ramFor(cpu.RAMBytes)}, PlaceCPU, FitSlower},
+		{"one byte under 80% of the RAM", small, hw.Report{RAMBytes: ramFor(cpu.RAMBytes) - 1}, PlaceCPU, FitTooBig},
 		{
 			"experts in RAM are slower, not fits", moe,
-			hw.Report{GPU: &hw.GPU{TotalBytes: vramFor(experts.VRAMBytes)}, RAMBytes: uint64(experts.RAMBytes) * 2}, PlaceExperts, FitSlower,
+			hw.Report{GPU: &hw.GPU{TotalBytes: 12 * gib}, RAMBytes: ramFor(spread.RAMBytes)}, PlaceExperts, FitSlower,
 		},
 		{
 			"experts with one byte too little RAM", moe,
-			hw.Report{GPU: &hw.GPU{TotalBytes: vramFor(experts.VRAMBytes)}, RAMBytes: uint64(experts.RAMBytes)*2 - 1}, PlaceExperts, FitTooBig,
+			hw.Report{GPU: &hw.GPU{TotalBytes: 12 * gib}, RAMBytes: ramFor(spread.RAMBytes) - 1}, PlaceExperts, FitTooBig,
 		},
 	}
 	for _, tt := range tests {
@@ -163,5 +188,59 @@ func TestChoiceCarriesTheMeasuredSpeed(t *testing.T) {
 	got := Check(small, machine(12, 32), measured, 8192, PlaceGPU)
 	if got.TokensPerSecond != 24 || got.Source != "measured" {
 		t.Fatalf("choice = %+v, want measured at 24 tokens per second", got)
+	}
+}
+
+func TestExpertsSpreadUsesTheBudget(t *testing.T) {
+	const context = 8192
+	base := needs(engine.Spec{Shape: moe, Context: context, Placement: engine.Placement{Kind: engine.PlaceExperts}}).VRAMBytes
+	t.Run("base above the budget is too big with the base as VRAM", func(t *testing.T) {
+		// a GPU whose 90% less the margin is just under the base
+		gpu := uint64((base + ExpertsMarginBytes - 1) * 10 / 9)
+		got := Check(moe, hw.Report{GPU: &hw.GPU{TotalBytes: gpu}, RAMBytes: 64 * gib}, needs, context, PlaceExperts)
+		if got.Fit != FitTooBig || got.VRAMBytes != base {
+			t.Fatalf("choice = %+v, want too big with VRAM %d", got, base)
+		}
+	})
+	t.Run("base and experts under the budget fit with no RAM", func(t *testing.T) {
+		got := Check(moe, machine(48, 64), needs, context, PlaceExperts)
+		if got.Fit != FitFits || got.RAMBytes != 0 {
+			t.Fatalf("choice = %+v, want fits with RAM 0", got)
+		}
+	})
+}
+
+func TestChoiceCarriesMeasuredExpertLayers(t *testing.T) {
+	measured := func(s engine.Spec) engine.Resources {
+		return engine.Resources{VRAMBytes: gib, Known: true, Source: "measured", GPUExpertLayers: 16}
+	}
+	got := Check(qwen, machine(12, 64), measured, 65536, PlaceExperts)
+	if got.GPUExpertLayers != 16 || got.ExpertLayers != 40 || got.Source != "measured" {
+		t.Fatalf("experts: choice = %+v, want 16 of 40 measured", got)
+	}
+	got = Check(qwen, machine(12, 64), measured, 65536, PlaceGPU)
+	if got.GPUExpertLayers != 0 || got.ExpertLayers != 0 {
+		t.Fatalf("gpu: choice = %+v, want no expert layers", got)
+	}
+}
+
+func TestMarginMatchesTheEngine(t *testing.T) {
+	if ExpertsMarginBytes != llamaserver.FitMarginMiB<<20 {
+		t.Fatalf("ExpertsMarginBytes = %d, want FitMarginMiB << 20", ExpertsMarginBytes)
+	}
+}
+
+func TestAutoPlacementNeverOffloadsLayersOfAMoEModel(t *testing.T) {
+	for _, context := range []int{8192, 16384, 32768, 65536, 131072, 262144} {
+		if got := Check(qwen, machine(12, 32), needs, context, "auto"); got.Placement != PlaceExperts {
+			t.Fatalf("context %d: choice = %+v, want experts", context, got)
+		}
+	}
+}
+
+func TestOwnersCaseFillsTheBudgetWithExperts(t *testing.T) {
+	got := Check(qwen, machine(12, 32), needs, 0, "auto")
+	if limit := int64(12*gib)*9/10 - ExpertsMarginBytes; got.VRAMBytes > limit || got.RAMBytes <= 0 {
+		t.Fatalf("choice = %+v, want VRAM within %d and some experts in RAM", got, limit)
 	}
 }

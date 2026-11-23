@@ -506,7 +506,7 @@ func TestVersion6DatabaseWithChatsMigratesTo7AndFindsThemByTitleAndText(t *testi
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 7 {
+	if v, _ := s.Version(); v != 8 {
 		t.Fatalf("version = %d", v)
 	}
 	for q, want := range map[string]int{"cluj": 1, "eat": 1, "the bistro": 1, "zebras": 0, "walrus": 0, "penguin": 0} {
@@ -535,7 +535,7 @@ func TestVersion5DatabaseWithOldChatsMigratesAndHasNoChats(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 7 {
+	if v, _ := s.Version(); v != 8 {
 		t.Fatalf("version = %d", v)
 	}
 	for _, table := range viewTables {

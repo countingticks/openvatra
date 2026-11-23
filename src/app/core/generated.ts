@@ -533,7 +533,9 @@ export type ConfigChangedEvent = {
 export type Choice = {
   capped: boolean
   context: number
+  expertLayers?: number
   fit: 'fits' | 'slower' | 'tooBig' | 'unknown'
+  gpuExpertLayers?: number
   layers?: number
   placement: 'gpu' | 'experts' | 'layers' | 'cpu'
   ramBytes: number

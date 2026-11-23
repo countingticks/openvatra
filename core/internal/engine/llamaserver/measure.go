@@ -3,6 +3,7 @@ package llamaserver
 import (
 	"bytes"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,6 +20,38 @@ type measurer struct {
 	partial   []byte // the unfinished last line
 	vram, ram int64
 	seen      bool
+
+	// What llama.cpp's fit says about an experts load; layers is 0 for any other spec, which ignores the fit lines.
+	layers      int  // the model's layers
+	overflowing int  // experts layers the last fit device line sent to system memory
+	gpuExperts  int  // the answer; 0 = not known
+	fitFailed   bool // fit gave up: nothing it prints later counts
+}
+
+// fitDevice is fit's per-device summary; "(k overflowing)" is absent when nothing overflows.
+var fitDevice = regexp.MustCompile(`common_params_fit_impl:\s+-\s+\S+ \(.*\): \d+ layers(?: \((\d+) overflowing\))?,`)
+
+// fitLine reads the lines of llama.cpp's fit that say how many expert layers stayed on the GPU.
+func (m *measurer) fitLine(s string) {
+	if m.layers == 0 || m.fitFailed {
+		return
+	}
+	switch {
+	case strings.Contains(s, "common_fit_params: failed to fit params"),
+		strings.Contains(s, "encountered an error while trying to fit params"):
+		m.fitFailed, m.gpuExperts = true, 0
+	case strings.Contains(s, "common_fit_params: successfully fit params to free device memory"):
+		m.gpuExperts = min(max(m.layers-m.overflowing, 0), m.layers)
+	case strings.Contains(s, "common_params_fit_impl:") && strings.Contains(s, "no changes needed"):
+		m.gpuExperts = m.layers
+	default:
+		if g := fitDevice.FindStringSubmatch(s); g != nil {
+			m.overflowing = 0
+			if g[1] != "" {
+				m.overflowing, _ = strconv.Atoi(g[1])
+			}
+		}
+	}
 }
 
 // Write never fails: a line it cannot read is skipped.
@@ -39,6 +72,7 @@ func (m *measurer) Write(data []byte) (int, error) {
 
 // line reads "<device> <kind> buffer size = <n> MiB"; each line is rounded to bytes on its own, then summed.
 func (m *measurer) line(s string) {
+	m.fitLine(s)
 	before, after, ok := strings.Cut(s, "buffer size =")
 	if !ok {
 		return
@@ -68,7 +102,7 @@ func (m *measurer) measured() (engine.Resources, bool) {
 	if !m.seen {
 		return engine.Resources{}, false
 	}
-	return engine.Resources{VRAMBytes: m.vram, RAMBytes: m.ram, Known: true, Source: "measured"}, true
+	return engine.Resources{VRAMBytes: m.vram, RAMBytes: m.ram, Known: true, Source: "measured", GPUExpertLayers: m.gpuExperts}, true
 }
 
 // measuredInstance is a running chat server that also knows what its load measured.

@@ -60,7 +60,7 @@ func TestEventsMigrationAppliesOnVersion3AndKeepsConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 7 {
+	if v, _ := s.Version(); v != 8 {
 		t.Fatalf("version = %d", v)
 	}
 	if rev, v, err := s.ConfigGet(ctx, "models"); err != nil || rev != 2 || string(v) != `{"a":1}` {

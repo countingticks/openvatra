@@ -306,7 +306,15 @@ func TestShapeFromHeader(t *testing.T) {
 		},
 		{
 			"head_count_kv as an array takes the largest", denseKeys(arrKV("llama.attention.head_count_kv", 0, 8, 4)), nil, 0,
-			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 96},
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 96, AttentionLayers: 2},
+		},
+		{
+			"full_attention_interval divides the layers", denseKeys(u32KV("llama.full_attention_interval", 4)), nil, 0,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 4, KeyLen: 128, ValueLen: 96, AttentionLayers: 8},
+		},
+		{
+			"the array wins over the interval", denseKeys(arrKV("llama.attention.head_count_kv", 0, 8, 4), u32KV("llama.full_attention_interval", 4)), nil, 0,
+			engine.Shape{MaxContext: 4096, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 96, AttentionLayers: 2},
 		},
 		{
 			"head_count_kv missing falls back to head_count",

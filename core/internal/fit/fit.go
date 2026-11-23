@@ -30,8 +30,12 @@ const DefaultContext = 16384
 // Steps are the context sizes auto tries, smallest first, each capped at the model's maximum.
 var Steps = []int{8192, 16384, 32768, 65536, 131072, 262144}
 
-// moeFloor is the context below which a mixture-of-experts model tries moving its experts to RAM.
-const moeFloor = 32768
+// ExpertsMarginBytes is the free VRAM llama.cpp's fit leaves on the GPU; it equals llamaserver.FitMarginMiB (a test
+// keeps them together, decision 48).
+const ExpertsMarginBytes int64 = 384 << 20
+
+// expertsCap is the largest context auto gives an experts placement (decision 43 Q4): a bigger one is the user's to type.
+const expertsCap = 65536
 
 // Needs is the engine's estimate of what a spec takes.
 type Needs func(engine.Spec) engine.Resources
@@ -46,6 +50,9 @@ type Choice struct {
 	RAMBytes  int64  `json:"ramBytes"`
 	Source    string `json:"source" enum:"estimate,measured,unknown"`
 	Capped    bool   `json:"capped"` // the number asked for was above the model's maximum
+	// GPUExpertLayers of ExpertLayers (the model's layers) kept their experts on the GPU: measured, experts only.
+	GPUExpertLayers int `json:"gpuExpertLayers,omitempty"`
+	ExpertLayers    int `json:"expertLayers,omitempty"`
 	// TokensPerSecond is how fast answers came on this size and placement; 0 = not known.
 	TokensPerSecond float64 `json:"tokensPerSecond"`
 }
@@ -137,6 +144,9 @@ func (f fitter) unknown(context int, placement string, capped bool) Choice {
 			context = f.shape.MaxContext
 		}
 	}
+	if placement == PlaceAuto && MoE(f.shape) {
+		placement = PlaceExperts
+	}
 	if placement != PlaceCPU && placement != PlaceExperts {
 		placement = PlaceGPU // layers can't be counted without the estimate, auto has nothing to go on
 	}
@@ -164,13 +174,13 @@ func (f fitter) vram() int64 {
 	return int64(f.r.GPU.TotalBytes)
 }
 
-// label is decision 26's rule.
+// label: fits is VRAM within 90% of the GPU and nothing in RAM; slower also lets RAM take up to 80% of the total.
 func (f fitter) label(res engine.Resources) string {
 	inVRAM := res.VRAMBytes*10 <= f.vram()*9
 	switch {
 	case inVRAM && res.RAMBytes == 0 && f.r.GPU != nil:
 		return FitFits
-	case inVRAM && res.RAMBytes <= int64(f.r.RAMBytes/2):
+	case inVRAM && res.RAMBytes*5 <= int64(f.r.RAMBytes)*4:
 		return FitSlower
 	}
 	return FitTooBig
@@ -190,11 +200,36 @@ func (f fitter) eval(context int, placement string) Choice {
 func (f fitter) build(context int, placement string, layers int) Choice {
 	p := Choice{Placement: placement, Layers: layers}.Spec()
 	res := f.needs(engine.Spec{Shape: f.shape, Context: context, Placement: p})
-	return Choice{
-		Context: context, Placement: placement, Layers: layers, Fit: f.label(res),
+	fit, tooBig := "", false
+	if placement == PlaceExperts && res.Source == "estimate" {
+		res, tooBig = f.spreadExperts(res)
+	}
+	if fit = f.label(res); tooBig {
+		fit = FitTooBig
+	}
+	c := Choice{
+		Context: context, Placement: placement, Layers: layers, Fit: fit,
 		VRAMBytes: res.VRAMBytes, RAMBytes: res.RAMBytes, Source: res.Source,
 		TokensPerSecond: res.TokensPerSecond,
 	}
+	if placement == PlaceExperts && res.GPUExpertLayers > 0 {
+		c.GPUExpertLayers, c.ExpertLayers = res.GPUExpertLayers, f.shape.Layers
+	}
+	return c
+}
+
+// spreadExperts mimics llama.cpp's fit for an estimate: the answer's VRAM is everything but the experts and its RAM
+// the experts; as many experts as the budget (90% of the GPU less the margin) has room for move to the GPU. tooBig
+// says even the rest does not fit, or there is no GPU.
+func (f fitter) spreadExperts(res engine.Resources) (engine.Resources, bool) {
+	base, experts := res.VRAMBytes, res.RAMBytes
+	budget := f.vram()*9/10 - ExpertsMarginBytes
+	if f.r.GPU == nil || base > budget {
+		return res, true
+	}
+	moved := min(experts, budget-base)
+	res.VRAMBytes, res.RAMBytes = base+moved, experts-moved
+	return res, false
 }
 
 // layersThatFit is the most layers (below all of them) whose VRAM need stays within 90% of the GPU; 0 without one.
@@ -231,38 +266,56 @@ func (f fitter) largest(placement string) (Choice, bool) {
 	return Choice{}, false
 }
 
-// autoBoth is decision 2.
+// autoBoth is decision 2, and decision 44 for a mixture of experts.
 func (f fitter) autoBoth() Choice {
-	a, hasA := f.largest(PlaceGPU)
-	if MoE(f.shape) && (!hasA || a.Context < moeFloor) {
-		if b, ok := f.largest(PlaceExperts); ok && (!hasA || b.Context > a.Context) {
-			return b
-		}
+	if MoE(f.shape) && f.r.GPU != nil {
+		return f.autoExperts()
 	}
-	if hasA {
+	if a, ok := f.largest(PlaceGPU); ok {
 		return a
 	}
 	return f.offload(f.steps()[0])
 }
 
+// autoExperts is experts at the larger of the biggest step the whole model fits at and the biggest step up to
+// expertsCap its experts can split at; the smallest step, too big, when neither exists.
+func (f fitter) autoExperts() Choice {
+	best := 0
+	if a, ok := f.largest(PlaceGPU); ok {
+		best = a.Context
+	}
+	steps := f.steps()
+	for i := len(steps) - 1; i >= 0; i-- {
+		if steps[i] <= expertsCap && steps[i] > best && fitsWell(f.eval(steps[i], PlaceExperts)) {
+			best = steps[i]
+			break
+		}
+	}
+	if best == 0 {
+		best = steps[0]
+	}
+	return f.eval(best, PlaceExperts)
+}
+
 // autoContext is decision 24: the largest step that fits the placement, else the smallest, too big.
 func (f fitter) autoContext(placement string) Choice {
+	if placement == PlaceExperts && f.r.GPU != nil {
+		return f.autoExperts()
+	}
 	if c, ok := f.largest(placement); ok {
 		return c
 	}
 	return f.eval(f.steps()[0], placement)
 }
 
-// autoPlacement takes the first placement that fits at the size the user chose; none does, it is the offload.
+// autoPlacement: a mixture of experts on a GPU splits its experts at the user's size, whatever it costs; a dense
+// model takes the GPU when it fits, else the offload.
 func (f fitter) autoPlacement(context int) Choice {
-	order := []string{PlaceGPU}
-	if MoE(f.shape) {
-		order = append(order, PlaceExperts)
+	if MoE(f.shape) && f.r.GPU != nil {
+		return f.eval(context, PlaceExperts)
 	}
-	for _, p := range order {
-		if c := f.eval(context, p); fitsWell(c) {
-			return c
-		}
+	if c := f.eval(context, PlaceGPU); fitsWell(c) {
+		return c
 	}
 	return f.offload(context)
 }

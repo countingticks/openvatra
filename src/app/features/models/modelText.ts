@@ -25,8 +25,12 @@ export function parseContext(text: string): number | undefined {
 
 /** What a context size and placement would mean for this PC, as one line for the options of a model. */
 export function fitHint(choice: Choice, gpuTotalBytes: number | null): string {
-  const line = fitLine(choice, gpuTotalBytes)
+  let line = fitLine(choice, gpuTotalBytes)
   if (choice.fit === 'unknown') return line
+  const { gpuExpertLayers = 0, expertLayers = 0 } = choice
+  if (choice.placement === 'experts' && gpuExpertLayers > 0 && expertLayers > 0) {
+    line += ` · ${gpuExpertLayers} of ${expertLayers} expert layers on the GPU`
+  }
   const measured = choice.source === 'measured' ? ' · measured' : ''
   const tokens = Math.max(1, Math.round(choice.tokensPerSecond))
   const speed =
