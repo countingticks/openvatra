@@ -99,4 +99,18 @@ describe('Shell', () => {
 
     expect(selectActiveTab(store.getState())).toBe('chat')
   })
+
+  it('has a labelled Settings row that opens the Settings dialog', async () => {
+    renderWithStore(<Shell />)
+
+    const row = screen.getByRole('button', { name: 'Settings' })
+    expect(row).toHaveTextContent('Settings')
+    expect(row).not.toHaveAttribute('title')
+    expect(row).toHaveAttribute('aria-keyshortcuts', 'Control+Comma')
+    expect(row).toHaveAttribute('aria-haspopup', 'dialog')
+
+    fireEvent.click(row)
+
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+  })
 })

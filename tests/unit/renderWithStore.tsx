@@ -121,6 +121,8 @@ interface Options {
   maximized?: boolean
   /** Platform members left out, to render the UI on a host without them. */
   omit?: readonly OptionalMember[]
+  /** What the host's key-value storage holds at the start. */
+  storage?: Record<string, string>
   /** What core's state is when the UI first asks; default: ready, with exampleConnection. */
   coreState?: CoreState
   /** The model list when the UI first asks; default: none. */
@@ -172,7 +174,8 @@ export function renderWithStore(
     },
     settings: { ...defaultSettings, ...saved },
     maximized: options.maximized,
-    omit: options.omit
+    omit: options.omit,
+    storage: options.storage
   })
   const store = createApp({ platform: fake.platform, initialSettings: { ...defaultSettings, ...saved } })
   return {

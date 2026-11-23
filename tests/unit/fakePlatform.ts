@@ -21,6 +21,8 @@ export interface FakePlatformOptions {
   maximized?: boolean
   /** Members left out, to test a host without them. */
   omit?: readonly OptionalMember[]
+  /** What storage holds at the start. */
+  storage?: Record<string, string>
 }
 
 export interface FakePlatform {
@@ -127,7 +129,7 @@ export function fakePlatform(options: FakePlatformOptions = {}): FakePlatform {
   }
   const quit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)
 
-  const values = new Map<string, string>()
+  const values = new Map<string, string>(Object.entries(options.storage ?? {}))
   const storage: FakePlatform['storage'] = {
     values,
     get: vi.fn((key: string) => values.get(key) ?? null),

@@ -52,20 +52,19 @@ export function Sidebar(): React.JSX.Element {
           <ChatList />
         </div>
 
-        {/* Settings is a dialog, not a page, so it's a gear at the bottom rather than a tab (design decision). */}
+        {/* Settings is a dialog, not a page, so it's a row at the bottom rather than a tab (design decision). */}
         <button
           type="button"
-          aria-label="Settings"
           aria-haspopup="dialog"
           aria-keyshortcuts={settingsShortcut}
-          title="Settings (Ctrl+,)"
           onClick={() => dispatch(settingsOpened())}
           className={cn(
-            'mt-1 grid size-8 place-items-center rounded-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
+            'mt-1.5 flex h-[34px] items-center gap-2.5 rounded-[7px] px-2.5 text-left text-[13.5px] text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground',
             focusRing
           )}
         >
-          <Settings aria-hidden className="size-[18px]" />
+          <Settings aria-hidden className="size-4" />
+          Settings
         </button>
       </div>
     </div>

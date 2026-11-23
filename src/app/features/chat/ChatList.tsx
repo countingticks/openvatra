@@ -1,13 +1,27 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Plus, Search } from 'lucide-react'
 import { useListChatsQuery } from '@app/core/generated'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import { navigated, selectRoute } from '@app/store/uiSlice'
+import { usePlatform } from '@app/platform/usePlatform'
+import { ChatGroupHeader } from './ChatGroupHeader'
+import { chatGroupIds, groupChats, type ChatGroupId } from './chatGroups'
 import { ChatRow } from './ChatRow'
+import { useLocalDay } from './useLocalDay'
 
 const searchDelayMs = 200
+const foldedKey = 'chat.groups.folded'
 const iconButton =
   'grid size-6 place-items-center rounded-sm text-muted-foreground outline-none hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring'
+
+function loadFolded(raw: string | null): ChatGroupId[] {
+  try {
+    const value: unknown = raw === null ? [] : JSON.parse(raw)
+    return Array.isArray(value) ? chatGroupIds.filter((id) => value.includes(id)) : []
+  } catch {
+    return []
+  }
+}
 
 /** The sidebar's chats, newest first (kept current by registerChatList), or the hits of a search. */
 export function ChatList(): React.JSX.Element {
@@ -15,6 +29,10 @@ export function ChatList(): React.JSX.Element {
   const [typed, setTyped] = useState('')
   // The query core is asked: the typed text, once typing paused.
   const [query, setQuery] = useState('')
+  const { storage } = usePlatform()
+  const [folded, setFolded] = useState(() => loadFolded(storage.get(foldedKey)))
+  const now = useLocalDay()
+  const listId = useId()
   const searchButton = useRef<HTMLButtonElement>(null)
   const field = useRef<HTMLInputElement>(null)
   const q = query.trim()
@@ -39,6 +57,12 @@ export function ChatList(): React.JSX.Element {
     setTyped('')
     setQuery('')
     searchButton.current?.focus()
+  }
+
+  function toggleGroup(id: ChatGroupId): void {
+    const next = chatGroupIds.filter((g) => (g === id ? !folded.includes(g) : folded.includes(g)))
+    setFolded(next)
+    storage.set(foldedKey, next.length === 0 ? null : JSON.stringify(next))
   }
 
   return (
@@ -95,9 +119,32 @@ export function ChatList(): React.JSX.Element {
         </p>
       ) : (
         <ul aria-labelledby="chats-heading" className="flex flex-col gap-0.5">
-          {data.chats.map((chat) => (
-            <ChatRow key={chat.id} chat={chat} current={chat.id === openChat} snippet={chat.snippet} />
-          ))}
+          {q !== ''
+            ? data.chats.map((chat) => (
+                <ChatRow key={chat.id} chat={chat} current={chat.id === openChat} snippet={chat.snippet} />
+              ))
+            : groupChats(data.chats, now).map((group) => {
+                const isFolded = folded.includes(group.id)
+                const rows = isFolded ? group.chats.filter((chat) => chat.id === openChat) : group.chats
+                const innerId = `${listId}-${group.id}`
+                return (
+                  <li key={group.id}>
+                    <ChatGroupHeader
+                      label={group.label}
+                      folded={isFolded}
+                      controls={rows.length > 0 ? innerId : undefined}
+                      onToggle={() => toggleGroup(group.id)}
+                    />
+                    {rows.length > 0 && (
+                      <ul id={innerId} aria-label={group.label} className="flex flex-col gap-0.5">
+                        {rows.map((chat) => (
+                          <ChatRow key={chat.id} chat={chat} current={chat.id === openChat} />
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                )
+              })}
         </ul>
       )}
     </section>
