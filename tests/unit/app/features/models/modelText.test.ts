@@ -70,6 +70,39 @@ describe('fitHint', () => {
       8 * GB,
       '32K tokens · CPU only: slower · 2.0 GB RAM'
     ],
+    [
+      'experts with the expert layers on the GPU, measured',
+      {
+        fit: 'slower',
+        placement: 'experts',
+        gpuExpertLayers: 16,
+        expertLayers: 40,
+        source: 'measured',
+        tokensPerSecond: 34,
+        vramBytes: 10.4 * GB,
+        ramBytes: 12.8 * GB
+      },
+      12 * GB,
+      '32K tokens · experts in RAM: slower · 10.4 GB GPU, 12.8 GB RAM · 16 of 40 expert layers on the GPU · measured · about 34 tokens per second'
+    ],
+    [
+      'experts without the expert layers',
+      { fit: 'slower', placement: 'experts', expertLayers: 40 },
+      8 * GB,
+      '32K tokens · experts in RAM: slower · 6.0 GB GPU, 2.0 GB RAM'
+    ],
+    [
+      'gpu with both set',
+      { gpuExpertLayers: 16, expertLayers: 40 },
+      8 * GB,
+      '32K tokens · fits on your GPU (6.0 GB of 8.0 GB)'
+    ],
+    [
+      'everything on the GPU with experts',
+      { placement: 'experts', gpuExpertLayers: 40, expertLayers: 40, source: 'measured', ramBytes: 0 },
+      8 * GB,
+      '32K tokens · fits on your GPU (6.0 GB of 8.0 GB) · 40 of 40 expert layers on the GPU · measured'
+    ],
     ['too big', { fit: 'tooBig' }, 8 * GB, '32K tokens · too big for this PC · needs 6.0 GB GPU, 2.0 GB RAM'],
     [
       'too big on the CPU',

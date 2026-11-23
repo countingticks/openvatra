@@ -13,6 +13,10 @@ const labels: Record<Placement, string> = {
   cpu: 'CPU only'
 }
 
+/** For a mixture-of-experts model, layers on the GPU is usually much slower than moving only its experts. */
+const moeOrder: Placement[] = ['auto', 'gpu', 'experts', 'cpu', 'layers']
+const moeLayersLabel = 'Some layers on GPU (usually much slower for this model)'
+
 interface PlacementSelectProps {
   value: ModelOptions['placement']
   /** A mixture-of-experts model can keep its experts in RAM; others are not offered that. */
@@ -25,9 +29,10 @@ interface PlacementSelectProps {
 export function PlacementSelect({ value, moe, onChange }: PlacementSelectProps): React.JSX.Element {
   const labelId = useId()
   const current = value ?? 'auto'
-  const offered = (Object.keys(labels) as Placement[]).filter(
+  const offered = (moe ? moeOrder : (Object.keys(labels) as Placement[])).filter(
     (placement) => placement !== 'experts' || moe || current === 'experts'
   )
+  const shown = moe ? { ...labels, layers: moeLayersLabel } : labels
 
   return (
     <div className="flex flex-col gap-1">
@@ -36,7 +41,7 @@ export function PlacementSelect({ value, moe, onChange }: PlacementSelectProps):
       </span>
       <Select.Root
         value={current}
-        items={labels}
+        items={shown}
         onValueChange={(next) => {
           if (next === 'auto') onChange(undefined)
           else if (typeof next === 'string' && next in labels) onChange(next as Exclude<Placement, 'auto'>)
@@ -60,7 +65,7 @@ export function PlacementSelect({ value, moe, onChange }: PlacementSelectProps):
                   value={placement}
                   className="flex cursor-default items-center justify-between gap-2 rounded-md px-2 py-1.5 outline-none data-highlighted:bg-accent"
                 >
-                  <Select.ItemText>{labels[placement]}</Select.ItemText>
+                  <Select.ItemText>{shown[placement]}</Select.ItemText>
                   <Select.ItemIndicator>
                     <Check aria-hidden className="size-3.5" />
                   </Select.ItemIndicator>

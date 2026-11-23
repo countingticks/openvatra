@@ -688,11 +688,27 @@ describe('Settings → Models', () => {
         fireEvent.click(within(plain.group).getByRole('combobox', { name: 'Placement' }))
         expect(await screen.findByRole('option', { name: 'CPU only' })).toBeInTheDocument()
         expect(screen.queryByRole('option', { name: 'Experts in RAM' })).not.toBeInTheDocument()
+        const plainOptions = within(screen.getByRole('listbox'))
+          .getAllByRole('option')
+          .map((option) => option.textContent)
+        expect(plainOptions.at(-1)).toBe('CPU only')
+        expect(plainOptions.join()).not.toContain('much slower')
         plain.unmount()
 
         const moe = await openSized({}, { ...sized, moe: true })
         fireEvent.click(within(moe.group).getByRole('combobox', { name: 'Placement' }))
         expect(await screen.findByRole('option', { name: 'Experts in RAM' })).toBeInTheDocument()
+        expect(
+          within(screen.getByRole('listbox'))
+            .getAllByRole('option')
+            .map((option) => option.textContent)
+        ).toEqual([
+          'Auto',
+          'Whole model on GPU',
+          'Experts in RAM',
+          'CPU only',
+          'Some layers on GPU (usually much slower for this model)'
+        ])
       })
 
       it('saves a placement, and Auto removes it', async () => {
