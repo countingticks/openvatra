@@ -177,7 +177,7 @@ describe('settings pushed by main', () => {
   it('a push from main replaces the settings slice', () => {
     const fake = fakePlatform()
     const store = createAppStore({ platform: fake.platform }).store
-    const pushed: Settings = { ...defaultSettings, cudaOfferDismissed: true }
+    const pushed: Settings = { ...defaultSettings, showAdvancedModels: true }
 
     fake.prefs.emit(pushed)
 

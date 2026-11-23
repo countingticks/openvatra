@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { Button } from '@app/ui/button'
-import { CudaEngineOffer } from '@app/features/models'
+import { GpuCard } from '@app/features/models'
 import { InstalledModels } from '@app/features/models'
 import { ModelList } from '@app/features/models'
 import { PathRow } from './PathRow'
@@ -83,6 +83,10 @@ export function ModelsSection(): React.JSX.Element {
       </SettingRow>
 
       <div className="pt-4">
+        <GpuCard />
+      </div>
+
+      <div className="pt-4">
         <Button
           variant="outline"
           size="sm"
@@ -95,8 +99,6 @@ export function ModelsSection(): React.JSX.Element {
           Get more models…
         </Button>
       </div>
-
-      <CudaEngineOffer variant="row" />
 
       <InstalledModels />
 

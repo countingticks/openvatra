@@ -101,7 +101,7 @@ export function Composer({ chatId, answering, onSend, onStop, footer }: Composer
   const sending = shown.status === 'sending'
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-end gap-1.5 rounded-[18px] border bg-card p-2 shadow-[0_1px_2px_rgba(24,24,27,0.06)]">
+      <div className="flex items-end gap-1.5 rounded-[18px] border bg-popover p-2 shadow-[0_1px_2px_rgba(24,24,27,0.06)]">
         <label htmlFor="chat-message" className="sr-only">
           Message
         </label>

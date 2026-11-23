@@ -41,6 +41,12 @@ const migrations: Readonly<Record<number, Migration>> = {
   7: (old) => {
     const { lastTab, ...rest } = old
     return 'lastTab' in old ? { ...rest, lastRoute: lastTab } : rest
+  },
+  // 8 → 9: `cudaOfferDismissed` was removed; the GPU card has no offer to dismiss.
+  8: (old) => {
+    const rest = { ...old }
+    delete rest['cudaOfferDismissed']
+    return rest
   }
 }
 

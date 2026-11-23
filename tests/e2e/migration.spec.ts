@@ -31,7 +31,7 @@ test.describe('a version-7 settings file', () => {
 
     await expect
       .poll(async () => JSON.parse(await readFile(join(userDataDir, 'settings.json'), 'utf8')) as unknown)
-      .toMatchObject({ schemaVersion: 8, lastRoute: 'automations' })
+      .toMatchObject({ schemaVersion: 9, lastRoute: 'automations' })
     expect(await readFile(join(userDataDir, 'settings.json'), 'utf8')).not.toContain('lastTab')
   })
 })
