@@ -1,0 +1,48 @@
+# Shared setup for every CI job: a faster runner, Node with cached node_modules, and optionally Go.
+name: Set up
+description: Turn off Defender scanning, then set up Node with node_modules and/or Go.
+
+inputs:
+  node:
+    description: Set up Node and node_modules.
+    default: 'true'
+  go:
+    description: Also set up Go with its module and build cache.
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    # The runner is a throwaway VM; real-time scanning of every file npm and Go write slows them a lot.
+    - name: Turn off Defender real-time scanning
+      shell: pwsh
+      run: Set-MpPreference -DisableRealtimeMonitoring $true
+
+    - name: Set up Node (version from .nvmrc)
+      if: inputs.node == 'true'
+      id: node
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .nvmrc
+
+    # node_modules (Electron's binary included) keyed on the lockfile: an unchanged lockfile skips npm ci.
+    - name: Cache node_modules
+      if: inputs.node == 'true'
+      id: modules
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: node_modules
+        key: modules-${{ runner.os }}-node${{ steps.node.outputs.node-version }}-${{ hashFiles('package-lock.json') }}
+
+    - name: Install exact dependencies
+      if: inputs.node == 'true' && steps.modules.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: npm ci
+
+    # go.mod is the single source of truth for the Go version, like .nvmrc for Node.
+    - name: Set up Go (version from go.mod)
+      if: inputs.go == 'true'
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version-file: core/go.mod
+        cache-dependency-path: core/go.sum
