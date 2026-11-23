@@ -318,6 +318,9 @@
           "context": {
             "type": "integer"
           },
+          "expertLayers": {
+            "type": "integer"
+          },
           "fit": {
             "enum": [
               "fits",
@@ -326,6 +329,9 @@
               "unknown"
             ],
             "type": "string"
+          },
+          "gpuExpertLayers": {
+            "type": "integer"
           },
           "layers": {
             "type": "integer"
