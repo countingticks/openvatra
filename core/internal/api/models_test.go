@@ -32,8 +32,8 @@ func TestListModelsShowsDiskModelsWithRouterState(t *testing.T) {
 	rt := &stubRouter{snapshot: []provider.ModelState{{ID: "qwen", State: provider.StateReady, Busy: true}}}
 	rec := callModels(t, rt, http.MethodGet, "/api/models")
 	want := `{"models":[` +
-		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[]},` +
-		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[]}]}`
+		`{"id":"qwen","state":"ready","busy":true,"sizeBytes":5,"kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[],"memory":null},` +
+		`{"id":"gemma","state":"stopped","busy":false,"sizeBytes":7,"kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[],"memory":null}]}`
 	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != want {
 		t.Fatalf("status = %d, body = %s\nwant %s", rec.Code, got, want)
 	}

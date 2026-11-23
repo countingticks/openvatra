@@ -19,7 +19,8 @@ const model: Model = {
   moe: false,
   name: 'qwen3-8b',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 
 const downloadProgress = (items: { id: string; state: 'downloading' | 'done' }[]): Event => ({

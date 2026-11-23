@@ -103,7 +103,7 @@ func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := json.Marshal(body)
-	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding","context":null,"moe":false,"name":"","quant":null,"tags":[]},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[]},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file","context":null,"moe":false,"name":"","quant":null,"tags":[]}]}`
+	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding","context":null,"moe":false,"name":"","quant":null,"tags":[],"memory":null},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[],"memory":null},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file","context":null,"moe":false,"name":"","quant":null,"tags":[],"memory":null}]}`
 	if strings.TrimSpace(string(got)) != want {
 		t.Fatalf("body = %s\nwant   %s", got, want)
 	}
@@ -306,7 +306,53 @@ func chooseChat(m models.Model) *fit.Choice {
 	if m.Kind != models.KindChat {
 		return nil
 	}
-	return &fit.Choice{Context: 8192, Placement: fit.PlaceGPU, Fit: "fits", Source: "estimate"}
+	return &fit.Choice{Context: 8192, Placement: fit.PlaceGPU, Fit: "fits", Source: "estimate", VRAMBytes: 700, RAMBytes: 30}
+}
+
+func TestStateMemory(t *testing.T) {
+	measured := &engine.Resources{VRAMBytes: 900, RAMBytes: 80, Known: true, Source: "measured"}
+	tests := []struct {
+		name  string
+		id    string
+		state provider.ModelState
+		want  string // the memory field's JSON
+	}{
+		{"ready with a measurement", "dense", provider.ModelState{ID: "dense", State: provider.StateReady, Memory: measured},
+			`{"vramBytes":900,"ramBytes":80}`},
+		{"ready without one: the estimate", "dense", provider.ModelState{ID: "dense", State: provider.StateReady},
+			`{"vramBytes":700,"ramBytes":30}`},
+		{"stopped", "dense", provider.ModelState{ID: "other", State: provider.StateReady, Memory: measured}, `null`},
+		{"loading", "dense", provider.ModelState{ID: "dense", State: provider.StateLoading}, `null`},
+		{"error", "dense", provider.ModelState{ID: "dense", State: provider.StateError, Error: "boom"}, `null`},
+		{"a ready embedding model with no measurement", "emb", provider.ModelState{ID: "emb", State: provider.StateReady},
+			`null`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := &stubRouter{}
+			rt.set(tt.state)
+			body, err := State(rt, moeModels, chooseChat)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, m := range body.Models {
+				if m.ID != tt.id {
+					continue
+				}
+				var fields map[string]json.RawMessage
+				raw, _ := json.Marshal(m)
+				if err := json.Unmarshal(raw, &fields); err != nil {
+					t.Fatal(err)
+				}
+				got, ok := fields["memory"]
+				if !ok || string(got) != tt.want {
+					t.Errorf("memory = %s (present %v), want %s", got, ok, tt.want)
+				}
+				return
+			}
+			t.Fatalf("no model %q in %+v", tt.id, body.Models)
+		})
+	}
 }
 
 func TestStateCarriesTheContextChoiceAndMoE(t *testing.T) {

@@ -103,7 +103,8 @@ describe('core events', () => {
         moe: false,
         name: 'qwen3-8b',
         quant: null,
-        tags: []
+        tags: [],
+        memory: null
       }
 
       http.push({ data: { time: 1, stream: 'system', type: 'model.state', v: 1, data: { models: [model] } } })

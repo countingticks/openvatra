@@ -33,7 +33,8 @@ const qwen: ModelInfo = {
   moe: false,
   name: 'Qwen3-8B-Q4_K_M',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 const nomic: ModelInfo = {
   id: 'nomic-embed',
@@ -45,7 +46,8 @@ const nomic: ModelInfo = {
   moe: false,
   name: 'nomic-embed',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 
 type Rendered = ReturnType<typeof renderWithStore>
@@ -381,7 +383,8 @@ describe('Settings → Models', () => {
       moe: false,
       name: 'broken',
       quant: null,
-      tags: []
+      tags: [],
+      memory: null
     }
 
     it('groups models by kind, with unreadable files last, no state and no Load or Unload', async () => {

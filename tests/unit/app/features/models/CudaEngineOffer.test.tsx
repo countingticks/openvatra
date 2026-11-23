@@ -18,7 +18,8 @@ const stopped: ModelInfo = {
   moe: false,
   name: 'Qwen3-8B',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 
 /** The two window flags that sit beside core's engine section in a test's arguments. */

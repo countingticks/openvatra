@@ -29,7 +29,8 @@ const tiny: ModelInfo = {
   moe: false,
   name: 'tiny',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 
 const transcript: Transcript = {

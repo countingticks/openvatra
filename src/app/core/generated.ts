@@ -561,12 +561,18 @@ export type Choice = {
   tokensPerSecond: number
   vramBytes: number
 }
+export type Memory = {
+  ramBytes: number
+  vramBytes: number
+}
 export type Model = {
   busy: boolean
   context: Choice | null
   error?: string
   id: string
   kind: 'chat' | 'embedding' | 'unreadable'
+  /** null unless the model is ready; measured, else the fit estimate */
+  memory: Memory | null
   moe: boolean
   name: string
   projector?: string

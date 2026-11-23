@@ -1004,6 +1004,21 @@
         ],
         "type": "object"
       },
+      "Memory": {
+        "properties": {
+          "ramBytes": {
+            "type": "integer"
+          },
+          "vramBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vramBytes",
+          "ramBytes"
+        ],
+        "type": "object"
+      },
       "MessageCompleted": {
         "properties": {
           "chatId": {
@@ -1257,6 +1272,17 @@
             ],
             "type": "string"
           },
+          "memory": {
+            "description": "null unless the model is ready; measured, else the fit estimate",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Memory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "moe": {
             "type": "boolean"
           },
@@ -1303,7 +1329,8 @@
           "moe",
           "name",
           "quant",
-          "tags"
+          "tags",
+          "memory"
         ],
         "type": "object"
       },

@@ -67,7 +67,10 @@ type loaded struct {
 	inst  engine.Instance // set before ready is closed, nil when the load failed
 	ready chan struct{}   // closed when loading has finished, either way
 	err   error           // set before ready is closed
-	users sync.WaitGroup
+	// measured is what the server measured while it loaded, nil if nothing; set before ready is closed, so whoever
+	// has seen ready closed reads it without a lock.
+	measured *engine.Resources
+	users    sync.WaitGroup
 
 	speedMu sync.Mutex // its own, not the slot's: answers finish while the slot is busy
 	speeds  []float64  // the last answers' speeds on this load, oldest first
@@ -309,6 +312,10 @@ func (r *Provider) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	}
 
 	next.inst = inst
+	res, measured := inst.Measured()
+	if measured {
+		next.measured = &res
+	}
 	r.mu.Lock()
 	delete(r.lastErr, next.id)
 	r.mu.Unlock()
@@ -322,7 +329,7 @@ func (r *Provider) load(s *slot, old, next *loaded, after <-chan struct{}) {
 	}
 	s.mu.Unlock()
 	r.notify()
-	if res, ok := inst.Measured(); ok && r.cfg.Record != nil && !next.spec.Embedding {
+	if measured && r.cfg.Record != nil && !next.spec.Embedding {
 		r.cfg.Record(Measurement{Spec: next.spec, Memory: res})
 	}
 }
