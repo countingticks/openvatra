@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import type { LlamaCppSettings } from '@app/core/generated'
 import type { ModelInfo } from '@app/core/types'
 import { coreWrites, fitQueries } from '../../../fakeCoreHttp'
-import type { renderWithStore } from '../../../renderWithStore'
+import { renderWithStore } from '../../../renderWithStore'
+import { Shell } from '@app/shell/Shell'
+import { settingsOpened } from '@app/store/uiSlice'
 import { chosen, nomic, openModels, putValues, qwen, ready } from './openModelsSection'
 
 type Rendered = Awaited<ReturnType<typeof openModels>>
@@ -159,6 +161,41 @@ describe('the installed list', () => {
 
       await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
       expect(putValues(coreHttp)[0]?.options).toEqual({ 'nomic-embed': { args: '--other' } })
+    })
+  })
+
+  describe('opening for a model', () => {
+    /** Settings opened on Models for this model id, as "Manage models…" does. */
+    async function openFor(expand: string): Promise<void> {
+      const rendered = renderWithStore(
+        <Shell />,
+        {},
+        { llamacppSettings: chosen, coreState: ready, models: [qwen, nomic] }
+      )
+      act(() => {
+        rendered.store.dispatch(settingsOpened({ section: 'models', tab: 'installed', expand }))
+      })
+      await screen.findByRole('list', { name: 'Installed models' })
+    }
+
+    it('opens the row of that model and scrolls it into view', async () => {
+      const scrollIntoView = vi.fn()
+      Element.prototype.scrollIntoView = scrollIntoView
+      try {
+        await openFor(qwen.id)
+
+        expect(await screen.findByRole('group', { name: 'Options for Qwen3 8B' })).toBeVisible()
+        expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' })
+      } finally {
+        // jsdom has no scrollIntoView of its own: take the stub away again.
+        Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+      }
+    })
+
+    it('opens no row for an id that is not listed', async () => {
+      await openFor('not-a-model')
+
+      expect(screen.queryByRole('group', { name: /^Options for / })).not.toBeInTheDocument()
     })
   })
 
