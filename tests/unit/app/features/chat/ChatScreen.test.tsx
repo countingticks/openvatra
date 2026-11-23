@@ -139,7 +139,7 @@ describe('ChatScreen', () => {
 
   it('starts a new chat with the first chat model, then shows it in place', async () => {
     const { coreHttp, store, push } = show()
-    await screen.findByPlaceholderText('Reply to tiny…')
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
 
     await type('hi')
     enter()
@@ -158,9 +158,9 @@ describe('ChatScreen', () => {
   })
 
   it.each([
-    ['installed', 'big', 'Reply to big…'],
-    ['not installed', 'gone', 'Reply to tiny…']
-  ])('uses chat.lastModel when it is %s, else the first model', async (_case, lastModel, placeholder) => {
+    ['installed', 'big', /^Model: big,/],
+    ['not installed', 'gone', /^Model: tiny,/]
+  ])('uses chat.lastModel when it is %s, else the first model', async (_case, lastModel, name) => {
     const rendered = renderWithStore(
       <ChatScreen showWelcome={false} />,
       {},
@@ -170,12 +170,20 @@ describe('ChatScreen', () => {
     )
     rendered.coreHttp.setConfig('chat', { rev: 1, value: { lastModel } })
 
-    expect(await screen.findByPlaceholderText(placeholder)).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['a new chat', {}],
+    ['a saved chat', { open: {} }]
+  ])('asks for a reply in %s', async (_case, options) => {
+    show(options)
+    expect(await screen.findByRole('textbox', { name: 'Message' })).toHaveAttribute('placeholder', 'Reply…')
   })
 
   it('adds a line with Shift+Enter and never sends blank text', async () => {
     const { coreHttp } = show()
-    await screen.findByPlaceholderText('Reply to tiny…')
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
 
     await type('a')
     expect(enter({ shiftKey: true })).toBe(true)
@@ -219,7 +227,7 @@ describe('ChatScreen', () => {
       status: 409,
       body: { error: 'no_chat_model', message: 'Install a chat model first.' }
     }))
-    await screen.findByPlaceholderText('Reply to tiny…')
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
 
     await type('hi')
     enter()
@@ -233,7 +241,7 @@ describe('ChatScreen', () => {
   it('restores the new-chat draft after a re-render and clears it after the send', async () => {
     const rendered = show()
     const { platform, store, unmount, coreHttp } = rendered
-    await screen.findByPlaceholderText('Reply to tiny…')
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
     await type('half a thought')
     unmount()
 
@@ -301,6 +309,41 @@ describe('ChatScreen', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Answer finished'))
   })
 
+  it('offers Scroll to latest while scrolled away, with a dot while text is arriving', async () => {
+    const running = run({ state: 'running' })
+    const { push } = show({
+      open: {
+        transcript: transcript({
+          seq: 4,
+          items: [input(1, 'first'), answer(2, 'earlier answer'), input(4, 'second')],
+          runs: [running],
+          activeRun: running
+        })
+      }
+    })
+    await within(conversation()).findByText('earlier answer')
+    Object.defineProperty(conversation(), 'scrollHeight', { value: 2000, configurable: true })
+    Object.defineProperty(conversation(), 'clientHeight', { value: 400, configurable: true })
+    conversation().scrollTop = 0
+    fireEvent.scroll(conversation())
+
+    expect(
+      await screen.findByRole('button', { name: 'Scroll to latest, new text below' })
+    ).toBeInTheDocument()
+
+    await push(
+      event('message.completed', 5, {
+        chatId: 'c1',
+        parts: [{ kind: 'text', text: 'new answer' }],
+        stats,
+        partial: false
+      }),
+      event('run.finished', 6, { chatId: 'c1', state: 'done' })
+    )
+
+    expect(await screen.findByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
+  })
+
   it("announces a failed run's message", async () => {
     const running = run({ state: 'running' })
     const { push } = show({
@@ -341,7 +384,7 @@ describe('ChatScreen', () => {
 
   it('picks the model of a new chat, and the first send uses it', async () => {
     const { coreHttp } = show({ models: [model('tiny'), model('m2')] })
-    await screen.findByPlaceholderText('Reply to tiny…')
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
 
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }))
     const popover = await screen.findByRole('dialog', { name: 'Models service' })
@@ -467,12 +510,12 @@ describe('ChatScreen', () => {
     it('regenerates from the button, and edits with the new text', async () => {
       const { coreHttp } = show({ open: { transcript: done() } })
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Regenerate' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Regenerate answer' }))
       await waitFor(() =>
         expect(runPosts(coreHttp)).toEqual([{ requestId: expect.any(String), chatId: 'c1', replace: 'last' }])
       )
 
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       fireEvent.change(screen.getByRole('textbox', { name: 'Edit message' }), { target: { value: 'hello' } })
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
       await waitFor(() =>

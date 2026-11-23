@@ -5,15 +5,16 @@ import { useFollowEnd } from '@app/features/chat/useFollowEnd'
 
 function Conversation({ chatId }: { chatId: string | undefined }): React.JSX.Element {
   const scroller = useRef<HTMLDivElement>(null)
-  const { following, jumpToLatest } = useFollowEnd(scroller, chatId)
+  const { following, showLatest, jumpToLatest } = useFollowEnd(scroller, chatId)
   return (
     <>
       <div ref={scroller} role="log" aria-label="Conversation">
         <div>messages</div>
       </div>
-      {!following && (
+      <span role="status">{following ? 'following' : 'reading'}</span>
+      {showLatest && (
         <button type="button" onClick={jumpToLatest}>
-          Jump to latest
+          Scroll to latest
         </button>
       )}
     </>
@@ -58,33 +59,58 @@ describe('useFollowEnd', () => {
     grew()
 
     expect(log().scrollTop).toBe(1500)
-    expect(screen.queryByRole('button', { name: 'Jump to latest' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Scroll to latest' })).not.toBeInTheDocument()
   })
 
-  it('keeps the place after scrolling up, until Jump to latest', () => {
+  it('keeps the place after scrolling up, until jumping to the latest', () => {
     render(<Conversation chatId="c1" />)
     layout(1000)
-    scrollTo(700)
+    scrollTo(500)
 
     layout(1500)
     grew()
 
-    expect(log().scrollTop).toBe(700)
-    fireEvent.click(screen.getByRole('button', { name: 'Jump to latest' }))
+    expect(log().scrollTop).toBe(500)
+    fireEvent.click(screen.getByRole('button', { name: 'Scroll to latest' }))
     expect(log().scrollTop).toBe(1500)
-    expect(screen.queryByRole('button', { name: 'Jump to latest' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Scroll to latest' })).not.toBeInTheDocument()
+  })
+
+  it('offers the button only once scrolled up past 0.6 of the view', () => {
+    render(<Conversation chatId="c1" />)
+    layout(1000)
+
+    // 0.5 of the 200 px view: no longer following, but not far enough for the button.
+    scrollTo(700)
+    expect(screen.getByRole('status')).toHaveTextContent('reading')
+    expect(screen.queryByRole('button', { name: 'Scroll to latest' })).not.toBeInTheDocument()
+
+    scrollTo(660)
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
+  })
+
+  it('shows the button when content grows under a reader who is scrolled up', () => {
+    render(<Conversation chatId="c1" />)
+    layout(1000)
+    scrollTo(700)
+    expect(screen.queryByRole('button', { name: 'Scroll to latest' })).not.toBeInTheDocument()
+
+    layout(1100)
+    grew()
+
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
   })
 
   it('jumps to the end of another chat', () => {
     const { rerender } = render(<Conversation chatId="c1" />)
     layout(1000)
     scrollTo(100)
-    expect(screen.getByRole('button', { name: 'Jump to latest' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
 
     layout(3000)
     rerender(<Conversation chatId="c2" />)
 
     expect(log().scrollTop).toBe(3000)
-    expect(screen.queryByRole('button', { name: 'Jump to latest' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Scroll to latest' })).not.toBeInTheDocument()
   })
 })

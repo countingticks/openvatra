@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { MessageStats } from '@app/core/generated'
-import { answerCopyText, statsLine, thoughtLabel } from '@app/features/runs/answerText'
+import { answerCopyText, speedText, statsLine, thoughtLabel } from '@app/features/runs/answerText'
 
 const stats: MessageStats = {
   promptTokens: 412,
@@ -16,6 +16,13 @@ const stats: MessageStats = {
 describe('answerText', () => {
   it('leaves the speed out of the stats line when there is none', () => {
     expect(statsLine(stats)).toBe('412 in · 286 out · 7.5 s')
+  })
+
+  it.each([
+    [37.6, '38 tok/s'],
+    [0.2, '']
+  ])('speedText(%s) is "%s"', (tokensPerSecond, text) => {
+    expect(speedText({ ...stats, tokensPerSecond })).toBe(text)
   })
 
   it.each([

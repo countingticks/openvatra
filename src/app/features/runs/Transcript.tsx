@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { cn } from '@app/lib/utils'
 import { Button } from '@app/ui/button'
 import { AnswerActions } from './AnswerActions'
@@ -6,6 +7,7 @@ import { AnswerBlock } from './AnswerBlock'
 import { thoughtLabel } from './answerText'
 import { LastInputEditor } from './LastInputEditor'
 import { LiveEntry } from './LiveEntry'
+import { CopyButton, MessageActions } from './MessageActions'
 import type { RunView, TranscriptEntry } from './runView'
 
 // Failures the model settings can fix (decision 20).
@@ -71,16 +73,19 @@ export function Transcript({
               {entry.text}
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}
-            {entry === lastInput && (
-              <Button
-                variant="ghost"
-                size="xs"
-                className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-                onClick={() => setEditing(true)}
-              >
-                Edit
-              </Button>
-            )}
+            <MessageActions>
+              {entry === lastInput && !entry.queued && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Edit message"
+                  onClick={() => setEditing(true)}
+                >
+                  <Pencil aria-hidden className="size-3.5" />
+                </Button>
+              )}
+              <CopyButton text={entry.text} label="Copy message" />
+            </MessageActions>
           </div>
         )
       case 'answer':
@@ -144,7 +149,7 @@ export function Transcript({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-7">
+    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6">
       {view.entries.map((entry) => (
         <div key={entry.key}>{render(entry)}</div>
       ))}
