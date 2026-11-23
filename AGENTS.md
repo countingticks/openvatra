@@ -115,7 +115,8 @@ vendor/          git submodules (Open WebUI); never edit files here
 
 - `main` is protected: changes land through pull requests with passing checks.
 - Branch names: `feat/<topic>`, `fix/<topic>`, `docs/<topic>`, `chore/<topic>`, `ci/<topic>`.
-- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check, unit tests, the Go checks, build (incl. `core.exe`) and e2e tests on Windows for every
+- CI (`.github/workflows/ci.yml`) runs typecheck, lint, format check and unit tests, the Go checks, and build (incl. `core.exe`) plus e2e tests as three
+  parallel Windows jobs (shared setup in `.github/actions/setup`; the `ci` job is the required check) for every
   pull request and push to `main`. Actions are pinned to commit SHAs with the release in a comment.
 - Dependency install scripts need approval (`allowScripts` in `package.json`); review any new prompt from
   `npm install-scripts ls` instead of approving everything.
