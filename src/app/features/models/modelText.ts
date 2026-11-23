@@ -23,6 +23,20 @@ export function parseContext(text: string): number | undefined {
   return size >= contextMin && size <= contextMax ? size : undefined
 }
 
+/** "Fits", "Slower", "Too big" or null for unknown: the word the fit line shows before fitHint's sentence. */
+export function fitWords(fit: Choice['fit']): string | null {
+  switch (fit) {
+    case 'fits':
+      return 'Fits'
+    case 'slower':
+      return 'Slower'
+    case 'tooBig':
+      return 'Too big'
+    case 'unknown':
+      return null
+  }
+}
+
 /** What a context size and placement would mean for this PC, as one line for the options of a model. */
 export function fitHint(choice: Choice, gpuTotalBytes: number | null): string {
   let line = fitLine(choice, gpuTotalBytes)

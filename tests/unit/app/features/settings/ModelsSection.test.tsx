@@ -1,64 +1,14 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
-import { Shell } from '@app/shell/Shell'
+import { describe, expect, it } from 'vitest'
 import { coreApi } from '@app/core/coreApi'
-import type { LlamaCppSettings, LlamaServerSettings } from '@app/core/generated'
+import type { LlamaServerSettings } from '@app/core/generated'
 import { defaultEngineSettings, defaultLlamacppSettings } from '@app/features/models/modelSettings'
-import { settingsOpened } from '@app/store/uiSlice'
-import type { CoreState } from '@shared/core'
 import type { ModelInfo } from '@app/core/types'
-import { coreWrites, fitQueries, type FakeCoreHttp } from '../../../fakeCoreHttp'
-import { exampleConnection, renderWithStore } from '../../../renderWithStore'
+import { coreWrites, type FakeCoreHttp } from '../../../fakeCoreHttp'
+import { chosen, nomic, openModels, putValues, qwen, ready } from '../models/openModelsSection'
 
 // The GPU card asks for fresh hardware numbers whenever the section opens; that is not a write under test.
 const HARDWARE = '/api/hardware/refresh'
-
-const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
-/** The two window flags that sit beside core's models section in a test's arguments. */
-type Preferences = Partial<LlamaCppSettings> & {
-  engineSettings?: Partial<LlamaServerSettings>
-  showAdvanced?: boolean
-}
-
-const chosen: Preferences = {
-  engineSettings: { path: 'C:\\llama\\llama-server.exe' },
-  modelsDir: 'D:\\models',
-  showAdvanced: true
-}
-const qwen: ModelInfo = {
-  id: 'Qwen3-8B-Q4_K_M',
-  state: 'stopped',
-  busy: false,
-  sizeBytes: 5 * 1024 ** 3,
-  kind: 'chat',
-  context: null,
-  moe: false,
-  name: 'Qwen3-8B-Q4_K_M',
-  quant: null,
-  tags: [],
-  memory: null
-}
-const nomic: ModelInfo = {
-  id: 'nomic-embed',
-  state: 'ready',
-  busy: false,
-  sizeBytes: 140 * 1024 ** 2,
-  kind: 'embedding',
-  context: null,
-  moe: false,
-  name: 'nomic-embed',
-  quant: null,
-  tags: [],
-  memory: null
-}
-
-type Rendered = ReturnType<typeof renderWithStore>
-
-/** The value each PUT of the provider section carried, in order. */
-const putValues = (http: FakeCoreHttp): LlamaCppSettings[] =>
-  coreWrites(http)
-    .filter((write) => write.method === 'PUT' && write.path === '/api/config/provider.llamacpp')
-    .map((write) => (write.body as { value: LlamaCppSettings }).value)
 
 /** The value each PUT of the engine section carried, in order. */
 const enginePutValues = (http: FakeCoreHttp): LlamaServerSettings[] =>
@@ -80,31 +30,6 @@ const configChanged = (http: FakeCoreHttp, rev: number): void =>
       }
     })
   })
-
-/**
- * Renders the app with Settings open on Models. The window's preferences go to the saved settings, the rest is
- * core's models section.
- */
-async function openModels(
-  models: Preferences = chosen,
-  options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
-): Promise<Rendered & { section: HTMLElement }> {
-  // Most tests are about the advanced view, so it is on unless a test says otherwise.
-  const { showAdvanced = true, engineSettings, ...core } = models
-  const rendered = renderWithStore(
-    <Shell />,
-    { showAdvancedModels: showAdvanced },
-    { llamacppSettings: core, engineSettings, ...options }
-  )
-  act(() => {
-    rendered.store.dispatch(settingsOpened('models'))
-  })
-  const advanced = models.showAdvanced ?? true
-  const section = await screen.findByRole('region', {
-    name: advanced ? 'Available models' : 'Installed models'
-  })
-  return { ...rendered, section }
-}
 
 describe('Settings → Models', () => {
   describe('on a host without some members', () => {
@@ -274,7 +199,7 @@ describe('Settings → Models', () => {
       expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
       // In the dialog: the Chat tab's model button behind it names the model too.
       const dialog = screen.getByRole('dialog', { name: 'Settings' })
-      expect(within(dialog).queryByText('Qwen3-8B-Q4_K_M')).not.toBeInTheDocument()
+      expect(within(dialog).queryByText('Qwen3 8B')).not.toBeInTheDocument()
     })
 
     it('"Show advanced" is saved and reveals the engine, the log and every model file', async () => {
@@ -289,7 +214,7 @@ describe('Settings → Models', () => {
       expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument()
       const dialog = screen.getByRole('dialog', { name: 'Settings' })
-      expect(await within(dialog).findByText('Qwen3-8B-Q4_K_M')).toBeInTheDocument()
+      expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
     })
 
     it('removes a downloaded model only after confirming', async () => {
@@ -342,26 +267,6 @@ describe('Settings → Models', () => {
   })
 
   describe('empty and problem states', () => {
-    it('says the service is starting', async () => {
-      const { section } = await openModels(chosen, { coreState: { status: 'starting' } })
-      expect(within(section).getByRole('status')).toHaveTextContent('Starting the models service…')
-    })
-
-    it('shows the service problem instead of the list', async () => {
-      const { section } = await openModels(
-        {},
-        { coreState: { status: 'problem', reason: 'core exited (code 1)' } }
-      )
-      expect(await within(section).findByRole('alert')).toHaveTextContent(
-        'The models service has a problem: core exited (code 1)'
-      )
-    })
-
-    it('says when the folder has no models', async () => {
-      const { section } = await openModels(chosen, { coreState: ready })
-      expect(await within(section).findByRole('status')).toHaveTextContent('No models found')
-    })
-
     it('restarts the service and opens the log', async () => {
       const { core, section } = await openModels()
 
@@ -373,45 +278,7 @@ describe('Settings → Models', () => {
     })
   })
 
-  describe('the model list', () => {
-    const junk: ModelInfo = {
-      id: 'broken',
-      state: 'stopped',
-      busy: false,
-      sizeBytes: 10,
-      kind: 'unreadable',
-      error: 'not a GGUF file',
-      context: null,
-      moe: false,
-      name: 'broken',
-      quant: null,
-      tags: [],
-      memory: null
-    }
-
-    it('groups models by kind, with unreadable files last, no state and no Load or Unload', async () => {
-      const { core } = await openModels(chosen, { coreState: ready, models: [junk, nomic, qwen] })
-
-      const chat = await screen.findByRole('region', { name: 'Chat models' })
-      const embedding = screen.getByRole('region', { name: 'Embedding models' })
-      const unusable = screen.getByRole('region', { name: "Files that can't be used" })
-      expect(within(chat).getByText('5.0 GB')).toBeInTheDocument()
-      expect(within(chat).queryByText(nomic.id)).not.toBeInTheDocument()
-      expect(within(embedding).getByText('140 MB')).toBeInTheDocument()
-      expect(within(unusable).getByText('not a GGUF file')).toBeInTheDocument()
-      expect(within(unusable).queryByRole('button')).not.toBeInTheDocument()
-      expect(chat.compareDocumentPosition(embedding) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-      expect(embedding.compareDocumentPosition(unusable) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-      expect(screen.queryByText(/Loaded|Not loaded/)).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /^(Load|Unload) / })).not.toBeInTheDocument()
-
-      core.emitModels([qwen])
-
-      // The list now arrives over core's stream, so the change shows a moment later.
-      await waitFor(() => expect(screen.queryByText(/nomic-embed/)).not.toBeInTheDocument())
-      expect(screen.queryByRole('region', { name: 'Embedding models' })).not.toBeInTheDocument()
-    })
-
+  describe('the embedding model', () => {
     it('offers only embedding models, Automatic first, and saves the choice', async () => {
       const second: ModelInfo = { ...nomic, id: 'qwen3-embedding' }
       const { coreHttp } = await openModels(chosen, { coreState: ready, models: [qwen, nomic, second] })
@@ -461,347 +328,6 @@ describe('Settings → Models', () => {
       await openModels({ ...chosen, embeddingModel: 'deleted' }, { coreState: ready, models: [nomic] })
 
       expect(await screen.findByRole('alert')).toHaveTextContent("deleted isn't an available embedding model")
-    })
-  })
-
-  describe('the context size on a row', () => {
-    it('shows the size a chat model loads with, and nothing for an embedding model', async () => {
-      const sized: ModelInfo = {
-        ...qwen,
-        context: {
-          context: 32768,
-          capped: false,
-          fit: 'fits',
-          placement: 'gpu',
-          ramBytes: 0,
-          vramBytes: 1,
-          tokensPerSecond: 0,
-          source: 'estimate'
-        }
-      }
-      await openModels(chosen, { coreState: ready, models: [sized, nomic] })
-
-      const size = await screen.findByTitle('Loads with 32,768 tokens of context')
-      expect(size).toHaveTextContent('32K')
-      expect(screen.getAllByTitle(/^Loads with/)).toHaveLength(1)
-    })
-  })
-
-  describe('per-model options', () => {
-    async function openOptions(
-      options: LlamaCppSettings['options'] = {}
-    ): Promise<Rendered & { group: HTMLElement }> {
-      const rendered = await openModels({ ...chosen, options }, { coreState: ready, models: [qwen, nomic] })
-      // The arguments box starts from what core has, so wait for core's answer (its folder shows) first.
-      await screen.findByText('D:\\models')
-      const toggle = await screen.findByRole('button', { name: `Options for ${qwen.id}` })
-      expect(toggle).toHaveAttribute('aria-expanded', 'false')
-      fireEvent.click(toggle)
-      expect(toggle).toHaveAttribute('aria-expanded', 'true')
-      return { ...rendered, group: screen.getByRole('group', { name: `Options for ${qwen.id}` }) }
-    }
-
-    it("keeps one model's options open at a time, across groups", async () => {
-      await openModels(chosen, { coreState: ready, models: [qwen, nomic] })
-      const first = await screen.findByRole('button', { name: `Options for ${qwen.id}` })
-      const second = screen.getByRole('button', { name: `Options for ${nomic.id}` })
-
-      fireEvent.click(first)
-      fireEvent.click(second)
-
-      expect(first).toHaveAttribute('aria-expanded', 'false')
-      expect(second).toHaveAttribute('aria-expanded', 'true')
-      expect(screen.getAllByRole('group', { name: /^Options for / })).toHaveLength(1)
-    })
-
-    it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
-      const { coreHttp, group } = await openOptions({ 'nomic-embed': { args: '--jinja' } })
-      const args = within(group).getByLabelText('Arguments')
-
-      fireEvent.change(args, { target: { value: '  --temp 0.7 --alias "my qwen"\n' } })
-      expect(putValues(coreHttp)).toEqual([])
-      fireEvent.blur(args)
-
-      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-      expect(putValues(coreHttp)[0]?.options).toEqual({
-        'nomic-embed': { args: '--jinja' },
-        [qwen.id]: { args: '--temp 0.7 --alias "my qwen"' }
-      })
-    })
-
-    it('keeps the stored context and placement when the arguments change', async () => {
-      const { coreHttp, group } = await openOptions({
-        [qwen.id]: { args: '--jinja', context: 8192, placement: 'cpu' }
-      })
-      const args = within(group).getByLabelText('Arguments')
-
-      fireEvent.change(args, { target: { value: '--temp 0.7' } })
-      fireEvent.blur(args)
-
-      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-      expect(putValues(coreHttp)[0]?.options).toEqual({
-        [qwen.id]: { args: '--temp 0.7', context: 8192, placement: 'cpu' }
-      })
-    })
-
-    describe('context size and placement', () => {
-      const choice = (context: number): NonNullable<ModelInfo['context']> => ({
-        context,
-        capped: false,
-        fit: 'fits',
-        placement: 'gpu',
-        ramBytes: 0,
-        vramBytes: 1,
-        tokensPerSecond: 0,
-        source: 'estimate'
-      })
-      const sized: ModelInfo = { ...qwen, context: choice(32768) }
-
-      /** Picks an option of the open menu; Base UI selects on the pointer's release, not on a bare click. */
-      async function choose(name: string): Promise<void> {
-        const option = await screen.findByRole('option', { name })
-        fireEvent.pointerDown(option)
-        fireEvent.mouseDown(option)
-        fireEvent.pointerUp(option)
-        fireEvent.mouseUp(option)
-        fireEvent.click(option)
-      }
-
-      async function openSized(
-        options: LlamaCppSettings['options'] = {},
-        model: ModelInfo = sized
-      ): Promise<Rendered & { group: HTMLElement }> {
-        const rendered = await openModels(
-          { ...chosen, options },
-          { coreState: ready, models: [model, nomic] }
-        )
-        await screen.findByText('D:\\models')
-        fireEvent.click(await screen.findByRole('button', { name: `Options for ${model.id}` }))
-        return { ...rendered, group: screen.getByRole('group', { name: `Options for ${model.id}` }) }
-      }
-
-      describe('the hint', () => {
-        it('asks core about Auto and shows the answer, and asks nothing for an embedding model', async () => {
-          const { coreHttp, group } = await openSized()
-
-          expect(
-            await within(group).findByText(/^32K tokens · fits on your GPU \(4\.0 GB of /)
-          ).toBeInTheDocument()
-          expect(fitQueries(coreHttp)).toEqual([{ context: 'auto', placement: 'auto' }])
-
-          fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.id}` }))
-          await screen.findByRole('group', { name: `Options for ${nomic.id}` })
-          expect(fitQueries(coreHttp)).toHaveLength(1)
-        })
-
-        it('asks about a typed size once, 300 ms after the last keystroke', async () => {
-          const { coreHttp, group } = await openSized({ [qwen.id]: { context: 40000 } })
-          await within(group).findByText(/fits on your GPU/)
-          const input = within(group).getByLabelText('Context size in tokens')
-          const before = fitQueries(coreHttp).length
-
-          vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-          try {
-            fireEvent.change(input, { target: { value: '6553' } })
-            act(() => void vi.advanceTimersByTime(200))
-            fireEvent.change(input, { target: { value: '65536' } })
-            act(() => void vi.advanceTimersByTime(299))
-            expect(fitQueries(coreHttp)).toHaveLength(before)
-            act(() => void vi.advanceTimersByTime(1))
-          } finally {
-            vi.useRealTimers()
-          }
-
-          await waitFor(() => expect(fitQueries(coreHttp)).toHaveLength(before + 1))
-          expect(fitQueries(coreHttp).at(-1)).toEqual({ context: '65536', placement: 'auto' })
-        })
-
-        it('asks at once when the placement changes', async () => {
-          const { coreHttp, group } = await openSized()
-          await within(group).findByText(/fits on your GPU/)
-
-          fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
-          await choose('CPU only')
-
-          await waitFor(() =>
-            expect(fitQueries(coreHttp).at(-1)).toEqual({ context: 'auto', placement: 'cpu' })
-          )
-        })
-        it('empties the hint while the new answer is missing, instead of keeping the old one', async () => {
-          const { coreHttp, group } = await openSized()
-          await within(group).findByText(/fits on your GPU/)
-          coreHttp.respond('GET', `/api/models/${qwen.id}/fit`, () => ({
-            status: 500,
-            body: { error: 'internal', message: 'no answer' }
-          }))
-
-          fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
-          await choose('CPU only')
-
-          await waitFor(() => expect(fitQueries(coreHttp).at(-1)?.placement).toBe('cpu'))
-          await waitFor(() => expect(within(group).queryByText(/fits on your GPU/)).not.toBeInTheDocument())
-        })
-      })
-
-      it('shows Auto for both on a chat model, and neither on an embedding model', async () => {
-        const { group } = await openSized()
-
-        expect(within(group).getByRole('radio', { name: 'Auto' })).toBeChecked()
-        expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('Automatic')
-        expect(within(group).queryByLabelText('Context size in tokens')).not.toBeInTheDocument()
-
-        fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.id}` }))
-        const embedding = screen.getByRole('group', { name: `Options for ${nomic.id}` })
-        expect(within(embedding).queryByText('Context')).not.toBeInTheDocument()
-        expect(within(embedding).queryByText('Placement')).not.toBeInTheDocument()
-      })
-
-      it('shows a stored preset on its segment, and any other size as Custom with the number', async () => {
-        const preset = await openSized({ [qwen.id]: { context: 32768 } })
-        expect(within(preset.group).getByRole('radio', { name: '32k' })).toBeChecked()
-        expect(within(preset.group).queryByLabelText('Context size in tokens')).not.toBeInTheDocument()
-        preset.unmount()
-
-        const other = await openSized({ [qwen.id]: { context: 40000 } })
-        expect(within(other.group).getByRole('radio', { name: 'Custom' })).toBeChecked()
-        expect(within(other.group).getByLabelText('Context size in tokens')).toHaveValue('40000')
-      })
-
-      it('saves a preset size at once', async () => {
-        const { coreHttp, group } = await openSized()
-
-        fireEvent.click(within(group).getByRole('radio', { name: '64k' }))
-
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { context: 65536 } })
-      })
-
-      it("starts Custom from the model's auto size and saves nothing until Enter", async () => {
-        const { coreHttp, group } = await openSized()
-
-        fireEvent.click(within(group).getByRole('radio', { name: 'Custom' }))
-
-        const input = await within(group).findByLabelText('Context size in tokens')
-        expect(input).toHaveValue('32768')
-        expect(putValues(coreHttp)).toEqual([])
-        fireEvent.change(input, { target: { value: '131072' } })
-        expect(putValues(coreHttp)).toEqual([])
-        fireEvent.keyDown(input, { key: 'Enter' })
-
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { context: 131072 } })
-      })
-
-      it('explains a size out of range, saves nothing, and Escape puts the stored size back', async () => {
-        const { coreHttp, group } = await openSized({ [qwen.id]: { context: 8192 } })
-        const input = within(group).getByLabelText('Context size in tokens')
-
-        fireEvent.change(input, { target: { value: '1000' } })
-        fireEvent.keyDown(input, { key: 'Enter' })
-
-        expect(input).toHaveAttribute('aria-invalid', 'true')
-        expect(input).toHaveAccessibleDescription('A whole number from 2048 to 1048576.')
-        expect(putValues(coreHttp)).toEqual([])
-
-        fireEvent.keyDown(input, { key: 'Escape' })
-        expect(input).toHaveValue('8192')
-        expect(input).not.toHaveAttribute('aria-invalid')
-      })
-
-      it('Auto drops the size and keeps the arguments', async () => {
-        const { coreHttp, group } = await openSized({ [qwen.id]: { args: '--jinja', context: 8192 } })
-
-        fireEvent.click(within(group).getByRole('radio', { name: 'Auto' }))
-
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { args: '--jinja' } })
-      })
-
-      it('offers experts on the CPU to a mixture-of-experts model and layers to the others', async () => {
-        const optionNames = (): (string | null)[] =>
-          within(screen.getByRole('listbox'))
-            .getAllByRole('option')
-            .map((option) => option.querySelector('span')?.textContent ?? null)
-
-        const plain = await openSized()
-        fireEvent.click(within(plain.group).getByRole('combobox', { name: 'Placement' }))
-        await screen.findByRole('option', { name: 'CPU only' })
-        expect(optionNames()).toEqual([
-          'Automatic',
-          'All on the graphics card',
-          'Some layers on the GPU',
-          'CPU only'
-        ])
-        plain.unmount()
-
-        const moe = await openSized({}, { ...sized, moe: true })
-        fireEvent.click(within(moe.group).getByRole('combobox', { name: 'Placement' }))
-        await screen.findByRole('option', { name: 'Experts on the CPU' })
-        expect(optionNames()).toEqual([
-          'Automatic',
-          'All on the graphics card',
-          'Experts on the CPU',
-          'CPU only'
-        ])
-        moe.unmount()
-
-        const stored = await openSized({ [qwen.id]: { placement: 'layers' } }, { ...sized, moe: true })
-        fireEvent.click(within(stored.group).getByRole('combobox', { name: 'Placement' }))
-        expect(await screen.findByRole('option', { name: 'Some layers on the GPU' })).toBeInTheDocument()
-      })
-
-      it('saves a placement, and Auto removes it', async () => {
-        const { coreHttp, group } = await openSized()
-
-        fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
-        await choose('CPU only')
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { placement: 'cpu' } })
-
-        await waitFor(() =>
-          expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('CPU only')
-        )
-        fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
-        await choose('Automatic')
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(2))
-        expect(putValues(coreHttp)[1]?.options).toEqual({})
-      })
-    })
-
-    it('refuses a flag OpenVatra sets itself, and saves nothing', async () => {
-      const { coreHttp, group } = await openOptions()
-      const args = within(group).getByLabelText('Arguments')
-
-      fireEvent.change(args, { target: { value: '--temp 0.7 --port 9000' } })
-      fireEvent.blur(args)
-
-      expect(args).toHaveAttribute('aria-invalid', 'true')
-      expect(args).toHaveAccessibleDescription("--port is set by OpenVatra and can't be changed.")
-      expect(putValues(coreHttp)).toEqual([])
-    })
-
-    it('refuses the size and placement flags, which OpenVatra sets itself', async () => {
-      const { coreHttp, group } = await openOptions()
-      const args = within(group).getByLabelText('Arguments')
-
-      fireEvent.change(args, { target: { value: '-ngl 20' } })
-      fireEvent.blur(args)
-
-      expect(args).toHaveAttribute('aria-invalid', 'true')
-      expect(args).toHaveAccessibleDescription("-ngl is set by OpenVatra and can't be changed.")
-      expect(putValues(coreHttp)).toEqual([])
-    })
-
-    it('drops the model’s entry when the box is emptied', async () => {
-      const { coreHttp, group } = await openOptions({ [qwen.id]: { args: '--jinja' } })
-      const args = within(group).getByLabelText('Arguments')
-      expect(args).toHaveValue('--jinja')
-
-      fireEvent.change(args, { target: { value: ' ' } })
-      fireEvent.blur(args)
-
-      await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-      expect(putValues(coreHttp)[0]?.options).toEqual({})
     })
   })
 })

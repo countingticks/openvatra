@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import { Button } from '@app/ui/button'
 import { GpuCard } from '@app/features/models'
 import { InstalledModels } from '@app/features/models'
+import { InstalledList } from '@app/features/models'
 import { ModelList } from '@app/features/models'
 import { PathRow } from './PathRow'
 import { SegmentedControl } from '@app/ui/SegmentedControl'
@@ -131,6 +132,7 @@ export function ModelsSection(): React.JSX.Element {
             )}
           </PathRow>
           <ModelList />
+          <InstalledList />
         </>
       )}
     </div>
