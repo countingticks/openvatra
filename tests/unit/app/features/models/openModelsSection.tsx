@@ -66,15 +66,14 @@ export async function openModels(
   models: Preferences = chosen,
   options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
 ): Promise<Rendered & { section: HTMLElement }> {
-  // Most tests are about the advanced view, so it is on unless a test says otherwise.
-  const { showAdvanced = true, engineSettings, ...core } = models
+  const { showAdvanced, engineSettings, ...core } = models
   const rendered = renderWithStore(
     <Shell />,
-    { showAdvancedModels: showAdvanced },
+    showAdvanced === undefined ? {} : { showAdvancedModels: showAdvanced },
     { llamacppSettings: core, engineSettings, ...options }
   )
   act(() => {
-    rendered.store.dispatch(settingsOpened('models'))
+    rendered.store.dispatch(settingsOpened({ section: 'models' }))
   })
   const section = await screen.findByRole('region', { name: 'Models' })
   return { ...rendered, section }

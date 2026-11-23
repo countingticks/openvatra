@@ -5,10 +5,21 @@ import type { LlamaServerSettings } from '@app/core/generated'
 import { defaultEngineSettings, defaultLlamacppSettings } from '@app/features/models/modelSettings'
 import type { ModelInfo } from '@app/core/types'
 import { coreWrites, type FakeCoreHttp } from '../../../fakeCoreHttp'
-import { chosen, nomic, openModels, putValues, qwen, ready } from '../models/openModelsSection'
+import {
+  chosen,
+  nomic,
+  openModels,
+  putValues,
+  qwen,
+  ready,
+  type Preferences
+} from '../models/openModelsSection'
 
-// The GPU card asks for fresh hardware numbers whenever the section opens; that is not a write under test.
-const HARDWARE = '/api/hardware/refresh'
+/** Settings on Models with Advanced already open, unless the test's preferences say otherwise. */
+const openAdvanced = (
+  models: Preferences = {},
+  options: Parameters<typeof openModels>[1] = {}
+): ReturnType<typeof openModels> => openModels({ showAdvanced: true, ...models }, options)
 
 /** The value each PUT of the engine section carried, in order. */
 const enginePutValues = (http: FakeCoreHttp): LlamaServerSettings[] =>
@@ -31,17 +42,51 @@ const configChanged = (http: FakeCoreHttp, rev: number): void =>
     })
   })
 
+/** A catalog with one model the user has and one to get. */
+const catalog = {
+  diskFreeBytes: null,
+  recommended: null,
+  entries: [
+    {
+      id: 'small-3b',
+      name: 'Small 3B',
+      summary: 's',
+      tags: [],
+      licence: 'Apache-2.0',
+      sizeBytes: 2 * 1024 ** 3,
+      needsGB: 3,
+      rank: 1,
+      fit: 'fits' as const,
+      installed: true,
+      diskShortBytes: 0
+    },
+    {
+      id: 'big-9b',
+      name: 'Big 9B',
+      summary: 's',
+      tags: [],
+      licence: 'Apache-2.0',
+      sizeBytes: 6 * 1024 ** 3,
+      needsGB: 8,
+      rank: 2,
+      fit: 'fits' as const,
+      installed: false,
+      diskShortBytes: 0
+    }
+  ]
+}
+
 describe('Settings → Models', () => {
   describe('on a host without some members', () => {
     it('has no Change… or Use my own… without files', async () => {
-      await openModels({}, { coreState: ready, omit: ['files'] })
+      await openAdvanced({}, { coreState: ready, omit: ['files'] })
 
       expect(screen.queryByRole('button', { name: 'Change…' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Use my own…' })).toBeNull()
     })
 
     it('has no Restart or Open log without restart and openLog', async () => {
-      await openModels({}, { coreState: ready, omit: ['restart', 'openLog'] })
+      await openAdvanced({}, { coreState: ready, omit: ['restart', 'openLog'] })
 
       expect(screen.queryByRole('button', { name: 'Restart' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Open log' })).toBeNull()
@@ -50,22 +95,25 @@ describe('Settings → Models', () => {
 
   describe('paths', () => {
     it("shows both of core's paths, or the default folder when none is chosen", async () => {
-      await openModels({ engineSettings: { path: 'C:\\llama\\llama-server.exe' } }, { coreState: ready })
+      await openAdvanced({ engineSettings: { path: 'C:\\llama\\llama-server.exe' } }, { coreState: ready })
 
       expect(await screen.findByText('C:\\llama\\llama-server.exe')).toBeInTheDocument()
       expect(screen.getByText('The OpenVatra\\Models folder in your user folder')).toBeInTheDocument()
     })
 
     it("shows core's models folder", async () => {
-      await openModels({ modelsDir: 'D:\\models' }, { coreState: ready })
+      await openAdvanced({ modelsDir: 'D:\\models' }, { coreState: ready })
 
       expect(await screen.findByText('D:\\models')).toBeInTheDocument()
     })
 
     it('shows the bundled build when no llama-server is chosen, with no "Use bundled" button', async () => {
-      await openModels({ engineSettings: { path: null } })
+      await openAdvanced({ engineSettings: { path: null } })
 
-      expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
+      expect(
+        await screen.findByText('Bundled (b12078, Vulkan). Use your own build to try a newer llama.cpp.')
+      ).toBeInTheDocument()
+      expect(screen.getByText('Using the bundled build')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toHaveTextContent(
         'Use my own…'
       )
@@ -73,7 +121,7 @@ describe('Settings → Models', () => {
     })
 
     it('leaves the tag out of the bundled label when core has none', async () => {
-      const { store } = await openModels(
+      const { store } = await openAdvanced(
         { engineSettings: { path: null } },
         { coreState: ready, engines: { tag: null } }
       )
@@ -82,25 +130,27 @@ describe('Settings → Models', () => {
       await waitFor(() =>
         expect(coreApi.endpoints.getEngines.select()(store.getState()).data?.bundled.tag).toBeNull()
       )
-      expect(screen.getByText('Bundled (Vulkan)')).toBeInTheDocument()
+      expect(
+        screen.getByText('Bundled (Vulkan). Use your own build to try a newer llama.cpp.')
+      ).toBeInTheDocument()
     })
 
     it('"Use bundled" asks core to forget the custom path, and shows the bundled build again', async () => {
-      const { coreHttp } = await openModels(
+      const { coreHttp } = await openAdvanced(
         { engineSettings: { path: 'C:\\llama\\llama-server.exe' } },
         { coreState: ready }
       )
 
       fireEvent.click(await screen.findByRole('button', { name: 'Use bundled' }))
 
-      expect(await screen.findByText('Bundled (b12078, Vulkan)')).toBeInTheDocument()
+      expect(await screen.findByText('Using the bundled build')).toBeInTheDocument()
       expect(enginePutValues(coreHttp)).toEqual([{ ...defaultEngineSettings, path: null }])
       expect(putValues(coreHttp)).toEqual([])
       expect(screen.queryByRole('button', { name: 'Use bundled' })).not.toBeInTheDocument()
     })
 
     it("shows core's message when it refuses a change", async () => {
-      const { coreHttp } = await openModels(
+      const { coreHttp } = await openAdvanced(
         { engineSettings: { path: 'C:\\llama\\llama-server.exe' } },
         { coreState: ready }
       )
@@ -116,7 +166,7 @@ describe('Settings → Models', () => {
     })
 
     it('Browse… asks main to pick, and shows the folder core then reports', async () => {
-      const { coreHttp, pick } = await openModels({}, { coreState: ready })
+      const { coreHttp, pick } = await openAdvanced({}, { coreState: ready })
       await waitFor(() => expect(coreHttp.openStreams()).toBe(1))
       pick.mockResolvedValueOnce(true)
 
@@ -132,7 +182,7 @@ describe('Settings → Models', () => {
     })
 
     it('shows no alert when the path was saved', async () => {
-      const { pick } = await openModels({}, { coreState: ready })
+      const { pick } = await openAdvanced({}, { coreState: ready })
       pick.mockResolvedValueOnce(true)
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for Models folder' }))
@@ -142,7 +192,7 @@ describe('Settings → Models', () => {
     })
 
     it('changes nothing when the dialog is cancelled, and says so when saving fails', async () => {
-      const { pick } = await openModels({}, { coreState: { status: 'starting' } })
+      const { pick } = await openAdvanced({}, { coreState: { status: 'starting' } })
 
       fireEvent.click(screen.getByRole('button', { name: 'Browse for llama-server.exe' }))
       await waitFor(() => expect(pick).toHaveBeenCalledWith('llamaServer'))
@@ -154,106 +204,57 @@ describe('Settings → Models', () => {
     })
   })
 
-  describe('default and advanced views', () => {
-    const catalog = {
-      diskFreeBytes: null,
-      recommended: null,
-      entries: [
-        {
-          id: 'small-3b',
-          name: 'Small 3B',
-          summary: 's',
-          tags: [],
-          licence: 'Apache-2.0',
-          sizeBytes: 2 * 1024 ** 3,
-          needsGB: 3,
-          rank: 1,
-          fit: 'fits' as const,
-          installed: true,
-          diskShortBytes: 0
-        },
-        {
-          id: 'big-9b',
-          name: 'Big 9B',
-          summary: 's',
-          tags: [],
-          licence: 'Apache-2.0',
-          sizeBytes: 6 * 1024 ** 3,
-          needsGB: 8,
-          rank: 2,
-          fit: 'fits' as const,
-          installed: false,
-          diskShortBytes: 0
-        }
-      ]
-    }
+  describe('the tabs and Advanced', () => {
+    it('shows Installed with the count and Get more models, and ArrowRight opens the catalog', async () => {
+      await openModels(
+        { showAdvanced: false },
+        { coreState: ready, models: [qwen, nomic], setup: { catalog } }
+      )
+      const installed = await screen.findByRole('tab', { name: 'Installed 2' })
+      expect(installed).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByRole('tablist', { name: 'Models' })).toBeInTheDocument()
+      expect(screen.getByRole('list', { name: 'Installed models' })).toBeInTheDocument()
 
-    it('shows only the simple things until "Show advanced" is on', async () => {
-      await openModels({ showAdvanced: false }, { coreState: ready, models: [qwen], setup: { catalog } })
+      installed.focus()
+      fireEvent.keyDown(installed, { key: 'ArrowRight' })
 
-      expect(await screen.findByText('Small 3B')).toBeInTheDocument()
-      expect(screen.queryByText('Big 9B')).not.toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Get more models…' })).toBeInTheDocument()
-      expect(screen.getByRole('radiogroup', { name: 'Unload models after' })).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Browse for llama-server.exe' })).not.toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
-      // In the dialog: the Chat tab's model button behind it names the model too.
-      const dialog = screen.getByRole('dialog', { name: 'Settings' })
-      expect(within(dialog).queryByText('Qwen3 8B')).not.toBeInTheDocument()
+      const more = screen.getByRole('tab', { name: 'Get more models' })
+      expect(more).toHaveAttribute('aria-selected', 'true')
+      expect(more).toHaveFocus()
+      expect(await screen.findByText('Big 9B')).toBeInTheDocument()
+      expect(screen.queryByRole('list', { name: 'Installed models' })).not.toBeInTheDocument()
     })
 
-    it('"Show advanced" is saved and reveals the engine, the log and every model file', async () => {
+    it('keeps Advanced shut by default, opens it on click, and saves that', async () => {
       const { saveSettings } = await openModels(
         { showAdvanced: false },
-        { coreState: ready, models: [qwen], setup: { catalog } }
+        { coreState: ready, models: [qwen, nomic] }
       )
+      const advanced = screen.getByRole('button', { name: 'Advanced' })
+      expect(advanced).toHaveAttribute('aria-expanded', 'false')
+      expect(screen.queryByRole('button', { name: 'Browse for llama-server.exe' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Restart' })).not.toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('switch', { name: 'Show advanced' }))
+      fireEvent.click(advanced)
 
       await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ showAdvancedModels: true }))
+      expect(advanced).toHaveAttribute('aria-expanded', 'true')
       expect(screen.getByRole('button', { name: 'Browse for llama-server.exe' })).toBeInTheDocument()
+      expect(await screen.findByRole('combobox', { name: 'Embedding model' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Open log' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument()
-      const dialog = screen.getByRole('dialog', { name: 'Settings' })
-      expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
     })
 
-    it('removes a downloaded model only after confirming', async () => {
-      const { coreHttp } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
+    it('has no "Show advanced" switch and no "Get more models…" button', async () => {
+      await openModels({ showAdvanced: false }, { coreState: ready, models: [qwen] })
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Remove Small 3B' }))
-      expect(coreWrites(coreHttp).filter((write) => write.path !== HARDWARE)).toEqual([])
-      fireEvent.click(screen.getByRole('button', { name: 'Remove it' }))
-
-      await waitFor(() =>
-        expect(coreWrites(coreHttp).filter((write) => write.path !== HARDWARE)).toEqual([
-          { method: 'POST', path: '/api/catalog/small-3b/remove', body: undefined }
-        ])
-      )
-    })
-
-    it("shows core's reason when the model can't be removed", async () => {
-      const { coreHttp } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
-      coreHttp.respond('POST', '/api/catalog/small-3b/remove', () => ({
-        status: 500,
-        body: { error: 'trash_failed', message: 'Windows could not move the model to the Recycle Bin.' }
-      }))
-
-      fireEvent.click(await screen.findByRole('button', { name: 'Remove Small 3B' }))
-      fireEvent.click(screen.getByRole('button', { name: 'Remove it' }))
-
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        'Windows could not move the model to the Recycle Bin.'
-      )
-    })
-
-    it('says so when nothing is installed', async () => {
-      await openModels({ showAdvanced: false }, { coreState: ready })
-      expect(await screen.findByText(/No models yet/)).toBeInTheDocument()
+      expect(screen.queryByRole('switch', { name: 'Show advanced' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Get more models…' })).not.toBeInTheDocument()
     })
   })
 
   it('saves "Unload models after" in core, with Never as null', async () => {
-    const { coreHttp } = await openModels(chosen, { coreState: ready })
+    const { coreHttp } = await openAdvanced(chosen, { coreState: ready })
     const group = screen.getByRole('radiogroup', { name: 'Unload models after' })
     expect(within(group).getByRole('radio', { name: '15 min' })).toBeChecked()
 
@@ -268,7 +269,7 @@ describe('Settings → Models', () => {
 
   describe('empty and problem states', () => {
     it('restarts the service and opens the log', async () => {
-      const { core, section } = await openModels()
+      const { core, section } = await openAdvanced()
 
       fireEvent.click(within(section).getByRole('button', { name: 'Restart' }))
       fireEvent.click(within(section).getByRole('button', { name: 'Open log' }))
@@ -281,7 +282,7 @@ describe('Settings → Models', () => {
   describe('the embedding model', () => {
     it('offers only embedding models, Automatic first, and saves the choice', async () => {
       const second: ModelInfo = { ...nomic, id: 'qwen3-embedding' }
-      const { coreHttp } = await openModels(chosen, { coreState: ready, models: [qwen, nomic, second] })
+      const { coreHttp } = await openAdvanced(chosen, { coreState: ready, models: [qwen, nomic, second] })
       const select = await screen.findByRole('combobox', { name: 'Embedding model' })
       expect(select).toHaveValue('')
       expect(
@@ -300,7 +301,7 @@ describe('Settings → Models', () => {
     })
 
     it('is disabled with a hint when there is no embedding model', async () => {
-      await openModels(chosen, { coreState: ready, models: [qwen] })
+      await openAdvanced(chosen, { coreState: ready, models: [qwen] })
       const select = await screen.findByRole('combobox', { name: 'Embedding model' })
 
       expect(select).toBeDisabled()
@@ -308,7 +309,7 @@ describe('Settings → Models', () => {
     })
 
     it('warns about a chat model chosen for embeddings and resets it', async () => {
-      const { coreHttp } = await openModels(
+      const { coreHttp } = await openAdvanced(
         { ...chosen, embeddingModel: qwen.id },
         { coreState: ready, models: [qwen, nomic] }
       )
@@ -325,7 +326,7 @@ describe('Settings → Models', () => {
     })
 
     it('also warns when the chosen model is gone', async () => {
-      await openModels({ ...chosen, embeddingModel: 'deleted' }, { coreState: ready, models: [nomic] })
+      await openAdvanced({ ...chosen, embeddingModel: 'deleted' }, { coreState: ready, models: [nomic] })
 
       expect(await screen.findByRole('alert')).toHaveTextContent("deleted isn't an available embedding model")
     })

@@ -58,7 +58,7 @@ function show({ cuda, engineSettings, hardware, downloads, models }: Setup = {})
   )
   rendered.coreHttp.answer('/api/hardware/refresh', hardware ?? exampleHardware, { method: 'POST' })
   act(() => {
-    rendered.store.dispatch(settingsOpened('models'))
+    rendered.store.dispatch(settingsOpened({ section: 'models' }))
   })
   return rendered
 }

@@ -10,6 +10,17 @@ import { sameRoute, type Route } from './route'
 export const settingsSections = ['general', 'models'] as const
 export type SettingsSection = (typeof settingsSections)[number]
 
+/** The tabs of Settings › Models. */
+export const modelsTabs = ['installed', 'more'] as const
+export type ModelsTab = (typeof modelsTabs)[number]
+
+/** Where Settings opens: a section, and for Models its tab and the model whose options start open. */
+export interface SettingsTarget {
+  section?: SettingsSection
+  tab?: ModelsTab
+  expand?: string
+}
+
 export interface UiState {
   /** Where the window is: a tab and what is open in it. */
   route: Route
@@ -25,8 +36,10 @@ export interface UiState {
   settingsOpen: boolean
   /** Which section the dialog shows. */
   settingsSection: SettingsSection
-  /** The Models dialog (get or remove models) is open. Not saved, like the Settings dialog. */
-  modelsDialogOpen: boolean
+  /** Which tab Settings › Models shows. */
+  modelsTab: ModelsTab
+  /** The model id whose options the Installed list opens when it mounts; null for none. */
+  expandModel: string | null
 }
 
 /** Enough to go back a long way, small enough that the history never grows without bound. */
@@ -40,7 +53,8 @@ export const initialUiState: UiState = {
   tabRoutes: { chat: { tab: 'chat' }, code: { tab: 'code' }, automations: { tab: 'automations' } },
   settingsOpen: false,
   settingsSection: 'general',
-  modelsDialogOpen: false
+  modelsTab: 'installed',
+  expandModel: null
 }
 
 /** Moves to a route: the old one goes on the Back stack, and the tab remembers where it was left. */
@@ -88,22 +102,21 @@ export const uiSlice = createSlice({
     sidebarToggled(state) {
       state.sidebarOpen = !state.sidebarOpen
     },
-    /** Opens on General unless a section is named ("Model settings…" opens on Models). */
-    settingsOpened(state, action: PayloadAction<SettingsSection | undefined>) {
+    /** Opens on General, the Installed tab and no open model unless a target says otherwise. */
+    settingsOpened(state, action: PayloadAction<SettingsTarget | undefined>) {
       state.settingsOpen = true
-      state.settingsSection = action.payload ?? 'general'
+      state.settingsSection = action.payload?.section ?? 'general'
+      state.modelsTab = action.payload?.tab ?? 'installed'
+      state.expandModel = action.payload?.expand ?? null
+    },
+    modelsTabSelected(state, action: PayloadAction<ModelsTab>) {
+      state.modelsTab = action.payload
     },
     settingsSectionSelected(state, action: PayloadAction<SettingsSection>) {
       state.settingsSection = action.payload
     },
     settingsClosed(state) {
       state.settingsOpen = false
-    },
-    modelsDialogOpened(state) {
-      state.modelsDialogOpen = true
-    },
-    modelsDialogClosed(state) {
-      state.modelsDialogOpen = false
     }
   },
   selectors: {
@@ -114,7 +127,8 @@ export const uiSlice = createSlice({
     selectCanGoForward: (state) => state.forward.length > 0,
     selectSettingsOpen: (state) => state.settingsOpen,
     selectSettingsSection: (state) => state.settingsSection,
-    selectModelsDialogOpen: (state) => state.modelsDialogOpen
+    selectModelsTab: (state) => state.modelsTab,
+    selectExpandModel: (state) => state.expandModel
   }
 })
 
@@ -128,8 +142,7 @@ export const {
   settingsOpened,
   settingsSectionSelected,
   settingsClosed,
-  modelsDialogOpened,
-  modelsDialogClosed
+  modelsTabSelected
 } = uiSlice.actions
 export const {
   selectRoute,
@@ -139,5 +152,6 @@ export const {
   selectCanGoForward,
   selectSettingsOpen,
   selectSettingsSection,
-  selectModelsDialogOpen
+  selectModelsTab,
+  selectExpandModel
 } = uiSlice.selectors

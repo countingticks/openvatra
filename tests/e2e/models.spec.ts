@@ -99,8 +99,6 @@ test('a custom context size is passed to llama-server', async () => {
   await mainWindow.getByRole('button', { name: 'Settings', exact: true }).click()
   const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
   await dialog.getByRole('button', { name: 'Models' }).click()
-  const advanced = dialog.getByRole('switch', { name: 'Show advanced' })
-  if ((await advanced.getAttribute('aria-checked')) !== 'true') await advanced.click()
   await dialog.getByRole('button', { name: 'Options for tiny' }).click()
 
   // The header-only file has no known shape, so the size is the user's number, with the whole model on the GPU.

@@ -82,7 +82,7 @@ export function ModelButton({
             }}
             onManage={() => {
               setOpen(false)
-              dispatch(settingsOpened('models'))
+              dispatch(settingsOpened({ section: 'models' }))
             }}
           />
         )}
