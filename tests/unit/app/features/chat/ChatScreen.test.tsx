@@ -24,6 +24,9 @@ const model = (id: string, overrides: Partial<ModelInfo> = {}): ModelInfo => ({
   kind: 'chat',
   context: null,
   moe: false,
+  name: id,
+  quant: null,
+  tags: [],
   ...overrides
 })
 

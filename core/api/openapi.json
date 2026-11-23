@@ -1260,8 +1260,18 @@
           "moe": {
             "type": "boolean"
           },
+          "name": {
+            "type": "string"
+          },
           "projector": {
             "type": "string"
+          },
+          "quant": {
+            "description": "null when the file name has no quantisation label",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sizeBytes": {
             "type": "integer"
@@ -1274,6 +1284,13 @@
               "error"
             ],
             "type": "string"
+          },
+          "tags": {
+            "description": "Code, Vision, MoE, Embeddings, in that order",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -1283,7 +1300,10 @@
           "sizeBytes",
           "kind",
           "context",
-          "moe"
+          "moe",
+          "name",
+          "quant",
+          "tags"
         ],
         "type": "object"
       },

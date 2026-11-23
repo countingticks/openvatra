@@ -30,7 +30,10 @@ const qwen: ModelInfo = {
   sizeBytes: 5 * 1024 ** 3,
   kind: 'chat',
   context: null,
-  moe: false
+  moe: false,
+  name: 'Qwen3-8B-Q4_K_M',
+  quant: null,
+  tags: []
 }
 const nomic: ModelInfo = {
   id: 'nomic-embed',
@@ -39,7 +42,10 @@ const nomic: ModelInfo = {
   sizeBytes: 140 * 1024 ** 2,
   kind: 'embedding',
   context: null,
-  moe: false
+  moe: false,
+  name: 'nomic-embed',
+  quant: null,
+  tags: []
 }
 
 type Rendered = ReturnType<typeof renderWithStore>
@@ -372,7 +378,10 @@ describe('Settings → Models', () => {
       kind: 'unreadable',
       error: 'not a GGUF file',
       context: null,
-      moe: false
+      moe: false,
+      name: 'broken',
+      quant: null,
+      tags: []
     }
 
     it('groups models by kind, with unreadable files last, no state and no Load or Unload', async () => {

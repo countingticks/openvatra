@@ -38,6 +38,10 @@ type Model struct {
 	Context *fit.Choice `json:"context"`
 	// MoE is true for a chat model with expert tensors: only those can place experts on the CPU.
 	MoE bool `json:"moe"`
+	// Name is the catalog's name, the header's general.name or the file name, in that order.
+	Name  string   `json:"name"`
+	Quant *string  `json:"quant" doc:"null when the file name has no quantisation label"`
+	Tags  []string `json:"tags" doc:"Code, Vision, MoE, Embeddings, in that order"`
 }
 
 // DownloadsBody is the JSON of GET /api/downloads and the data of the downloads event.
@@ -80,8 +84,16 @@ func State(res provider.Resident, list func() ([]models.Model, error), choose fu
 		if choose != nil {
 			choice = choose(m)
 		}
+		var quant *string
+		if m.Quant != "" {
+			quant = &m.Quant
+		}
+		tags := m.Tags
+		if tags == nil {
+			tags = []string{} // [] rather than null
+		}
 		out = append(out, Model{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector, Kind: m.Kind, Error: errText,
-			Context: choice, MoE: m.Kind == models.KindChat && fit.MoE(m.Shape)})
+			Context: choice, MoE: m.Kind == models.KindChat && fit.MoE(m.Shape), Name: m.Name, Quant: quant, Tags: tags})
 	}
 	return StateBody{Models: out}, nil
 }

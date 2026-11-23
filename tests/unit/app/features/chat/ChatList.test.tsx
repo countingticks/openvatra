@@ -26,7 +26,10 @@ const tiny: ModelInfo = {
   sizeBytes: 1024 ** 3,
   kind: 'chat',
   context: null,
-  moe: false
+  moe: false,
+  name: 'tiny',
+  quant: null,
+  tags: []
 }
 
 const transcript: Transcript = {

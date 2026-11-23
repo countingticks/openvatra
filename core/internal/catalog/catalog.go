@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 
 	"github.com/countingticks/openvatra/core/internal/hw"
 )
@@ -222,6 +223,27 @@ func (c *Catalog) View() View {
 	}
 	v.Recommended = recommend(v.Entries)
 	return v
+}
+
+// Owner is the name and tags of the entry whose folder (<modelsDir>/<id>) holds path and whose files include
+// path's file name; false when there is none or no models folder is set.
+func (c *Catalog) Owner(path string) (name string, tags []string, ok bool) {
+	dir := c.modelsDir()
+	if dir == "" {
+		return "", nil, false
+	}
+	folder, base := filepath.Dir(path), filepath.Base(path)
+	for _, e := range c.entries {
+		if !strings.EqualFold(folder, filepath.Join(dir, e.ID)) {
+			continue
+		}
+		for _, f := range e.Files {
+			if strings.EqualFold(base, f.Name) {
+				return e.Name, e.Tags, true
+			}
+		}
+	}
+	return "", nil, false
 }
 
 // Folder is where entry id's files go: <modelsDir>/<id>.

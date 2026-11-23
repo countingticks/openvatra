@@ -11,7 +11,10 @@ const model = (id: string): ModelInfo => ({
   sizeBytes: 1024,
   kind: 'chat',
   context: null,
-  moe: false
+  moe: false,
+  name: id,
+  quant: null,
+  tags: []
 })
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 

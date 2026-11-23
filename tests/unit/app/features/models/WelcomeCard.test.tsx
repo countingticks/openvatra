@@ -42,7 +42,10 @@ const chatModel: ModelInfo = {
   sizeBytes: 5 * GB,
   kind: 'chat',
   context: null,
-  moe: false
+  moe: false,
+  name: 'Qwen3-8B',
+  quant: null,
+  tags: []
 }
 
 describe('welcome card', () => {

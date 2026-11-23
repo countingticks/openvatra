@@ -560,9 +560,14 @@ export type Model = {
   id: string
   kind: 'chat' | 'embedding' | 'unreadable'
   moe: boolean
+  name: string
   projector?: string
+  /** null when the file name has no quantisation label */
+  quant: string | null
   sizeBytes: number
   state: 'stopped' | 'loading' | 'ready' | 'error'
+  /** Code, Vision, MoE, Embeddings, in that order */
+  tags: string[]
 }
 export type StateBody = {
   models: Model[]

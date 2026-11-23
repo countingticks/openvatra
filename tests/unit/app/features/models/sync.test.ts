@@ -16,7 +16,10 @@ const model: Model = {
   kind: 'chat',
   sizeBytes: 5_000_000_000,
   context: null,
-  moe: false
+  moe: false,
+  name: 'qwen3-8b',
+  quant: null,
+  tags: []
 }
 
 const downloadProgress = (items: { id: string; state: 'downloading' | 'done' }[]): Event => ({
