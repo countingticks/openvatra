@@ -96,5 +96,5 @@ test('welcome card → Download → the model shows up in the model button', asy
   await expect(welcome).toBeHidden({ timeout: 20_000 })
 
   await mainWindow.getByRole('button', { name: /^Model:/ }).click()
-  await expect(mainWindow.getByRole('button', { name: /^Load .*tiny/ })).toBeVisible()
+  await expect(mainWindow.getByRole('option', { name: 'Tiny Test Model' })).toBeVisible()
 })

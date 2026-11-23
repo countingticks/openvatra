@@ -66,8 +66,10 @@ test('after a core restart the models list fills again without reloading the pag
     )
     .toBe('ready')
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
+  // The button stands in for the welcome card until the list arrives; opening it earlier loses the popover.
+  await expect(modelButton).toHaveAccessibleName(/^Model: tiny,/, { timeout: 20_000 })
   await modelButton.click()
-  await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
+  await expect(mainWindow.getByRole('option', { name: 'tiny' })).toBeVisible()
 
   await mainWindow.evaluate(() => {
     ;(window as unknown as { __marker: number }).__marker = 1
@@ -88,7 +90,7 @@ test('after a core restart the models list fills again without reloading the pag
       { timeout: 20_000 }
     )
     .not.toBe(baseUrl)
-  await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
+  await expect(mainWindow.getByRole('option', { name: 'tiny' })).toBeVisible()
   expect(await mainWindow.evaluate(() => (window as unknown as { __marker: number }).__marker)).toBe(1)
   await mainWindow.keyboard.press('Escape')
 })
@@ -110,9 +112,10 @@ test('a custom context size is passed to llama-server', async () => {
   await mainWindow.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
 
-  await mainWindow.getByRole('button', { name: /^Model:/ }).click()
-  await mainWindow.getByRole('button', { name: 'Load tiny' }).click()
-  await expect(mainWindow.getByRole('button', { name: 'Unload tiny' })).toBeVisible()
+  // Sending loads the chat's model.
+  await mainWindow.getByRole('textbox', { name: 'Message' }).fill('hi')
+  await mainWindow.keyboard.press('Enter')
+  await expect(mainWindow.getByRole('button', { name: 'Model: tiny, loaded. Change model' })).toBeVisible()
 
   const coreLog = join(userDataDir, 'logs', 'core.log')
   await expect
@@ -122,25 +125,17 @@ test('a custom context size is passed to llama-server', async () => {
       return line ?? ''
     })
     .toMatch(/-c 4096\b.*--fit off|--fit off.*-c 4096\b/)
-  // The next test starts from nothing loaded.
-  await mainWindow.getByRole('button', { name: 'Unload tiny' }).click()
-  await expect(mainWindow.getByRole('button', { name: 'Load tiny' })).toBeVisible()
-  await mainWindow.keyboard.press('Escape')
 })
 
-test('loads a model from the popover, and quitting leaves no core.exe behind', async () => {
+test('the chosen model is selected in the picker, and quitting leaves no core.exe behind', async () => {
   const modelButton = mainWindow.getByRole('button', { name: /^Model:/ })
-  await expect(modelButton).toHaveAccessibleName('Model: tiny, not loaded. Change model')
-
-  await modelButton.click()
-  await mainWindow.getByRole('button', { name: 'Load tiny' }).click()
-
   await expect(modelButton).toHaveAccessibleName('Model: tiny, loaded. Change model')
   await expect(modelButton).toHaveText('tiny')
-  // The chat's model is the current row; the loaded one says so; no "Ready — …" sentence any more.
-  await expect(mainWindow.getByRole('button', { name: 'Use tiny' })).toHaveAttribute('aria-current', 'true')
-  await expect(mainWindow.getByRole('button', { name: 'Unload tiny' })).toBeVisible()
+
+  await modelButton.click()
+  await expect(mainWindow.getByRole('option', { name: 'tiny' })).toHaveAttribute('aria-selected', 'true')
   await expect(mainWindow.getByText(/Ready —/)).toHaveCount(0)
+  await mainWindow.keyboard.press('Escape')
 
   const corePid = await coreExePid()
   expect(corePid).toBeGreaterThan(0)

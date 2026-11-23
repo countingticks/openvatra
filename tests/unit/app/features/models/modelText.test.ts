@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Choice } from '@app/core/generated'
-import { failureReason, fitHint, formatContext } from '@app/features/models/modelText'
+import type { ModelInfo } from '@app/core/types'
+import { failureReason, fitHint, formatContext, modelDetail, stateDot } from '@app/features/models/modelText'
 
 describe('failureReason', () => {
   it.each([
@@ -143,5 +144,37 @@ describe('fitHint', () => {
     ]
   ])('says %s', (_name, change, total, text) => {
     expect(fitHint({ ...choice, ...change }, total)).toBe(text)
+  })
+})
+
+describe('modelDetail', () => {
+  const base: ModelInfo = {
+    id: 'm',
+    name: 'M',
+    state: 'stopped',
+    busy: false,
+    sizeBytes: 5 * 1024 ** 3,
+    kind: 'chat',
+    moe: false,
+    quant: 'Q4_K_M',
+    tags: [],
+    context: { context: 32768 } as Choice
+  }
+
+  it.each([
+    ['everything known', base, 'Q4_K_M · 5.0 GB · 32k context'],
+    ['no quant', { ...base, quant: null }, '5.0 GB · 32k context'],
+    ['no context choice', { ...base, context: null }, 'Q4_K_M · 5.0 GB']
+  ])('%s', (_case, model, expected) => {
+    expect(modelDetail(model)).toBe(expected)
+  })
+})
+
+describe('stateDot', () => {
+  it('fills with brand when ready, pulses when loading, and is hollow when stopped', () => {
+    expect(stateDot('ready')).toContain('bg-brand')
+    expect(stateDot('loading')).toContain('animate-pulse')
+    expect(stateDot('stopped')).not.toContain('bg-')
+    expect(stateDot('stopped')).toContain('ring')
   })
 })

@@ -127,6 +127,21 @@ export function runView(transcript: Transcript): RunView {
 
 type RunState = RunSnapshot['state']
 
+/** Whether core counts an item as a message of the context: an input, or an answer with text that did not fail. */
+function counted(item: TranscriptItem): boolean {
+  if (item.kind === 'input') return true
+  return (
+    item.kind === 'answer' &&
+    !item.failed &&
+    (item.parts ?? []).some((part) => part.kind === 'text' && part.text !== '')
+  )
+}
+
+/** The transcript's context with its message count changed by `delta` (never below 0) or set. */
+function withMessageCount(context: Transcript['context'], count: number): Transcript['context'] {
+  return { ...context, parts: { ...context.parts, messageCount: Math.max(0, count) } }
+}
+
 /** The transcript with one run's state (and error) changed, in its list and as the active run. */
 function withRunState(
   transcript: Transcript,
@@ -167,7 +182,10 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
       return {
         ...next,
         items: [...next.items, { kind: 'input', seq, runId, text: event.data.text }],
-        context: { ...next.context, used: next.context.used + estimateTokens(event.data.text) }
+        context: {
+          ...withMessageCount(next.context, next.context.parts.messageCount + 1),
+          used: next.context.used + estimateTokens(event.data.text)
+        }
       }
     case 'run.started':
     case 'run.resumed':
@@ -176,25 +194,37 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
       return withRunState(next, runId, 'interrupted')
     case 'message.completed': {
       const { parts, stats, partial } = event.data
+      const answer: TranscriptItem = { kind: 'answer', seq, runId, parts, stats, partial }
       return {
         ...next,
-        items: [...next.items, { kind: 'answer', seq, runId, parts, stats, partial }],
+        items: [...next.items, answer],
         context: {
-          ...next.context,
+          ...withMessageCount(next.context, next.context.parts.messageCount + (counted(answer) ? 1 : 0)),
           used: stats.promptTokens + stats.answerTokens,
           size: stats.contextSize > 0 ? stats.contextSize : next.context.size
         }
       }
     }
-    case 'compaction.completed':
+    case 'compaction.completed': {
+      const items: TranscriptItem[] = [
+        ...next.items,
+        { kind: 'summary', seq, runId, text: event.data.summary }
+      ]
+      const kept = items.filter((item) => item.seq >= event.data.firstKeptSeq && counted(item)).length
       return {
         ...next,
-        items: [...next.items, { kind: 'summary', seq, runId, text: event.data.summary }],
-        context: { ...next.context, used: event.data.tokensAfter }
+        items,
+        context: { ...withMessageCount(next.context, kept), used: event.data.tokensAfter }
       }
+    }
     case 'turn.retracted': {
       const retracted = event.data.runId
-      return { ...next, items: next.items.filter((item) => item.runId !== retracted) }
+      const removed = next.items.filter((item) => item.runId === retracted && counted(item)).length
+      return {
+        ...next,
+        items: next.items.filter((item) => item.runId !== retracted),
+        context: withMessageCount(next.context, next.context.parts.messageCount - removed)
+      }
     }
     case 'run.finished': {
       const finished = withRunState(next, runId, event.data.state, event.data.error ?? null)
@@ -204,8 +234,16 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
       const last = finished.items.findLastIndex((item) => item.runId === runId && item.kind === 'answer')
       if (last < 0 || !finished.items[last].partial) return finished
       const items = [...finished.items]
+      const wasCounted = counted(items[last])
       items[last] = { ...items[last], failed: true }
-      return { ...finished, items }
+      return {
+        ...finished,
+        items,
+        context: withMessageCount(
+          finished.context,
+          finished.context.parts.messageCount - (wasCounted ? 1 : 0)
+        )
+      }
     }
     default:
       return next

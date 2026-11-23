@@ -59,18 +59,33 @@ function fitLine(choice: Choice, gpuTotalBytes: number | null): string {
   }
 }
 
-/** Classes for a model's status dot; always shown next to words, so colour is never the only signal. */
+/** "Q4_K_M · 8.1 GB · 32k context"; unknown parts (no quant, no context choice) are left out. */
+export function modelDetail(model: ModelInfo): string {
+  const parts: string[] = []
+  if (model.quant) parts.push(model.quant)
+  parts.push(formatSize(model.sizeBytes))
+  if (model.context) {
+    const { context } = model.context
+    parts.push(`${context % 1024 === 0 ? `${context / 1024}k` : context.toLocaleString('en-US')} context`)
+  }
+  return parts.join(' · ')
+}
+
+/**
+ * Classes for a model's dot (decision 13): ready = brand; loading = pulsing brand; error = destructive; else a
+ * hollow ring. Always shown next to words, so colour is never the only signal.
+ */
 export function stateDot(state: ModelInfo['state']): string {
   switch (state) {
     case 'loading':
       // The app's motion setting (data-motion on <html>) turns the pulse off.
-      return 'animate-pulse bg-primary in-data-[motion=reduce]:animate-none'
+      return 'animate-pulse bg-brand in-data-[motion=reduce]:animate-none'
     case 'ready':
-      return 'bg-success'
+      return 'bg-brand'
     case 'error':
       return 'bg-destructive'
     default:
-      return 'bg-muted-foreground/40'
+      return 'ring-[1.5px] ring-inset ring-muted-foreground'
   }
 }
 
