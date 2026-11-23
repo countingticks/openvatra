@@ -48,7 +48,7 @@ export function OverlayScroll({
   return (
     <ScrollArea.Root
       ref={root}
-      className={cn('group relative', className)}
+      className={cn('group/scroll relative', className)}
       onPointerEnter={() => {
         hovered.current = true
         show()
@@ -72,7 +72,7 @@ export function OverlayScroll({
       <ScrollArea.Scrollbar
         orientation="vertical"
         style={{ top: insetTop, bottom: insetBottom }}
-        className="group/bar absolute right-[3px] flex w-3 justify-center opacity-0 transition-opacity duration-150 group-data-visible:opacity-100 in-data-[motion=reduce]:transition-none"
+        className="group/bar absolute right-[3px] flex w-3 justify-center opacity-0 transition-opacity duration-150 group-data-visible/scroll:opacity-100 in-data-[motion=reduce]:transition-none"
       >
         <ScrollArea.Thumb className="min-h-8 w-[5px] rounded-full bg-border-strong transition-[width,background-color] duration-150 group-hover/bar:w-2 group-hover/bar:bg-muted-foreground group-active/bar:w-2 group-active/bar:bg-muted-foreground in-data-[motion=reduce]:transition-none" />
       </ScrollArea.Scrollbar>

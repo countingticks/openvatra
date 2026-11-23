@@ -30,6 +30,11 @@ describe('OverlayScroll', () => {
     expect(log).not.toContainElement(screen.getByRole('button', { name: 'Over' }))
   })
 
+  it('does not make its root a bare group, which would trigger every group-hover row inside it', () => {
+    const { root } = setup()
+    expect(root.classList.contains('group')).toBe(false)
+  })
+
   it('shows while scrolling and 600 ms after the last scroll', () => {
     const { root, log } = setup()
     fireEvent.scroll(log)
