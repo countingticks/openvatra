@@ -59,15 +59,17 @@ function fitLine(choice: Choice, gpuTotalBytes: number | null): string {
   }
 }
 
+/** 32768 → "32k"; a size that is not a multiple of 1024 keeps its digits ("50,000"). */
+export function shortContext(tokens: number): string {
+  return tokens % 1024 === 0 ? `${tokens / 1024}k` : tokens.toLocaleString('en-US')
+}
+
 /** "Q4_K_M · 8.1 GB · 32k context"; unknown parts (no quant, no context choice) are left out. */
 export function modelDetail(model: ModelInfo): string {
   const parts: string[] = []
   if (model.quant) parts.push(model.quant)
   parts.push(formatSize(model.sizeBytes))
-  if (model.context) {
-    const { context } = model.context
-    parts.push(`${context % 1024 === 0 ? `${context / 1024}k` : context.toLocaleString('en-US')} context`)
-  }
+  if (model.context) parts.push(`${shortContext(model.context.context)} context`)
   return parts.join(' · ')
 }
 

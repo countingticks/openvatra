@@ -97,6 +97,8 @@ export function ModelOptionsForm({
       {model.kind === 'chat' && (
         <>
           <ContextField
+            // Closing the options forgets that the user was in Custom: a stored 32k reads as 32k when reopened.
+            key={String(expanded)}
             value={options?.context}
             auto={model.context?.context ?? fallbackContext}
             onCommit={(context) => onChange(withFields(options, { context }))}

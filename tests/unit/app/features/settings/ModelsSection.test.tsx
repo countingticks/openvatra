@@ -595,7 +595,7 @@ describe('Settings → Models', () => {
         })
 
         it('asks about a typed size once, 300 ms after the last keystroke', async () => {
-          const { coreHttp, group } = await openSized({ [qwen.id]: { context: 32768 } })
+          const { coreHttp, group } = await openSized({ [qwen.id]: { context: 40000 } })
           await within(group).findByText(/fits on your GPU/)
           const input = within(group).getByLabelText('Context size in tokens')
           const before = fitQueries(coreHttp).length
@@ -647,7 +647,7 @@ describe('Settings → Models', () => {
         const { group } = await openSized()
 
         expect(within(group).getByRole('radio', { name: 'Auto' })).toBeChecked()
-        expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('Auto')
+        expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('Automatic')
         expect(within(group).queryByLabelText('Context size in tokens')).not.toBeInTheDocument()
 
         fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.id}` }))
@@ -656,20 +656,40 @@ describe('Settings → Models', () => {
         expect(within(embedding).queryByText('Placement')).not.toBeInTheDocument()
       })
 
-      it("starts Custom from the model's auto size, and saves a typed size on Enter", async () => {
+      it('shows a stored preset on its segment, and any other size as Custom with the number', async () => {
+        const preset = await openSized({ [qwen.id]: { context: 32768 } })
+        expect(within(preset.group).getByRole('radio', { name: '32k' })).toBeChecked()
+        expect(within(preset.group).queryByLabelText('Context size in tokens')).not.toBeInTheDocument()
+        preset.unmount()
+
+        const other = await openSized({ [qwen.id]: { context: 40000 } })
+        expect(within(other.group).getByRole('radio', { name: 'Custom' })).toBeChecked()
+        expect(within(other.group).getByLabelText('Context size in tokens')).toHaveValue('40000')
+      })
+
+      it('saves a preset size at once', async () => {
+        const { coreHttp, group } = await openSized()
+
+        fireEvent.click(within(group).getByRole('radio', { name: '64k' }))
+
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { context: 65536 } })
+      })
+
+      it("starts Custom from the model's auto size and saves nothing until Enter", async () => {
         const { coreHttp, group } = await openSized()
 
         fireEvent.click(within(group).getByRole('radio', { name: 'Custom' }))
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
-        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { context: 32768 } })
 
         const input = await within(group).findByLabelText('Context size in tokens')
         expect(input).toHaveValue('32768')
+        expect(putValues(coreHttp)).toEqual([])
         fireEvent.change(input, { target: { value: '131072' } })
+        expect(putValues(coreHttp)).toEqual([])
         fireEvent.keyDown(input, { key: 'Enter' })
 
-        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(2))
-        expect(putValues(coreHttp)[1]?.options).toEqual({ [qwen.id]: { context: 131072 } })
+        await waitFor(() => expect(putValues(coreHttp)).toHaveLength(1))
+        expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { context: 131072 } })
       })
 
       it('explains a size out of range, saves nothing, and Escape puts the stored size back', async () => {
@@ -697,32 +717,37 @@ describe('Settings → Models', () => {
         expect(putValues(coreHttp)[0]?.options).toEqual({ [qwen.id]: { args: '--jinja' } })
       })
 
-      it('offers "Experts in RAM" only for a mixture-of-experts model', async () => {
+      it('offers experts on the CPU to a mixture-of-experts model and layers to the others', async () => {
+        const optionNames = (): (string | null)[] =>
+          within(screen.getByRole('listbox'))
+            .getAllByRole('option')
+            .map((option) => option.querySelector('span')?.textContent ?? null)
+
         const plain = await openSized()
         fireEvent.click(within(plain.group).getByRole('combobox', { name: 'Placement' }))
-        expect(await screen.findByRole('option', { name: 'CPU only' })).toBeInTheDocument()
-        expect(screen.queryByRole('option', { name: 'Experts in RAM' })).not.toBeInTheDocument()
-        const plainOptions = within(screen.getByRole('listbox'))
-          .getAllByRole('option')
-          .map((option) => option.textContent)
-        expect(plainOptions.at(-1)).toBe('CPU only')
-        expect(plainOptions.join()).not.toContain('much slower')
+        await screen.findByRole('option', { name: 'CPU only' })
+        expect(optionNames()).toEqual([
+          'Automatic',
+          'All on the graphics card',
+          'Some layers on the GPU',
+          'CPU only'
+        ])
         plain.unmount()
 
         const moe = await openSized({}, { ...sized, moe: true })
         fireEvent.click(within(moe.group).getByRole('combobox', { name: 'Placement' }))
-        expect(await screen.findByRole('option', { name: 'Experts in RAM' })).toBeInTheDocument()
-        expect(
-          within(screen.getByRole('listbox'))
-            .getAllByRole('option')
-            .map((option) => option.textContent)
-        ).toEqual([
-          'Auto',
-          'Whole model on GPU',
-          'Experts in RAM',
-          'CPU only',
-          'Some layers on GPU (usually much slower for this model)'
+        await screen.findByRole('option', { name: 'Experts on the CPU' })
+        expect(optionNames()).toEqual([
+          'Automatic',
+          'All on the graphics card',
+          'Experts on the CPU',
+          'CPU only'
         ])
+        moe.unmount()
+
+        const stored = await openSized({ [qwen.id]: { placement: 'layers' } }, { ...sized, moe: true })
+        fireEvent.click(within(stored.group).getByRole('combobox', { name: 'Placement' }))
+        expect(await screen.findByRole('option', { name: 'Some layers on the GPU' })).toBeInTheDocument()
       })
 
       it('saves a placement, and Auto removes it', async () => {
@@ -737,7 +762,7 @@ describe('Settings → Models', () => {
           expect(within(group).getByRole('combobox', { name: 'Placement' })).toHaveTextContent('CPU only')
         )
         fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
-        await choose('Auto')
+        await choose('Automatic')
         await waitFor(() => expect(putValues(coreHttp)).toHaveLength(2))
         expect(putValues(coreHttp)[1]?.options).toEqual({})
       })

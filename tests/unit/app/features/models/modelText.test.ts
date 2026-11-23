@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { Choice } from '@app/core/generated'
 import type { ModelInfo } from '@app/core/types'
-import { failureReason, fitHint, formatContext, modelDetail, stateDot } from '@app/features/models/modelText'
+import {
+  failureReason,
+  fitHint,
+  formatContext,
+  modelDetail,
+  shortContext,
+  stateDot
+} from '@app/features/models/modelText'
 
 describe('failureReason', () => {
   it.each([
@@ -34,6 +41,15 @@ describe('formatContext', () => {
     [40000, '40,000']
   ])('writes %i as %s', (tokens, text) => {
     expect(formatContext(tokens)).toBe(text)
+  })
+})
+
+describe('shortContext', () => {
+  it.each([
+    [32768, '32k'],
+    [50000, '50,000']
+  ])('writes %i as %s', (tokens, text) => {
+    expect(shortContext(tokens)).toBe(text)
   })
 })
 
