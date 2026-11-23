@@ -46,10 +46,11 @@ const event = (type: string, seq: number, data: object, stream = 'run:r1'): Even
 function show(
   chats: ChatItem[],
   saved: { lastRoute?: string } = {},
-  omit: readonly OptionalMember[] = []
+  omit: readonly OptionalMember[] = [],
+  storage: Record<string, string> = {}
 ): ReturnType<typeof renderWithStore> {
   // A chat model, so the Chat tab shows the chat rather than the welcome card.
-  const rendered = renderWithStore(<Shell />, saved, { models: [tiny], omit })
+  const rendered = renderWithStore(<Shell />, saved, { models: [tiny], omit, storage })
   rendered.coreHttp.answer('/api/chats', { seq: 1, chats })
   for (const item of chats) {
     rendered.coreHttp.answer(`/api/chats/${item.id}`, { seq: 1, chat: item })
@@ -139,6 +140,119 @@ describe('ChatList', () => {
     await waitFor(() => expect(row('Trip to Cluj')).toHaveAccessibleName('Trip to Cluj answering'))
     expect(screen.getByRole('heading', { level: 1, name: 'Trip to Cluj' })).toBeInTheDocument()
     expect(rowNames()).toEqual(['Trip to Cluj'])
+  })
+})
+
+describe('date groups', () => {
+  const day = 24 * 3_600_000
+  const now = new Date(2026, 10, 18, 15, 30).getTime()
+  const dated = [
+    chat('c3', 'Fresh chat', { updatedAt: now - 3_600_000 }),
+    chat('c2', 'Mid week', { updatedAt: now - 3 * day }),
+    chat('c1', 'Ancient', { updatedAt: now - 30 * day })
+  ]
+  const headers = (): string[] =>
+    within(chatList())
+      .getAllByRole('button', { expanded: true })
+      .concat(within(chatList()).queryAllByRole('button', { expanded: false }))
+      .filter((button) => !button.getAttribute('aria-label')?.startsWith('Actions for'))
+      .map((button) => button.textContent ?? '')
+  const header = (label: string): HTMLElement => within(chatList()).getByRole('button', { name: label })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  function showDated(
+    chats: ChatItem[] = dated,
+    saved: { lastRoute?: string } = {},
+    storage: Record<string, string> = {}
+  ): ReturnType<typeof renderWithStore> {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(now)
+    return show(chats, saved, [], storage)
+  }
+
+  it('lists Today, Previous 7 days and Older in that order, each expanded', async () => {
+    showDated()
+    await screen.findByRole('list', { name: 'Chats' })
+
+    expect(headers()).toEqual(['Today', 'Previous 7 days', 'Older'])
+    for (const label of ['Today', 'Previous 7 days', 'Older']) {
+      expect(header(label)).toHaveAttribute('aria-expanded', 'true')
+    }
+    expect(within(screen.getByRole('list', { name: 'Today' })).getByTitle('Fresh chat')).toBeInTheDocument()
+  })
+
+  it('has no header for a group without chats', async () => {
+    showDated([dated[0]])
+    await screen.findByRole('list', { name: 'Chats' })
+
+    expect(headers()).toEqual(['Today'])
+  })
+
+  it('keeps every row under the Chats list for chats of any age', async () => {
+    showDated([chat('c1', 'Trip to Cluj')])
+    await screen.findByRole('list', { name: 'Chats' })
+
+    expect(within(screen.getByRole('list', { name: 'Older' })).getAllByRole('button')).not.toHaveLength(0)
+    expect(rowNames()).toEqual(['Trip to Cluj'])
+  })
+
+  it('folds a group, hiding its rows, and remembers it', async () => {
+    const rendered = showDated()
+    await screen.findByRole('list', { name: 'Chats' })
+
+    fireEvent.click(header('Previous 7 days'))
+    expect(header('Previous 7 days')).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByRole('list', { name: 'Previous 7 days' })).not.toBeInTheDocument()
+    expect(rowNames()).toEqual(['Fresh chat', 'Ancient'])
+    expect(rendered.platform.storage.set).toHaveBeenLastCalledWith('chat.groups.folded', '["week"]')
+
+    fireEvent.click(header('Previous 7 days'))
+    expect(header('Previous 7 days')).toHaveAttribute('aria-expanded', 'true')
+    expect(rendered.platform.storage.set).toHaveBeenLastCalledWith('chat.groups.folded', null)
+  })
+
+  it('still shows the open chat of a folded group, and only that one', async () => {
+    const chats = [...dated, chat('c4', 'Also this week', { updatedAt: now - 2 * day })]
+    showDated(chats, { lastRoute: 'chat/c2' })
+    await screen.findByRole('list', { name: 'Chats' })
+
+    fireEvent.click(header('Previous 7 days'))
+
+    expect(rowNames()).toEqual(['Fresh chat', 'Mid week', 'Ancient'])
+  })
+
+  it.each([
+    ['["older"]', ['Fresh chat', 'Mid week'], 'false'],
+    ['not json', ['Fresh chat', 'Mid week', 'Ancient'], 'true']
+  ])('starts from the stored folds %s', async (stored, names, expanded) => {
+    showDated(dated, {}, { 'chat.groups.folded': stored })
+    await screen.findByRole('list', { name: 'Chats' })
+
+    expect(header('Older')).toHaveAttribute('aria-expanded', expanded)
+    expect(rowNames()).toEqual(names)
+  })
+
+  it('shows search hits with no group headers', async () => {
+    const rendered = showDated()
+    await screen.findByRole('list', { name: 'Chats' })
+    rendered.coreHttp.respond('GET', '/api/chats', (request) => ({
+      body: {
+        seq: 1,
+        chats: new URL(request.url).searchParams.has('q') ? [dated[2]] : dated
+      }
+    }))
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+    vi.setSystemTime(now)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search chats' }), { target: { value: 'anc' } })
+    act(() => vi.advanceTimersByTime(200))
+
+    await vi.waitFor(() => expect(rowNames()).toEqual(['Ancient']))
+    expect(screen.queryByRole('button', { name: 'Older' })).not.toBeInTheDocument()
   })
 })
 
