@@ -453,9 +453,15 @@ func measuredNeeds(rows []store.ModelFit, needs fit.Needs) fit.Needs {
 }
 
 // measuredNeedsFor reads the measured rows of the model spec starts, once per call. Without a database, or when they
-// can't be read, it is plain needs.
+// can't be read, it is plain needs. The estimate always sees spec's arguments (the KV cache types): fit builds its
+// own specs without them.
 func measuredNeedsFor(db *store.Store, needs fit.Needs, logger *slog.Logger) needsFor {
 	return func(spec engine.Spec) fit.Needs {
+		inner := needs
+		needs := func(s engine.Spec) engine.Resources {
+			s.Args = spec.Args
+			return inner(s)
+		}
 		if db == nil {
 			return needs
 		}

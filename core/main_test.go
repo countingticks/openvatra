@@ -995,6 +995,43 @@ func TestMeasuredNeeds(t *testing.T) {
 	})
 }
 
+func TestMeasuredNeedsGivesTheEstimateTheModelsArgs(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	want := []string{"-ctk", "f16"}
+	var seen [][]string
+	rec := func(s engine.Spec) engine.Resources {
+		seen = append(seen, s.Args)
+		return engine.Resources{}
+	}
+	path := filepath.Join(t.TempDir(), "m.gguf")
+	if err := os.WriteFile(path, make([]byte, 10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db, err := store.Open(t.TempDir(), event.NewBus(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	cases := map[string]struct {
+		db   *store.Store
+		path string
+	}{
+		"no database":          {nil, ""},
+		"unreadable file":      {db, filepath.Join(t.TempDir(), "missing.gguf")},
+		"a store with no rows": {db, path},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			seen = nil
+			spec := engine.Spec{Model: "m", Path: c.path, Args: want}
+			measuredNeedsFor(c.db, rec, logger)(spec)(engine.Spec{Context: 8192})
+			if len(seen) != 1 || !slices.Equal(seen[0], want) {
+				t.Fatalf("the estimate saw args %v, want [%v]", seen, want)
+			}
+		})
+	}
+}
+
 // measuredFixture is a chat model with a real file, an empty store, and the report of a 24 GiB GPU.
 type measuredFixture struct {
 	db     *store.Store

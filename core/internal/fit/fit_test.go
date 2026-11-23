@@ -42,8 +42,8 @@ func TestChoose(t *testing.T) {
 		want      Choice // only the fields set here are compared; Layers is checked by layersBetween
 		layers    bool   // Layers must be between 1 and the model's layers - 1
 	}{
-		{"moe auto: experts at 64K", moe, machine(12, 64), 0, "auto", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
-		{"dense auto: gpu at 32K", small, machine(12, 32), 0, "auto", Choice{Context: 32768, Placement: PlaceGPU, Fit: FitFits}, false},
+		{"moe auto: experts at 128K", moe, machine(12, 64), 0, "auto", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"dense auto: gpu at 64K", small, machine(12, 32), 0, "auto", Choice{Context: 65536, Placement: PlaceGPU, Fit: FitFits}, false},
 		{"too big for VRAM: layers at 8K", big, machine(12, 64), 0, "auto", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"no GPU: cpu at 8K", big, machine(0, 64), 0, "auto", Choice{Context: 8192, Placement: PlaceCPU, Fit: FitSlower}, false},
 		{"no GPU, little RAM: too big", big, machine(0, 16), 0, "auto", Choice{Context: 8192, Placement: PlaceCPU, Fit: FitTooBig}, false},
@@ -57,9 +57,9 @@ func TestChoose(t *testing.T) {
 		{"a number with auto placement keeps the gpu when it fits", small, machine(12, 32), 8192, "auto", Choice{Context: 8192, Placement: PlaceGPU, Fit: FitFits}, false},
 		{"a number with auto placement offloads layers", big, machine(12, 64), 8192, "auto", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"a number with auto placement that fits nowhere is too big", big, machine(12, 8), 8192, "auto", Choice{Context: 8192, Placement: PlaceLayers, Fit: FitTooBig}, true},
-		{"auto context with experts", moe, machine(12, 64), 0, "experts", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
-		{"auto context with cpu", small, machine(12, 64), 0, "cpu", Choice{Context: 131072, Placement: PlaceCPU, Fit: FitSlower}, false},
-		{"auto context with layers", small, machine(12, 32), 0, "layers", Choice{Context: 65536, Placement: PlaceLayers, Fit: FitSlower}, true},
+		{"auto context with experts", moe, machine(12, 64), 0, "experts", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"auto context with cpu", small, machine(12, 64), 0, "cpu", Choice{Context: 262144, Placement: PlaceCPU, Fit: FitSlower}, false},
+		{"auto context with layers", small, machine(12, 32), 0, "layers", Choice{Context: 131072, Placement: PlaceLayers, Fit: FitSlower}, true},
 		{"nothing fits with a fixed placement: the smallest step", big, machine(12, 64), 0, "gpu", Choice{Context: 8192, Placement: PlaceGPU, Fit: FitTooBig}, false},
 		{"both fixed", small, machine(12, 32), 16384, "cpu", Choice{Context: 16384, Placement: PlaceCPU, Fit: FitSlower}, false},
 		{"experts on a dense model is gpu", small, machine(12, 32), 8192, "experts", Choice{Context: 8192, Placement: PlaceGPU, Fit: FitFits}, false},

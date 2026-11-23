@@ -150,8 +150,8 @@ func TestNeeds(t *testing.T) {
 	}
 	moe := dense
 	moe.ExpertBytes = 3000 * mib
-	// 8192 × 32 × 4 × 256 × 2 bytes
-	const kv = 8192 * 32 * 4 * 256 * 2
+	// q8_0 keys and values: 8192 × 32 × 4 × (128 × 34 + 128 × 34) / 32 bytes
+	const kv = 8192 * 32 * 4 * (128*34 + 128*34) / 32
 	const fixed = 100*mib + kv + computeAllowance
 
 	spec := func(s engine.Shape, p engine.Placement) engine.Spec {
@@ -178,6 +178,33 @@ func TestNeeds(t *testing.T) {
 		{"embedding", engine.Spec{Shape: dense, Context: 8192, Embedding: true}, engine.Resources{}},
 		{"zero context", engine.Spec{Shape: dense}, engine.Resources{}},
 	}
+	qwen := engine.Shape{
+		FileBytes: 4000 * mib, ProjectorBytes: 100 * mib, Layers: 40, AttentionLayers: 10, KVHeads: 2, KeyLen: 256, ValueLen: 256,
+		MaxContext: 262144,
+	}
+	withKV := func(s engine.Shape, args []string, kvBytes int64) struct {
+		name string
+		spec engine.Spec
+		want engine.Resources
+	} {
+		return struct {
+			name string
+			spec engine.Spec
+			want engine.Resources
+		}{fmt.Sprintf("qwen args %v", args), engine.Spec{Shape: s, Context: 65536, Args: args},
+			engine.Resources{VRAMBytes: 4000*mib + 100*mib + kvBytes + computeAllowance, Known: true, Source: "estimate"}}
+	}
+	all := qwen
+	all.AttentionLayers = 0
+	tests = append(tests,
+		withKV(qwen, nil, 713031680),
+		withKV(qwen, []string{"-ctk", "f16", "-ctv", "f16"}, 1342177280),
+		withKV(qwen, []string{"--cache-type-k=q4_0"}, 545259520),
+		withKV(qwen, []string{"-ctk", "iq4_nl"}, 1027604480),
+		withKV(qwen, []string{"-ctk", "f16", "-ctk", "q8_0"}, 713031680),
+		withKV(qwen, []string{"-ctk"}, 713031680),
+		withKV(all, nil, 2852126720),
+	)
 	for field, zero := range map[string]func(*engine.Shape){
 		"FileBytes":  func(s *engine.Shape) { s.FileBytes = 0 },
 		"Layers":     func(s *engine.Shape) { s.Layers = 0 },

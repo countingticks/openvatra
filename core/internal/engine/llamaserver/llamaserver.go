@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/logs"
@@ -97,16 +98,21 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Instance, 
 // computeAllowance is what llama-server's compute buffers take on top of weights and KV cache.
 const computeAllowance int64 = 512 << 20
 
-// Needs estimates the memory spec takes: the weights and projector, an f16 KV cache for the context size and a
-// fixed compute allowance, split by the placement. Unknown (zero Resources) when the shape or context is missing.
-// The KV size overestimates hybrid and sliding-window models; measurements correct it later.
+// Needs estimates the memory spec takes: the weights and projector, a KV cache for the attention layers at the cache
+// types in spec.Args (q8_0 by default) and a fixed compute allowance, split by the placement. Unknown (zero
+// Resources) when the shape or context is missing. It leaves out recurrent state; measurements correct it later.
 func (e *Engine) Needs(spec engine.Spec) engine.Resources {
 	s := spec.Shape
 	if spec.Embedding || spec.Context <= 0 || s.FileBytes == 0 || s.Layers == 0 || s.KVHeads == 0 ||
 		s.KeyLen == 0 || s.ValueLen == 0 || s.MaxContext == 0 {
 		return engine.Resources{}
 	}
-	kv := int64(spec.Context) * int64(s.Layers) * int64(s.KVHeads) * int64(s.KeyLen+s.ValueLen) * 2
+	attn := s.AttentionLayers
+	if attn <= 0 {
+		attn = s.Layers
+	}
+	kNum, vNum := cacheNum(argValue(spec.Args, "-ctk", "--cache-type-k")), cacheNum(argValue(spec.Args, "-ctv", "--cache-type-v"))
+	kv := int64(spec.Context) * int64(attn) * int64(s.KVHeads) * (int64(s.KeyLen)*kNum + int64(s.ValueLen)*vNum) / 32
 	fixed := s.ProjectorBytes + kv + computeAllowance
 	r := engine.Resources{Known: true, Source: "estimate"}
 	switch spec.Placement.Kind {
@@ -122,6 +128,38 @@ func (e *Engine) Needs(spec engine.Spec) engine.Resources {
 		r.VRAMBytes = s.FileBytes + fixed
 	}
 	return r
+}
+
+// cacheNum is a cache type's bytes per 32 values over 1 (f16 = 64); an unknown type counts as f16.
+func cacheNum(t string) int64 {
+	switch t {
+	case "q8_0":
+		return 34
+	case "q4_0":
+		return 18
+	}
+	return 64
+}
+
+// argValue is the value of the last occurrence of either flag, as "-f v" or "-f=v"; q8_0 (core's default) when
+// absent. A flag at the end with no value is ignored.
+func argValue(args []string, short, long string) string {
+	v := "q8_0"
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == short || a == long:
+			if i+1 < len(args) {
+				v = args[i+1]
+				i++
+			}
+		case strings.HasPrefix(a, short+"="):
+			v = strings.TrimPrefix(a, short+"=")
+		case strings.HasPrefix(a, long+"="):
+			v = strings.TrimPrefix(a, long+"=")
+		}
+	}
+	return v
 }
 
 func (e *Engine) Check(context.Context) seam.Health {

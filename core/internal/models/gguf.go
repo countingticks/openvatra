@@ -75,6 +75,7 @@ var encoderArchitectures = map[string]bool{
 var shapeSuffixes = []string{
 	".context_length", ".block_count", ".embedding_length", ".expert_count",
 	".attention.head_count", ".attention.head_count_kv", ".attention.key_length", ".attention.value_length",
+	".full_attention_interval",
 }
 
 func isShapeKey(key string) bool {
@@ -91,6 +92,10 @@ type tensorRef struct {
 	offset uint64
 	expert bool
 }
+
+// attentionLayersSuffix marks, in header.ints, how many entries of a head_count_kv array are positive: the layers
+// that keep a KV cache.
+const attentionLayersSuffix = "#positive"
 
 // header is the little we need from a GGUF file.
 type header struct {
@@ -263,28 +268,29 @@ func (g *ggufReader) readInt(t uint32) (int64, bool, error) {
 // readHeader parses the key/value section and the tensor table of a GGUF stream.
 func readHeader(r io.Reader) (header, error) { return parseHeader(r, true) }
 
-// readArrayMax reads an array and returns its largest integer.
-func (g *ggufReader) readArrayMax() (int64, bool, error) {
+// readArrayMax reads an array and returns its largest integer and how many entries are positive.
+func (g *ggufReader) readArrayMax() (best int64, positive int, found bool, err error) {
 	et, err := g.u32()
 	if err != nil {
-		return 0, false, err
+		return 0, 0, false, err
 	}
 	count, err := g.u64()
 	if err != nil {
-		return 0, false, err
+		return 0, 0, false, err
 	}
-	var best int64
-	found := false
 	for i := uint64(0); i < count; i++ {
 		v, ok, err := g.readInt(et)
 		if err != nil {
-			return 0, false, err
+			return 0, 0, false, err
 		}
 		if ok && (!found || v > best) {
 			best, found = v, true
 		}
+		if ok && v > 0 {
+			positive++
+		}
 	}
-	return best, found, nil
+	return best, positive, found, nil
 }
 
 // readTable reads the tensor table that follows the keys. Any failure is the table's alone.
@@ -384,12 +390,13 @@ func parseHeader(r io.Reader, requireArch bool) (header, error) {
 				}
 				break
 			}
-			v, ok, err := g.readArrayMax()
+			v, positive, ok, err := g.readArrayMax()
 			if err != nil {
 				return h, err
 			}
 			if ok {
 				h.ints[key] = v
+				h.ints[key+attentionLayersSuffix] = int64(positive)
 			}
 		case isShapeKey(key):
 			v, ok, err := g.readInt(t)
@@ -456,6 +463,12 @@ func (h header) shape(fileSize int64) engine.Shape {
 	headCount, _ := get(".attention.head_count")
 	if s.KVHeads, ok = get(".attention.head_count_kv"); !ok {
 		s.KVHeads = headCount
+	}
+	// Layers that keep a KV cache: the array's positive entries win over the interval (hybrid models).
+	if n, ok := get(".attention.head_count_kv" + attentionLayersSuffix); ok {
+		s.AttentionLayers = n
+	} else if k, _ := get(".full_attention_interval"); k > 0 {
+		s.AttentionLayers = s.Layers / k
 	}
 	embedding, _ := get(".embedding_length")
 	fallback := 0

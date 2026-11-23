@@ -46,6 +46,7 @@ type Shape struct {
 	FileBytes, ProjectorBytes, ExpertBytes int64
 	Layers, KVHeads, KeyLen, ValueLen      int
 	MaxContext                             int
+	AttentionLayers                        int // layers that keep a KV cache; 0 = all of Layers
 }
 
 type Resources struct {
