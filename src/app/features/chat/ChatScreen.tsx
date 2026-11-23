@@ -185,7 +185,6 @@ function ChatView(): React.JSX.Element {
             </div>
             <Composer
               chatId={chatId}
-              model={model}
               answering={answering}
               onSend={send}
               onStop={stop}

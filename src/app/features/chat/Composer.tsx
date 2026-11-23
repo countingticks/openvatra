@@ -17,7 +17,6 @@ interface KeyedState {
 
 interface ComposerProps {
   chatId: string | undefined
-  model: string | null
   /** The chat's active run is queued or running: the button stops it, and Enter queues the message. */
   answering: boolean
   onSend(text: string, requestId: string): Promise<void>
@@ -27,14 +26,7 @@ interface ComposerProps {
 }
 
 /** The message box: a growing textarea with Send (or Stop while answering), its draft kept per chat. */
-export function Composer({
-  chatId,
-  model,
-  answering,
-  onSend,
-  onStop,
-  footer
-}: ComposerProps): React.JSX.Element {
+export function Composer({ chatId, answering, onSend, onStop, footer }: ComposerProps): React.JSX.Element {
   const { storage } = usePlatform()
   const key = draftKey(chatId)
   const [text, setText] = useState(() => storage.get(key) ?? '')
@@ -118,7 +110,7 @@ export function Composer({
           ref={field}
           rows={1}
           value={text}
-          placeholder={`Reply to ${model ?? 'the model'}…`}
+          placeholder="Reply…"
           onChange={(event) => change(event.target.value)}
           onKeyDown={onKeyDown}
           // Grows with its text up to 8 lines (22 px each, plus padding), then scrolls.
