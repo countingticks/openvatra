@@ -408,3 +408,30 @@ func TestKindOfCachesTheShape(t *testing.T) {
 		t.Fatalf("Layers = %d, want 0 after the file changed", l)
 	}
 }
+
+func TestDiscoverReadsGeneralName(t *testing.T) {
+	root := t.TempDir()
+	put := func(name string, data []byte) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), data, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("named.gguf", buildHeader(3, strKV("general.architecture", "llama"), strKV("general.name", "  Gemma 3 12B ")))
+	put("odd.gguf", buildHeader(3, strKV("general.architecture", "llama"), u32KV("general.name", 7)))
+
+	got, err := Discover(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, m := range got {
+		names[m.ID] = m.GeneralName
+		if m.Kind != KindChat {
+			t.Errorf("%s: kind %q, want chat", m.ID, m.Kind)
+		}
+	}
+	if names["named"] != "Gemma 3 12B" || names["odd"] != "" {
+		t.Fatalf("general names = %v", names)
+	}
+}

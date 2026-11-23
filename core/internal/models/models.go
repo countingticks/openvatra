@@ -33,6 +33,12 @@ type Model struct {
 	// Shape is what the header says about the model's size and layout (zero fields are unknown); callers ignore it
 	// for embedding and unreadable models.
 	Shape engine.Shape
+	// GeneralName is the header's general.name, trimmed; "" when absent or unreadable.
+	GeneralName string
+	// Name, Quant and Tags are set by Describe.
+	Name  string
+	Quant string // "" = unknown
+	Tags  []string
 }
 
 // ResolveEmbedding returns the id of the embedding model that serves: the chosen one if it exists and is an
@@ -137,7 +143,7 @@ func Discover(root string) ([]Model, error) {
 		}
 		// Read the header only for models that stay listed. Rerankers are hidden until a RAG step can use one.
 		info := inspect(m.Path, true)
-		m.Kind, m.Error, m.Shape = info.kind, info.msg, info.shape
+		m.Kind, m.Error, m.Shape, m.GeneralName = info.kind, info.msg, info.shape, info.name
 		if n := partCount[m.Path]; n > 1 && m.Kind != KindUnreadable {
 			m.Shape = withParts(m, n, info)
 		}

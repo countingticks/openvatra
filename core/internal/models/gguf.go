@@ -100,6 +100,7 @@ const attentionLayersSuffix = "#positive"
 // header is the little we need from a GGUF file.
 type header struct {
 	architecture string
+	name         string           // general.name, trimmed
 	pooling      map[string]int64 // "<arch>.pooling_type" -> value; the architecture key may come after it
 	ints         map[string]int64 // shape keys by full key; head_count_kv holds the largest of an array
 
@@ -375,6 +376,12 @@ func parseHeader(r io.Reader, requireArch bool) (header, error) {
 			if h.architecture, err = g.str(); err != nil {
 				return h, err
 			}
+		case key == "general.name" && t == typeString:
+			n, err := g.str()
+			if err != nil {
+				return h, err
+			}
+			h.name = strings.TrimSpace(n)
 		case strings.HasSuffix(key, ".pooling_type"):
 			v, ok, err := g.readInt(t)
 			if err != nil {
@@ -502,6 +509,7 @@ type fileInfo struct {
 	rawExperts int64
 	tableOK    bool
 	moe        bool // expert_count > 0
+	name       string
 }
 
 // classify reads one file's header and returns its kind and shape, or KindUnreadable with the reason.
@@ -516,7 +524,7 @@ func classify(path string, size int64, requireArch bool) fileInfo {
 		return fileInfo{kind: KindUnreadable, msg: err.Error()}
 	}
 	raw, ok := h.expertBytes(size)
-	return fileInfo{kind: h.kind(), shape: h.shape(size), rawExperts: raw, tableOK: ok, moe: h.ints[h.architecture+".expert_count"] > 0}
+	return fileInfo{kind: h.kind(), shape: h.shape(size), rawExperts: raw, tableOK: ok, moe: h.ints[h.architecture+".expert_count"] > 0, name: h.name}
 }
 
 type cacheKey struct {
