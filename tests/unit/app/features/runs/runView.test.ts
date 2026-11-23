@@ -217,6 +217,85 @@ describe('applyRunEvent', () => {
     expect(applyRunEvent(started, stale)).toBe(started)
   })
 
+  describe('the context message count', () => {
+    const stats = {
+      promptTokens: 10,
+      answerTokens: 2,
+      exact: true,
+      tokensPerSecond: 0,
+      firstTokenMs: 0,
+      durationMs: 0,
+      contextSize: 4096,
+      reasoningMs: 0
+    }
+    const base = (count: number, items = started.items): Transcript => ({
+      ...started,
+      items,
+      context: { ...started.context, parts: { ...started.context.parts, messageCount: count } }
+    })
+    const apply = (
+      from: Transcript,
+      type: string,
+      seq: number,
+      data: object,
+      stream = 'run:r1'
+    ): Transcript => applyRunEvent(from, { type, stream, seq, v: 1, time: 0, data } as Event)
+    const count = (transcript: Transcript): number => transcript.context.parts.messageCount
+
+    it('input.received adds one', () => {
+      expect(count(apply(base(2), 'input.received', 4, { chatId: 'c1', requestId: 'x', text: 'B' }))).toBe(3)
+    })
+
+    it('message.completed adds one with text, and none with only reasoning', () => {
+      const completed = (parts: object[]): Transcript =>
+        apply(base(1), 'message.completed', 4, { chatId: 'c1', parts, stats, partial: false })
+
+      expect(count(completed([{ kind: 'text', text: 'Hi' }]))).toBe(2)
+      expect(count(completed([{ kind: 'reasoning', text: 'hmm' }]))).toBe(1)
+    })
+
+    it('a failed run.finished that marks a partial answer with text takes one off', () => {
+      const partial = base(2, [
+        started.items[0],
+        { kind: 'answer', seq: 3, runId: 'r1', parts: [{ kind: 'text', text: 'a' }], partial: true }
+      ])
+
+      const failed = apply(partial, 'run.finished', 4, {
+        chatId: 'c1',
+        state: 'failed',
+        error: { code: 'backend_failed', message: 'It stopped.' }
+      })
+
+      expect(count(failed)).toBe(1)
+    })
+
+    it("turn.retracted removes its run's input and answer", () => {
+      expect(count(apply(base(2), 'turn.retracted', 4, { runId: 'r1' }, 'chat:c1'))).toBe(0)
+    })
+
+    it('compaction.completed sets the count to the items kept', () => {
+      const items = [
+        ...started.items,
+        { kind: 'input' as const, seq: 4, runId: 'r2', text: 'B' },
+        { kind: 'answer' as const, seq: 5, runId: 'r2', parts: [{ kind: 'text' as const, text: 'b' }] }
+      ]
+
+      const compacted = apply(base(4, items), 'compaction.completed', 6, {
+        chatId: 'c1',
+        firstKeptSeq: 4,
+        summary: 's',
+        tokensBefore: 100,
+        tokensAfter: 20
+      })
+
+      expect(count(compacted)).toBe(2)
+    })
+
+    it('never goes below 0', () => {
+      expect(count(apply(base(0), 'turn.retracted', 4, { runId: 'r1' }, 'chat:c1'))).toBe(0)
+    })
+  })
+
   it('an ephemeral message.delta returns the very same object', () => {
     const delta: Event = { type: 'message.delta', stream: 'run:r1', v: 1, time: 0, data: { text: 'x', n: 1 } }
 

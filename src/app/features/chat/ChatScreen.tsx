@@ -21,7 +21,7 @@ import { Ember } from '@app/ui/Ember'
 import { OverlayScroll } from '@app/ui/OverlayScroll'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
 import { Composer } from './Composer'
-import { ContextMeter } from './ContextMeter'
+import { ContextPopover } from './ContextPopover'
 import { useAnnouncer } from './useAnnouncer'
 import { useChatModel } from './useChatModel'
 import { useFollowEnd } from './useFollowEnd'
@@ -191,7 +191,7 @@ function ChatView(): React.JSX.Element {
               footer={
                 <div className="flex items-center justify-end gap-1 px-1.5">
                   <ModelButton model={model} onPick={pick} />
-                  <ContextMeter used={context?.used ?? 0} size={context?.size ?? 0} />
+                  <ContextPopover context={context} />
                 </div>
               }
             />

@@ -435,13 +435,50 @@ describe('ChatScreen', () => {
       }
     })
 
-    expect(await screen.findByText('3.1k / 32k context')).toBeInTheDocument()
-    expect(screen.getByLabelText('3174 of 32768 tokens of context used')).toBeInTheDocument()
+    expect(await screen.findByText('3.1k / 32k')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Context: 3,174 of 32,768 tokens used. Show details' })
+    ).toBeInTheDocument()
 
     act(() => {
       store.dispatch(navigated({ tab: 'chat' }))
     })
-    expect(screen.queryByText(/context$/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Context:/ })).not.toBeInTheDocument()
+  })
+
+  it('closes the model popover when the context popover opens, and the other way round', async () => {
+    show({
+      open: {
+        transcript: transcript({
+          context: {
+            used: 3174,
+            size: 32768,
+            parts: { system: 900, messages: 0, messageCount: 2, search: 0, files: 0 }
+          }
+        })
+      }
+    })
+    // Each popover is a press outside the other; a real press is pointer events, then the click.
+    const press = (target: HTMLElement): void => {
+      fireEvent.pointerDown(target)
+      fireEvent.mouseDown(target)
+      fireEvent.pointerUp(target)
+      fireEvent.mouseUp(target)
+      fireEvent.click(target)
+    }
+    const models = (): HTMLElement | null => screen.queryByRole('dialog', { name: 'Models service' })
+    const context = (): HTMLElement | null => screen.queryByRole('dialog', { name: 'Context usage' })
+
+    await screen.findByRole('button', { name: /^Context:/ })
+    fireEvent.click(screen.getByRole('button', { name: /^Model:/ }))
+    await screen.findByRole('dialog', { name: 'Models service' })
+    press(screen.getByRole('button', { name: /^Context:/, hidden: true }))
+    await screen.findByRole('dialog', { name: 'Context usage' })
+    await waitFor(() => expect(models()).not.toBeInTheDocument())
+
+    press(screen.getByRole('button', { name: /^Model:/, hidden: true }))
+    await screen.findByRole('dialog', { name: 'Models service' })
+    await waitFor(() => expect(context()).not.toBeInTheDocument())
   })
 
   it("follows the answer's token counts into the meter", async () => {
@@ -461,7 +498,7 @@ describe('ChatScreen', () => {
         })
       }
     })
-    await screen.findByText('20 / 32k context')
+    await screen.findByText('20 / 32k')
 
     await push(
       event('message.completed', 3, {
@@ -472,7 +509,7 @@ describe('ChatScreen', () => {
       })
     )
 
-    expect(await screen.findByText('1000 / 32k context')).toBeInTheDocument()
+    expect(await screen.findByText('1000 / 32k')).toBeInTheDocument()
   })
 
   it('continues an interrupted run', async () => {
