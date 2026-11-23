@@ -8,6 +8,12 @@ const nearEnd = 48
 
 const atEnd = (el: HTMLElement): boolean => el.scrollHeight - el.scrollTop - el.clientHeight <= nearEnd
 
+/** How far up the reader is, as a share of the view, before the scroll-to-latest button shows. */
+const farFromEnd = 0.6
+
+const farAway = (el: HTMLElement): boolean =>
+  el.scrollHeight - el.scrollTop - el.clientHeight > farFromEnd * el.clientHeight
+
 function scrollToEnd(el: HTMLElement, behavior?: 'smooth'): void {
   if (behavior) el.scrollTo({ top: el.scrollHeight, behavior })
   else el.scrollTop = el.scrollHeight
@@ -17,8 +23,9 @@ function scrollToEnd(el: HTMLElement, behavior?: 'smooth'): void {
 export function useFollowEnd(
   scroller: React.RefObject<HTMLElement | null>,
   chatId: string | undefined
-): { following: boolean; jumpToLatest(): void } {
+): { following: boolean; showLatest: boolean; jumpToLatest(): void } {
   const [following, setFollowing] = useState(true)
+  const [showLatest, setShowLatest] = useState(false)
   // Refs as well as state: the observers read the latest values without being set up again on every scroll.
   const followingRef = useRef(true)
   // A smooth jump passes through positions above the end; those scroll events are not the reader leaving it.
@@ -35,6 +42,7 @@ export function useFollowEnd(
   if (shownChat !== chatId) {
     setShownChat(chatId)
     setFollowing(true)
+    setShowLatest(false)
   }
   useEffect(() => {
     const el = scroller.current
@@ -55,6 +63,7 @@ export function useFollowEnd(
       }
       followingRef.current = end
       setFollowing(end)
+      setShowLatest(farAway(el))
     }
     el.addEventListener('scroll', onScroll)
     const content = el.firstElementChild
@@ -62,6 +71,7 @@ export function useFollowEnd(
       content && typeof ResizeObserver !== 'undefined'
         ? new ResizeObserver(() => {
             if (followingRef.current) scrollToEnd(el)
+            if (!jumping.current) setShowLatest(farAway(el))
           })
         : null
     if (content) observer?.observe(content)
@@ -81,7 +91,8 @@ export function useFollowEnd(
       scrollToEnd(el, 'smooth')
     }
     follow(true)
+    setShowLatest(false)
   }
 
-  return { following, jumpToLatest }
+  return { following, showLatest, jumpToLatest }
 }

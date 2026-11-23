@@ -144,7 +144,7 @@ export function Transcript({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-7">
+    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6">
       {view.entries.map((entry) => (
         <div key={entry.key}>{render(entry)}</div>
       ))}

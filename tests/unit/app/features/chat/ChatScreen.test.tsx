@@ -301,6 +301,41 @@ describe('ChatScreen', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Answer finished'))
   })
 
+  it('offers Scroll to latest while scrolled away, with a dot while text is arriving', async () => {
+    const running = run({ state: 'running' })
+    const { push } = show({
+      open: {
+        transcript: transcript({
+          seq: 4,
+          items: [input(1, 'first'), answer(2, 'earlier answer'), input(4, 'second')],
+          runs: [running],
+          activeRun: running
+        })
+      }
+    })
+    await within(conversation()).findByText('earlier answer')
+    Object.defineProperty(conversation(), 'scrollHeight', { value: 2000, configurable: true })
+    Object.defineProperty(conversation(), 'clientHeight', { value: 400, configurable: true })
+    conversation().scrollTop = 0
+    fireEvent.scroll(conversation())
+
+    expect(
+      await screen.findByRole('button', { name: 'Scroll to latest, new text below' })
+    ).toBeInTheDocument()
+
+    await push(
+      event('message.completed', 5, {
+        chatId: 'c1',
+        parts: [{ kind: 'text', text: 'new answer' }],
+        stats,
+        partial: false
+      }),
+      event('run.finished', 6, { chatId: 'c1', state: 'done' })
+    )
+
+    expect(await screen.findByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
+  })
+
   it("announces a failed run's message", async () => {
     const running = run({ state: 'running' })
     const { push } = show({
