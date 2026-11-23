@@ -52,11 +52,21 @@ const (
 	Refuse
 )
 
+// Parts is where a prompt's tokens go. System + Messages + Search + Files == Plan.Tokens, except when Messages
+// would be negative (then it is 0).
+type Parts struct {
+	System        int // the fixed prompt: FixedTokens (or its estimate) plus perMessageTokens
+	Messages      int // Tokens - System - Search - Files, never below 0; the summary counts here
+	MessageCount  int // messages sent; the summary is not a message
+	Search, Files int // 0 until Step 8
+}
+
 // Plan is the outcome of Assemble.
 type Plan struct {
 	Verdict Verdict
 	Request provider.Request // Send: Model, CacheKey and Messages (system first); other verdicts: zero
 	Tokens  int              // expected prompt size; set for every verdict
+	Parts   Parts            // where Tokens go; set for every verdict
 	CutAt   int64            // Prune: stub tool messages up to this seq; Compact: first kept message's seq
 	Err     error            // Refuse: ErrContextTooSmall or ErrMessageTooLong
 }
@@ -154,7 +164,8 @@ func Assemble(in Input, w Window) Plan {
 		}
 	}
 
-	plan := Plan{Tokens: tokens}
+	plan := Plan{Tokens: tokens, Parts: Parts{System: fixedCost, MessageCount: len(sent)}}
+	plan.Parts.Messages = max(0, tokens-plan.Parts.System-plan.Parts.Search-plan.Parts.Files)
 	if fixedCost > w.Room/2 {
 		plan.Verdict, plan.Err = Refuse, ErrContextTooSmall
 		return plan

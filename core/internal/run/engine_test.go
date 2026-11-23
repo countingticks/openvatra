@@ -775,12 +775,16 @@ func TestContextUse(t *testing.T) {
 		f := newFixture(t, providertest.Turn{Text: []string{"Hello there"}, Usage: usage})
 		ref, _ := f.say("", "hi")
 		calls := f.counter.calls()
-		used, size, err := f.eng.ContextUse(bg, ref.ChatID)
+		use, err := f.eng.ContextUse(bg, ref.ChatID)
 		if err != nil {
 			t.Fatal(err)
 		}
+		used, size := use.Used, use.Size
 		if want := 40 + budget.EstimateTokens("Hello there") + perMessageTokens; used != want || size != contextSize {
 			t.Fatalf("used %d, size %d; want %d, %d", used, size, want, contextSize)
+		}
+		if use.Parts.MessageCount != 2 || use.Parts.System+use.Parts.Messages != used {
+			t.Fatalf("parts = %+v, used %d", use.Parts, used)
 		}
 		if f.counter.calls() != calls {
 			t.Fatal("ContextUse called the counter")
@@ -791,9 +795,9 @@ func TestContextUse(t *testing.T) {
 		f := newFixture(t, answer("a"))
 		ref, _ := f.say("", "hi")
 		f.modelErrs["m1"] = provider.ErrUnknownModel
-		used, size, err := f.eng.ContextUse(bg, ref.ChatID)
-		if err != nil || size != 0 || used == 0 {
-			t.Fatalf("used %d, size %d, err %v", used, size, err)
+		use, err := f.eng.ContextUse(bg, ref.ChatID)
+		if err != nil || use.Size != 0 || use.Used == 0 {
+			t.Fatalf("use %+v, err %v", use, err)
 		}
 	})
 }

@@ -14,7 +14,7 @@ const snapshot = (seq: number): Transcript => ({
   items: [],
   runs: [],
   activeRun: null,
-  context: { used: 0, size: 0 }
+  context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
 })
 
 const event = (type: string, seq: number, data: object, stream = 'run:r1'): Event =>

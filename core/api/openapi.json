@@ -499,8 +499,40 @@
         ],
         "type": "object"
       },
+      "ContextParts": {
+        "properties": {
+          "files": {
+            "type": "integer"
+          },
+          "messageCount": {
+            "type": "integer"
+          },
+          "messages": {
+            "description": "the summary of earlier messages included",
+            "type": "integer"
+          },
+          "search": {
+            "type": "integer"
+          },
+          "system": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "system",
+          "messages",
+          "messageCount",
+          "search",
+          "files"
+        ],
+        "type": "object"
+      },
       "ContextUse": {
         "properties": {
+          "parts": {
+            "$ref": "#/components/schemas/ContextParts",
+            "description": "may sum to a little more or less than used: used is the estimate"
+          },
           "size": {
             "description": "0 when the chat's model is not installed",
             "type": "integer"
@@ -511,7 +543,8 @@
         },
         "required": [
           "used",
-          "size"
+          "size",
+          "parts"
         ],
         "type": "object"
       },

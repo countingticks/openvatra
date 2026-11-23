@@ -64,7 +64,7 @@ const transcript = (overrides: Partial<Transcript> = {}): Transcript => ({
   items: [],
   runs: [],
   activeRun: null,
-  context: { used: 0, size: 0 },
+  context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } },
   ...overrides
 })
 
@@ -378,7 +378,15 @@ describe('ChatScreen', () => {
 
   it('shows how full the context is, and nothing for a new chat', async () => {
     const { store } = show({
-      open: { transcript: transcript({ context: { used: 3174, size: 32768 } }) }
+      open: {
+        transcript: transcript({
+          context: {
+            used: 3174,
+            size: 32768,
+            parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 }
+          }
+        })
+      }
     })
 
     expect(await screen.findByText('3.1k / 32k context')).toBeInTheDocument()
@@ -399,7 +407,11 @@ describe('ChatScreen', () => {
           items: [input(2, 'hi')],
           runs: [running],
           activeRun: running,
-          context: { used: 20, size: 32768 }
+          context: {
+            used: 20,
+            size: 32768,
+            parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 }
+          }
         })
       }
     })

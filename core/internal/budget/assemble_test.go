@@ -213,3 +213,39 @@ func TestAssembleToolResults(t *testing.T) {
 		}
 	})
 }
+
+func TestAssembleParts(t *testing.T) {
+	w := NewWindow(8192)
+	failed := msg(3, "assistant", "bad")
+	failed.Failed = true
+	retracted := msg(4, "user", "gone")
+	retracted.Retracted = true
+	msgs := []Message{msg(1, "user", "aaaa"), msg(2, "assistant", "bbbb"), failed, retracted, msg(5, "user", "cccc")}
+
+	t.Run("without a summary the parts add up and failed or retracted messages are not counted", func(t *testing.T) {
+		p := Assemble(Input{Fixed: "S", Messages: msgs}, w)
+		if p.Parts.MessageCount != 3 || p.Parts.System+p.Parts.Messages != p.Tokens {
+			t.Fatalf("parts = %+v, tokens %d", p.Parts, p.Tokens)
+		}
+	})
+	t.Run("the summary counts as messages, not as system", func(t *testing.T) {
+		without := Assemble(Input{Fixed: "S", Messages: msgs}, w)
+		with := Assemble(Input{Fixed: "S", Summary: &Summary{Text: "x", Seq: 0}, Messages: msgs}, w)
+		if with.Parts.System != without.Parts.System || with.Parts.Messages <= without.Parts.Messages ||
+			with.Parts.System+with.Parts.Messages != with.Tokens || with.Parts.MessageCount != 3 {
+			t.Fatalf("with %+v, without %+v", with.Parts, without.Parts)
+		}
+	})
+	t.Run("with a known size the parts still add up to the tokens", func(t *testing.T) {
+		p := Assemble(Input{Fixed: "S", Messages: msgs, Known: Known{PromptTokens: 100, Seq: 2}}, w)
+		if p.Parts.System+p.Parts.Messages != p.Tokens {
+			t.Fatalf("parts = %+v, tokens %d", p.Parts, p.Tokens)
+		}
+	})
+	t.Run("a refused plan still has the system part", func(t *testing.T) {
+		p := Assemble(Input{Fixed: "S", FixedTokens: w.Room/2 + 1, Messages: msgs}, w)
+		if !errors.Is(p.Err, ErrContextTooSmall) || p.Parts.System != w.Room/2+1+perMessageTokens {
+			t.Fatalf("plan = %+v", p)
+		}
+	})
+}

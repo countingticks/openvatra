@@ -409,7 +409,17 @@ export type RunSnapshot = {
   seq: number
   state: 'queued' | 'running' | 'interrupted' | 'done' | 'stopped' | 'failed'
 }
+export type ContextParts = {
+  files: number
+  messageCount: number
+  /** the summary of earlier messages included */
+  messages: number
+  search: number
+  system: number
+}
 export type ContextUse = {
+  /** may sum to a little more or less than used: used is the estimate */
+  parts: ContextParts
   /** 0 when the chat's model is not installed */
   size: number
   used: number

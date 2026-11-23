@@ -29,7 +29,13 @@ const tiny: ModelInfo = {
   moe: false
 }
 
-const transcript: Transcript = { seq: 0, items: [], runs: [], activeRun: null, context: { used: 0, size: 0 } }
+const transcript: Transcript = {
+  seq: 0,
+  items: [],
+  runs: [],
+  activeRun: null,
+  context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
+}
 
 const event = (type: string, seq: number, data: object, stream = 'run:r1'): Event =>
   ({ type, stream, seq, v: 1, time: 0, data }) as Event

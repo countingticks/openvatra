@@ -143,7 +143,7 @@ describe('runView', () => {
       ],
       runs: [run()],
       activeRun: run(),
-      context: { used: 0, size: 0 }
+      context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
     }
 
     expect(shown(runView(transcript).entries)).toEqual([
@@ -184,7 +184,7 @@ describe('applyRunEvent', () => {
     ],
     runs: [run()],
     activeRun: run(),
-    context: { used: 0, size: 0 }
+    context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
   }
 
   it('a failed run.finished after a complete answer leaves that answer not failed', () => {
