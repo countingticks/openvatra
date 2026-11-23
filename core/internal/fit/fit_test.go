@@ -31,6 +31,14 @@ var (
 		FileBytes: 21 * gib, ExpertBytes: 19*gib + gib/2, Layers: 40, AttentionLayers: 10, KVHeads: 2, KeyLen: 256, ValueLen: 256,
 		MaxContext: 262144,
 	}
+	// experts fit at 32K but not at 64K: the KV cache alone is 10 GiB there
+	heavyKV = engine.Shape{
+		FileBytes: 21 * gib, ExpertBytes: 19*gib + gib/2, Layers: 40, KVHeads: 8, KeyLen: 256, ValueLen: 256, MaxContext: 262144,
+	}
+	// a small MoE whose whole model fits a 12 GiB GPU up to 128K tokens, not 256K
+	gpuUpTo128K = engine.Shape{
+		FileBytes: 3 * gib, ExpertBytes: 2 * gib, Layers: 40, AttentionLayers: 20, KVHeads: 8, KeyLen: 128, ValueLen: 128, MaxContext: 262144,
+	}
 	// a 4B model
 	small = engine.Shape{FileBytes: 5 * gib / 2, Layers: 36, KVHeads: 8, KeyLen: 128, ValueLen: 128, MaxContext: 262144}
 	// a model that does not fit 12 GiB of VRAM
@@ -50,6 +58,10 @@ func TestChoose(t *testing.T) {
 		{"the owner's case: experts at 64K", qwen, machine(12, 32), 0, "auto", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
 		{"a MoE that fits whole", engine.Shape{FileBytes: 3 * gib, ExpertBytes: 2 * gib, Layers: 24, AttentionLayers: 6, KVHeads: 2, KeyLen: 128, ValueLen: 128, MaxContext: 262144},
 			machine(12, 32), 0, "auto", Choice{Context: 262144, Placement: PlaceExperts, Fit: FitFits}, false},
+		{"a MoE whose experts fit only below 64K picks the largest that does", heavyKV, machine(12, 64), 0, "auto", Choice{Context: 32768, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"auto context with experts stops at 64K when the gpu does not fit above", qwen, machine(12, 64), 0, "experts", Choice{Context: 65536, Placement: PlaceExperts, Fit: FitSlower}, false},
+		{"auto goes above 64K when the gpu fits there", gpuUpTo128K, machine(12, 32), 0, "auto", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitFits}, false},
+		{"auto context with experts goes above 64K when the gpu fits there", gpuUpTo128K, machine(12, 32), 0, "experts", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitFits}, false},
 		{"a MoE too big everywhere", qwen, machine(12, 8), 0, "auto", Choice{Context: 8192, Placement: PlaceExperts, Fit: FitTooBig}, false},
 		{"a MoE with no GPU is cpu", qwen, machine(0, 64), 0, "auto", Choice{Context: 8192, Placement: PlaceCPU, Fit: FitSlower}, false},
 		{"a number above 64K with auto placement is not capped", qwen, machine(12, 32), 131072, "auto", Choice{Context: 131072, Placement: PlaceExperts, Fit: FitSlower}, false},
@@ -223,5 +235,12 @@ func TestAutoPlacementNeverOffloadsLayersOfAMoEModel(t *testing.T) {
 		if got := Check(qwen, machine(12, 32), needs, context, "auto"); got.Placement != PlaceExperts {
 			t.Fatalf("context %d: choice = %+v, want experts", context, got)
 		}
+	}
+}
+
+func TestOwnersCaseFillsTheBudgetWithExperts(t *testing.T) {
+	got := Check(qwen, machine(12, 32), needs, 0, "auto")
+	if limit := int64(12*gib)*9/10 - ExpertsMarginBytes; got.VRAMBytes > limit || got.RAMBytes <= 0 {
+		t.Fatalf("choice = %+v, want VRAM within %d and some experts in RAM", got, limit)
 	}
 }
