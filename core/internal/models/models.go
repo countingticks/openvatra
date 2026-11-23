@@ -22,6 +22,9 @@ type Model struct {
 	// Path is the file to hand to llama-server; for split models the first part,
 	// because llama.cpp finds the remaining parts itself.
 	Path string
+	// Parts are every file of the model, the first part (Path) first, then the others in part order; one element for
+	// a model in a single file. Projectors are not parts.
+	Parts []string
 	// MMProj is the vision projector file in the same folder, or "" if there is none. With several projectors in
 	// one folder, the one whose name shares the longest start with the model's (qwen-7b-q4 → qwen-7b-mmproj).
 	MMProj string
@@ -70,9 +73,10 @@ func Discover(root string) ([]Model, error) {
 	}
 
 	var found []Model
-	projectors := map[string][]string{} // folder -> mmproj files, in walk order
-	sizes := map[string]int64{}         // folder + id -> bytes, so every part of a split model counts
-	partCount := map[string]int{}       // first part's path -> parts in the model
+	projectors := map[string][]string{}  // folder -> mmproj files, in walk order
+	sizes := map[string]int64{}          // folder + id -> bytes, so every part of a split model counts
+	partCount := map[string]int{}        // first part's path -> parts in the model
+	parts := map[string]map[int]string{} // folder + id -> part number -> path, for split models
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -98,17 +102,25 @@ func Discover(root string) ([]Model, error) {
 			return nil
 		}
 
-		id, first := stem, true
-		if m := splitPart.FindStringSubmatch(stem); m != nil {
-			id, first = m[1], m[2] == "00001"
+		id, first, split := stem, true, splitPart.FindStringSubmatch(stem)
+		if split != nil {
+			id, first = split[1], split[2] == "00001"
 		}
+		key := filepath.Join(filepath.Dir(path), id)
 		if info, err := d.Info(); err == nil {
-			sizes[filepath.Join(filepath.Dir(path), id)] += info.Size()
+			sizes[key] += info.Size()
+		}
+		if split != nil {
+			n, _ := strconv.Atoi(split[2])
+			if parts[key] == nil {
+				parts[key] = map[int]string{}
+			}
+			parts[key][n] = path
 		}
 		if first { // a split model is listed once, via its first part
 			found = append(found, Model{ID: id, Path: path})
-			if m := splitPart.FindStringSubmatch(stem); m != nil {
-				partCount[path], _ = strconv.Atoi(m[3])
+			if split != nil {
+				partCount[path], _ = strconv.Atoi(split[3])
 			}
 		}
 		return nil
@@ -121,6 +133,7 @@ func Discover(root string) ([]Model, error) {
 	for i := range found {
 		dir := filepath.Dir(found[i].Path)
 		found[i].SizeBytes = sizes[filepath.Join(dir, found[i].ID)]
+		found[i].Parts = partsOf(found[i].Path, parts[filepath.Join(dir, found[i].ID)])
 		byDir[dir] = append(byDir[dir], i)
 	}
 	for dir, idx := range byDir {
@@ -159,6 +172,23 @@ func Discover(root string) ([]Model, error) {
 		unique = append(unique, m)
 	}
 	return unique, nil
+}
+
+// partsOf is first followed by the other parts of its split model in part order; just first for a single file.
+func partsOf(first string, split map[int]string) []string {
+	if !splitPart.MatchString(strings.TrimSuffix(filepath.Base(first), filepath.Ext(first))) {
+		return []string{first}
+	}
+	nums := make([]int, 0, len(split))
+	for n := range split {
+		nums = append(nums, n)
+	}
+	sort.Ints(nums)
+	out := make([]string, 0, len(nums))
+	for _, n := range nums {
+		out = append(out, split[n])
+	}
+	return out
 }
 
 // pairProjectors gives each model in one folder its projector, "" if none. Each projector goes to the model whose

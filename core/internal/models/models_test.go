@@ -109,9 +109,10 @@ func TestDiscover(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			// The files are empty, so every kind is "unreadable"; kinds have their own tests (gguf_test.go).
+			// The files are empty, so every kind is "unreadable"; kinds have their own tests (gguf_test.go), and so
+			// do parts (TestDiscoverParts).
 			for i := range got {
-				got[i].Kind, got[i].Error = "", ""
+				got[i].Kind, got[i].Error, got[i].Parts = "", "", nil
 			}
 			var want []Model
 			for _, m := range tt.want {
@@ -123,6 +124,57 @@ func TestDiscover(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("got %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
+func TestDiscoverParts(t *testing.T) {
+	tests := []struct {
+		name  string
+		files []string
+		want  map[string][]string // id -> parts, relative to root
+	}{
+		{"a single file is its only part", []string{"a.gguf"}, map[string][]string{"a": {"a.gguf"}}},
+		{
+			"split parts first to last, whatever order they are written in",
+			[]string{"big-00003-of-00003.gguf", "big-00002-of-00003.gguf", "big-00001-of-00003.gguf"},
+			map[string][]string{"big": {"big-00001-of-00003.gguf", "big-00002-of-00003.gguf", "big-00003-of-00003.gguf"}},
+		},
+		{
+			"a projector is not a part",
+			[]string{"v/vision.gguf", "v/mmproj-vision-f16.gguf"},
+			map[string][]string{"vision": {"v/vision.gguf"}},
+		},
+		{
+			"a same-named model in another folder adds no parts",
+			[]string{"a/m-00001-of-00002.gguf", "a/m-00002-of-00002.gguf", "b/m-00001-of-00002.gguf", "b/m-00002-of-00002.gguf"},
+			map[string][]string{"m": {"a/m-00001-of-00002.gguf", "a/m-00002-of-00002.gguf"}},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			// Write in the listed order so the reverse-order case really lands that way on disk.
+			for _, f := range tt.files {
+				touch(t, root, f)
+			}
+			got, err := Discover(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parts := map[string][]string{}
+			for _, m := range got {
+				parts[m.ID] = m.Parts
+			}
+			want := map[string][]string{}
+			for id, ps := range tt.want {
+				for _, p := range ps {
+					want[id] = append(want[id], filepath.Join(root, filepath.FromSlash(p)))
+				}
+			}
+			if !reflect.DeepEqual(parts, want) {
+				t.Fatalf("parts = %v, want %v", parts, want)
 			}
 		})
 	}

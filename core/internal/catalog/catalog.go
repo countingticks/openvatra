@@ -228,22 +228,42 @@ func (c *Catalog) View() View {
 // Owner is the name and tags of the entry whose folder (<modelsDir>/<id>) holds path and whose files include
 // path's file name; false when there is none or no models folder is set.
 func (c *Catalog) Owner(path string) (name string, tags []string, ok bool) {
-	dir := c.modelsDir()
-	if dir == "" {
+	e := c.entryOf(path)
+	if e == nil {
 		return "", nil, false
 	}
+	return e.Name, e.Tags, true
+}
+
+// EntryOf is the id of the entry whose folder (<modelsDir>/<id>) holds path and whose files include its base name;
+// ok is false otherwise, and when no models folder is set. Same matching rules as Owner (case-insensitive).
+func (c *Catalog) EntryOf(path string) (id string, ok bool) {
+	e := c.entryOf(path)
+	if e == nil {
+		return "", false
+	}
+	return e.ID, true
+}
+
+// entryOf is the entry that owns path, or nil (see Owner).
+func (c *Catalog) entryOf(path string) *Entry {
+	dir := c.modelsDir()
+	if dir == "" {
+		return nil
+	}
 	folder, base := filepath.Dir(path), filepath.Base(path)
-	for _, e := range c.entries {
+	for i := range c.entries {
+		e := &c.entries[i]
 		if !strings.EqualFold(folder, filepath.Join(dir, e.ID)) {
 			continue
 		}
 		for _, f := range e.Files {
 			if strings.EqualFold(base, f.Name) {
-				return e.Name, e.Tags, true
+				return e
 			}
 		}
 	}
-	return "", nil, false
+	return nil
 }
 
 // Folder is where entry id's files go: <modelsDir>/<id>.

@@ -268,3 +268,28 @@ func TestOwner(t *testing.T) {
 		t.Error("no models folder: want false")
 	}
 }
+
+func TestEntryOf(t *testing.T) {
+	dir := t.TempDir()
+	c := testCatalog(dir, 0, nil)
+
+	for label, p := range map[string]string{
+		"a listed file":         filepath.Join(dir, "one", "a.gguf"),
+		"different letter case": filepath.Join(strings.ToUpper(dir), "ONE", "A.GGUF"),
+	} {
+		if id, ok := c.EntryOf(p); !ok || id != "one" {
+			t.Errorf("%s: got %q %v, want one true", label, id, ok)
+		}
+	}
+	for label, p := range map[string]string{
+		"a file in the folder that is not the entry's": filepath.Join(dir, "one", "x.gguf"),
+		"the entry's file name elsewhere":              filepath.Join(dir, "other", "a.gguf"),
+	} {
+		if _, ok := c.EntryOf(p); ok {
+			t.Errorf("%s: want false", label)
+		}
+	}
+	if _, ok := testCatalog("", 0, nil).EntryOf(filepath.Join(dir, "one", "a.gguf")); ok {
+		t.Error("no models folder: want false")
+	}
+}
