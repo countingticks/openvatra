@@ -87,7 +87,12 @@ describe('faster engine for NVIDIA', () => {
     const { store } = renderWithStore(
       <Shell />,
       { cudaOfferDismissed: true },
-      { coreState: ready, engines: { cuda: 'ready' }, models: [stopped] }
+      {
+        coreState: ready,
+        engines: { cuda: 'ready' },
+        models: [stopped],
+        engineSettings: { build: 'bundled' }
+      }
     )
     act(() => {
       store.dispatch(settingsOpened('models'))
@@ -132,10 +137,10 @@ describe('faster engine for NVIDIA', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Use the faster engine' }))
 
     expect(await screen.findByRole('button', { name: 'Use the standard engine' })).toBeInTheDocument()
-    expect(enginesPut(coreHttp)).toEqual(['bundled', 'cuda'])
+    expect(enginesPut(coreHttp)).toEqual(['bundled', 'auto'])
   })
 
-  it('accepting the offer writes build cuda to the engine section and nothing to the provider section', async () => {
+  it('accepting the offer writes build auto to the engine section and nothing to the provider section', async () => {
     const { coreHttp, store } = show('ready', { engineSettings: { build: 'bundled' }, showAdvanced: true })
     act(() => {
       store.dispatch(settingsOpened('models'))
@@ -148,38 +153,38 @@ describe('faster engine for NVIDIA', () => {
       {
         method: 'PUT',
         path: '/api/config/engine.llamaserver',
-        body: { rev: 1, value: { path: null, build: 'cuda' } }
+        body: { rev: 1, value: { path: null, build: 'auto' } }
       }
     ])
   })
 
-  it('the Settings line follows core when the CUDA download switches the engine', async () => {
-    const { coreHttp, store } = show('ready', { engineSettings: { build: 'bundled' }, showAdvanced: true })
+  it('the Settings line follows core when the CUDA download finishes', async () => {
+    const { coreHttp, setup, store } = show('none', { engineSettings: { build: 'auto' }, showAdvanced: true })
     act(() => {
       store.dispatch(settingsOpened('models'))
     })
-    expect(await screen.findByRole('button', { name: 'Use the faster engine' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Download' })).toBeInTheDocument()
 
-    coreHttp.setConfig('engine.llamaserver', { rev: 2, value: { path: null, build: 'cuda' } })
+    coreHttp.answer('/api/engines', { bundled: { tag: 'b12078' }, cuda: 'ready' })
+    setup.emitDownloads([{ id: 'engine-cuda', state: 'downloading', bytes: 1, total: 2, speed: 1 }])
+    setup.emitDownloads([{ id: 'engine-cuda', state: 'done', bytes: 2, total: 2, speed: 0 }])
+
+    expect(await screen.findByText('In use. Models run faster on your graphics card.')).toBeInTheDocument()
+    expect(enginesPut(coreHttp)).toEqual([])
+  })
+
+  it('a stored cuda with the build ready still shows "In use" and offers the standard engine', async () => {
+    const { store } = show('ready', { engineSettings: { build: 'cuda' }, showAdvanced: true })
     act(() => {
-      coreHttp.push({
-        data: {
-          seq: 1,
-          time: 1,
-          stream: 'system',
-          type: 'config.changed',
-          v: 1,
-          data: { section: 'engine.llamaserver', rev: 2 }
-        }
-      })
+      store.dispatch(settingsOpened('models'))
     })
 
-    expect(await screen.findByRole('button', { name: 'Use the standard engine' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Use the faster engine' })).toBeNull()
+    expect(await screen.findByText('In use. Models run faster on your graphics card.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Use the standard engine' })).toBeInTheDocument()
   })
 
   it('offers "Use the standard engine" next to a model that failed to start, while CUDA is in use', async () => {
-    const { coreHttp } = show('ready', { engineSettings: { build: 'cuda' } }, [broken])
+    const { coreHttp } = show('ready', { engineSettings: { build: 'auto' } }, [broken])
     await openPopover()
     expect(await screen.findByText('The model did not start.')).toBeInTheDocument()
     fireEvent.click(await screen.findByRole('button', { name: 'Use the standard engine' }))

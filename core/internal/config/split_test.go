@@ -67,7 +67,7 @@ func TestSplitModelsMovesTheDefaultRow(t *testing.T) {
 	if err := SplitModels(context.Background(), db, splitLogger(&bytes.Buffer{})); err != nil {
 		t.Fatal(err)
 	}
-	assertSection(t, db, engineSection, 1, `{"path":null,"build":"bundled"}`)
+	assertSection(t, db, engineSection, 1, `{"path":null,"build":"auto"}`)
 	assertSection(t, db, providerSection, 1,
 		`{"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{}}`)
 }

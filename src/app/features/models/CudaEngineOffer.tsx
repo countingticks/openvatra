@@ -34,7 +34,7 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
   // Installed but switched off (after *Use the standard engine*) is not an offer; the Settings line handles it.
   if (card && (dismissed || status === 'ready') && !item) return null
 
-  const use = (build: 'bundled' | 'cuda'): void => {
+  const use = (build: 'auto' | 'bundled'): void => {
     setProblem(undefined)
     update({ build }).catch((error: Error) => setProblem(error.message))
   }
@@ -66,7 +66,7 @@ export function CudaEngineOffer({ variant }: { variant: 'card' | 'row' }): React
     )
   } else if (status === 'ready') {
     action = (
-      <Button variant="outline" size="sm" onClick={() => use('cuda')}>
+      <Button variant="outline" size="sm" onClick={() => use('auto')}>
         Use the faster engine
       </Button>
     )

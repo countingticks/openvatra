@@ -79,7 +79,7 @@ describe('section settings hooks', () => {
     show()
 
     expect(screen.getByText('Unload after 15')).toBeInTheDocument()
-    expect(screen.getByText('Engine bundled')).toBeInTheDocument()
+    expect(screen.getByText('Engine auto')).toBeInTheDocument()
     expect(screen.getByText('Engine effective unknown')).toBeInTheDocument()
     expect(screen.getByText('Models effective unknown')).toBeInTheDocument()
     expect(await screen.findByText('Unload after 30')).toBeInTheDocument()

@@ -466,7 +466,7 @@ export type LlamaServerEffective = {
   path: string
 }
 export type LlamaServerSettings = {
-  build: 'bundled' | 'cuda'
+  build: 'auto' | 'bundled' | 'cuda'
   path: string | null
 }
 export type LlamaCppEffective = {

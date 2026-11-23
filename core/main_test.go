@@ -572,59 +572,6 @@ func TestPlainRunWritesNothingToStdout(t *testing.T) {
 	}
 }
 
-func engineBuild(t *testing.T, s sectionWriter) (string, int) {
-	t.Helper()
-	entry, err := s.Section(llamaserver.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m llamaserver.LlamaServerSettings
-	if err := json.Unmarshal(entry.Value, &m); err != nil {
-		t.Fatal(err)
-	}
-	return m.Build, entry.Rev
-}
-
-func registeredStore(t *testing.T, withDB bool, logger *slog.Logger) *config.Store {
-	t.Helper()
-	var db config.DB
-	if withDB {
-		st, err := store.Open(t.TempDir(), event.NewBus(16))
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { st.Close() })
-		db = st
-	}
-	cfg := config.New(db, logger)
-	registerSections(cfg, llamaserver.Env{LlamaDir: t.TempDir()}, t.TempDir())
-	return cfg
-}
-
-func TestSwitchToCUDAStoresTheEngine(t *testing.T) {
-	cfg := registeredStore(t, true, nil)
-	var log bytes.Buffer
-	switchToCUDA(cfg, slog.New(slog.NewTextHandler(&log, nil)))
-	if build, rev := engineBuild(t, cfg); build != "cuda" || rev != 1 {
-		t.Fatalf("build %q rev %d, want cuda and 1", build, rev)
-	}
-	switchToCUDA(cfg, slog.New(slog.NewTextHandler(&log, nil)))
-	if _, rev := engineBuild(t, cfg); rev != 1 {
-		t.Fatalf("rev after a second switch = %d, want 1 (already cuda)", rev)
-	}
-	if log.Len() != 0 {
-		t.Fatalf("unexpected log: %s", log.String())
-	}
-}
-
-func TestSwitchToCUDAWithoutADatabaseWarns(t *testing.T) {
-	var log bytes.Buffer
-	switchToCUDA(registeredStore(t, false, nil), slog.New(slog.NewTextHandler(&log, nil)))
-	if !strings.Contains(log.String(), "level=WARN") || !strings.Contains(log.String(), "config storage is not available") {
-		t.Fatalf("log = %q", log.String())
-	}
-}
-
 // A models row split by config.SplitModels must decode strictly into the owners' types: Register logs and falls back
 // to the defaults otherwise, so this proves the section names and the JSON config writes match theirs.
 func TestSplitModelsRowsRegisterIntact(t *testing.T) {
@@ -634,7 +581,7 @@ func TestSplitModelsRowsRegisterIntact(t *testing.T) {
 	}{
 		"default row": {
 			`{"llamaServerPath":null,"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{},"engine":"bundled"}`,
-			`{"path":null,"build":"bundled"}`,
+			`{"path":null,"build":"auto"}`,
 			`{"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{}}`,
 			1,
 		},
@@ -680,60 +627,6 @@ func TestSplitModelsRowsRegisterIntact(t *testing.T) {
 			}
 			if strings.Contains(log.String(), "level=ERROR") {
 				t.Fatalf("log = %s", log.String())
-			}
-		})
-	}
-}
-
-// conflictingWriter answers ErrConflict to the first conflicts Puts and bumps the stored rev each time, like a
-// competing writer would.
-type conflictingWriter struct {
-	value     json.RawMessage
-	rev       int
-	conflicts int
-	putRevs   []int
-}
-
-func (c *conflictingWriter) Section(string) (config.SectionEntry, error) {
-	return config.SectionEntry{Rev: c.rev, Value: c.value}, nil
-}
-
-func (c *conflictingWriter) Put(_ string, rev int, value json.RawMessage) (config.SectionEntry, error) {
-	c.putRevs = append(c.putRevs, rev)
-	if c.conflicts > 0 {
-		c.conflicts--
-		c.rev++
-		return config.SectionEntry{}, config.ErrConflict
-	}
-	c.value, c.rev = value, rev+1
-	return config.SectionEntry{Rev: c.rev, Value: value}, nil
-}
-
-func TestSwitchToCUDARetriesOnceOnConflict(t *testing.T) {
-	value, _ := json.Marshal(llamaserver.DefaultSettings())
-	tests := []struct {
-		name      string
-		conflicts int
-		wantPuts  []int
-		wantCUDA  bool
-		wantError bool
-	}{
-		{"one conflict", 1, []int{0, 1}, true, false},
-		{"two conflicts", 2, []int{0, 1}, false, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			w := &conflictingWriter{value: value, conflicts: tt.conflicts}
-			var log bytes.Buffer
-			switchToCUDA(w, slog.New(slog.NewTextHandler(&log, nil)))
-			if !slices.Equal(w.putRevs, tt.wantPuts) {
-				t.Errorf("Put revs = %v, want %v", w.putRevs, tt.wantPuts)
-			}
-			if build, _ := engineBuild(t, w); (build == "cuda") != tt.wantCUDA {
-				t.Errorf("build = %q, cuda wanted: %v", build, tt.wantCUDA)
-			}
-			if got := strings.Count(log.String(), "level=ERROR"); (got == 1) != tt.wantError || got > 1 {
-				t.Errorf("error lines = %d, want error: %v\n%s", got, tt.wantError, log.String())
 			}
 		})
 	}

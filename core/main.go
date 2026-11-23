@@ -252,6 +252,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if err := llamacpp.UpgradeOptions(ctx, cfgDB, logger); err != nil {
 		logger.Error("upgrade provider.llamacpp options", "err", err) // Register validates the row as it is
 	}
+	// The report measures lazily, on its first Get, so it can exist before the sections do. It asks the engine with
+	// no NVIDIA answer: `auto` then probes with the bundled build (which lists NVIDIA cards too), and the report
+	// never waits for itself.
+	probeEnv := env
+	hardware := hw.NewChecker(func() string {
+		return config.Get[llamaserver.LlamaServerSettings](cfg, llamaserver.ID).Resolve(probeEnv)
+	}, logger)
+	env.NVIDIA = func() bool {
+		g := hardware.Get().GPU
+		return g != nil && g.Vendor == hw.VendorNVIDIA
+	}
 	registerSections(cfg, env, home)
 	enginePath := func() string {
 		return config.Get[llamaserver.LlamaServerSettings](cfg, llamaserver.ID).Resolve(env)
@@ -263,9 +274,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	engineSeam := seam.NewRegistry[engine.Engine]()
 	llama := llamaserver.New(enginePath, logOut)
 	engineSeam.Register(llama)
-	// Asks the engine main configured, so its answer matches the GPUs llama-server will really use. Each model's size
-	// and placement are chosen for this report.
-	hardware := hw.NewChecker(enginePath, logger)
+	// Each model's size and placement are chosen for the hardware report.
 	providerSeam := seam.NewRegistry[provider.Provider]()
 	// Estimates, with what real loads measured taking their place; without a database every choice is an estimate.
 	needs := measuredNeedsFor(chatStore, llama.Needs, logger)
@@ -316,12 +325,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 	cat := catalog.New(entries, hardware.Get, func() string { return resolve().ModelsDir })
 	// A finished download changes what is on disk: tell every listener to re-read the models.
 	dl := downloads.New(downloads.Config{
-		Downloader:    dler,
-		Entries:       entries,
-		ModelsDir:     func() string { return resolve().ModelsDir },
-		OnFinish:      lc.Notify,
-		OnEngineReady: func() { switchToCUDA(cfg, logger) },
-		Engine:        cuda,
+		Downloader: dler,
+		Entries:    entries,
+		ModelsDir:  func() string { return resolve().ModelsDir },
+		OnFinish:   lc.Notify,
+		Engine:     cuda,
 	})
 	defer dl.Close()
 	remover := removal.New(removal.Config{
@@ -790,12 +798,6 @@ func stopCore(dataDir string, stderr io.Writer) error {
 	return nil
 }
 
-// sectionWriter is the part of the config store switchToCUDA uses.
-type sectionWriter interface {
-	Section(name string) (config.SectionEntry, error)
-	Put(name string, rev int, value json.RawMessage) (config.SectionEntry, error)
-}
-
 // systemRetention is how long system events are kept; other streams are never trimmed.
 const systemRetention = 30 * 24 * time.Hour
 
@@ -824,40 +826,5 @@ func trimSystemEvents(ctx context.Context, t systemTrimmer, every time.Duration,
 		if ctx.Err() != nil { // both were ready and select picked the tick
 			return
 		}
-	}
-}
-
-// switchToCUDA stores build "cuda" in engine.llamaserver once its download is finished. A concurrent write (a Settings save) may win the
-// revision, so it reads again and retries once; after that it gives up and logs, because the user can still pick the
-// engine by hand and core must not loop.
-func switchToCUDA(cfg sectionWriter, logger *slog.Logger) {
-	var err error
-	for attempt := 0; attempt < 2; attempt++ {
-		var entry config.SectionEntry
-		if entry, err = cfg.Section(llamaserver.ID); err != nil {
-			break
-		}
-		var m llamaserver.LlamaServerSettings
-		if err = json.Unmarshal(entry.Value, &m); err != nil {
-			break
-		}
-		if m.Build == "cuda" {
-			return
-		}
-		m.Build = "cuda"
-		var value []byte
-		if value, err = json.Marshal(m); err != nil {
-			break
-		}
-		if _, err = cfg.Put(llamaserver.ID, entry.Rev, value); !errors.Is(err, config.ErrConflict) {
-			break
-		}
-	}
-	switch {
-	case err == nil:
-	case errors.Is(err, config.ErrUnavailable):
-		logger.Warn("could not switch to the CUDA engine: config storage is not available")
-	default:
-		logger.Error("could not switch to the CUDA engine", "err", err)
 	}
 }

@@ -7,7 +7,7 @@ export interface CudaEngine {
   /** An NVIDIA card and no llama-server of the user's own: the only case where the faster engine is on offer. */
   offered: boolean
   status: EnginesBody['cuda']
-  /** Models are running on it right now (chosen, installed for this app's tag, and no custom path). */
+  /** Models are running on it right now (build auto or cuda, installed for this app's tag, and no custom path). */
   inUse: boolean
   /** The download while it is queued, running, paused or failed; undefined otherwise. */
   item: DownloadItem | undefined
@@ -28,7 +28,7 @@ export function useCudaEngine(): CudaEngine {
   return {
     offered: hardware?.gpu?.vendor === 'nvidia' && !custom,
     status,
-    inUse: !custom && build === 'cuda' && status === 'ready',
+    inUse: !custom && (build === 'auto' || build === 'cuda') && status === 'ready',
     item
   }
 }
