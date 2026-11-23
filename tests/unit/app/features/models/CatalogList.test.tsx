@@ -146,7 +146,7 @@ describe('Get more models', () => {
       coreHttp.requests.filter((request) => request.method === 'GET' && request.url.endsWith('/api/catalog'))
         .length
 
-    expect(await within(dialog).findByText('Installed')).toBeInTheDocument()
+    expect(await within(within(dialog).getByRole('tabpanel')).findByText('Installed')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Small 3B' }))
     expect(writes(coreHttp)).toEqual([])
     expect(within(dialog).getByText(/frees about 2\.0 GB/)).toBeInTheDocument()
