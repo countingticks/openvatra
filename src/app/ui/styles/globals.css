@@ -34,6 +34,7 @@
   /* Green for "loaded": ember reads as an error next to red. Text on white needs the deep value. */
   --success: oklch(0.527 0.154 150); /* #15803D, 5.0:1 on white */
   --border: oklch(0.92 0.004 286.3); /* #E4E4E7 */
+  --border-strong: oklch(0.871 0.006 286.3); /* #D4D4D8 */
   --input: oklch(0.92 0.004 286.3); /* #E4E4E7 */
   --ring: oklch(0.538 0.159 32.6); /* #B8402A */
   /* Small ember highlights, e.g. the model status dot. Not for text on white. */
@@ -78,6 +79,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --success: oklch(0.723 0.19 149.6); /* #22C55E, bright enough on near-black */
   --border: oklch(0.303 0.009 285.9); /* #2E2E33 */
+  --border-strong: oklch(0.37 0.013 285.8); /* #3F3F46 */
   --input: oklch(0.303 0.009 285.9); /* #2E2E33 */
   /* The deep ember is too faint on near-black; the brighter orange keeps focus and highlights visible. */
   --ring: oklch(0.726 0.162 60.2); /* #EE8A1E */
@@ -137,6 +139,7 @@
   --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
