@@ -36,8 +36,11 @@ func (e *Engine) Describe() seam.Descriptor {
 	return seam.Descriptor{ID: ID, Title: "llama-server", Description: "Runs GGUF models with llama.cpp's server."}
 }
 
-// Command is llama-server's command line for spec: core's own flags first, then the user's. Placement and Shape
-// are ignored until slice 4.
+// FitMarginMiB is the free VRAM llama.cpp's fit leaves on each GPU (decision 43 Q1).
+const FitMarginMiB = 384
+
+// Command is llama-server's command line for spec: core's own flags first, then the user's. llama.cpp keeps the last
+// value of a repeated flag, so a model's own -ctk, -ub, -np or -fitt win over core's defaults.
 func (e *Engine) Command(spec engine.Spec) engine.Command {
 	args := []string{"-m", spec.Path, "--host", "127.0.0.1"}
 	if spec.Embedding {
@@ -49,9 +52,15 @@ func (e *Engine) Command(spec engine.Spec) engine.Command {
 			args = append(args, "-c", strconv.Itoa(spec.Context))
 		}
 		args = append(args, placementArgs(spec.Placement)...)
-		// llama-server's own fitting is on by default and would change what core chose; off, what runs is what fit said.
+		// Core chose the placement, so llama-server's own fitting is off, except for experts: there its fit is what
+		// decides how many expert layers stay on the GPU. It aborts when -ngl is set, so experts passes none.
 		// -lv 4 makes it print the buffer sizes core measures (measure.go).
-		args = append(args, "--fit", "off", "-lv", "4")
+		if spec.Placement.Kind == engine.PlaceExperts {
+			args = append(args, "--fit", "on", "-fitt", strconv.Itoa(FitMarginMiB))
+		} else {
+			args = append(args, "--fit", "off")
+		}
+		args = append(args, "-lv", "4", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "-np", "1", "-ub", "1024")
 		if spec.Projector != "" {
 			args = append(args, "--mmproj", spec.Projector)
 		}
@@ -68,7 +77,7 @@ func (e *Engine) Command(spec engine.Spec) engine.Command {
 func placementArgs(p engine.Placement) []string {
 	switch p.Kind {
 	case engine.PlaceExperts:
-		return []string{"-ngl", "all", "--cpu-moe"}
+		return nil
 	case engine.PlaceLayers:
 		return []string{"-ngl", strconv.Itoa(p.Layers)}
 	case engine.PlaceCPU:

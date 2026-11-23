@@ -58,19 +58,26 @@ func TestCommand(t *testing.T) {
 	core := []string{"-m", "P", "--host", "127.0.0.1"}
 	with := func(args ...string) []string { return append(slices.Clone(core), args...) }
 	layers := func(n int) engine.Placement { return engine.Placement{Kind: engine.PlaceLayers, Layers: n} }
+	defaults := []string{"-lv", "4", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "-np", "1", "-ub", "1024"}
+	// with joins core's flags, the placement and fit flags, the fixed defaults and the rest.
+	chat := func(placement []string, rest ...string) []string {
+		return with(append(append(slices.Clone(placement), defaults...), rest...)...)
+	}
 	cases := map[string]struct {
 		spec engine.Spec
 		want []string
 	}{
-		"gpu at 32768": {engine.Spec{Path: "P", Context: 32768}, with("-c", "32768", "-ngl", "all", "--fit", "off", "-lv", "4")},
+		"gpu at 32768": {engine.Spec{Path: "P", Context: 32768}, chat([]string{"-c", "32768", "-ngl", "all", "--fit", "off"})},
 		"experts": {engine.Spec{Path: "P", Context: 8192, Placement: engine.Placement{Kind: engine.PlaceExperts}},
-			with("-c", "8192", "-ngl", "all", "--cpu-moe", "--fit", "off", "-lv", "4")},
-		"layers 20":  {engine.Spec{Path: "P", Placement: layers(20)}, with("-ngl", "20", "--fit", "off", "-lv", "4")},
-		"layers 0":   {engine.Spec{Path: "P", Placement: layers(0)}, with("-ngl", "0", "--fit", "off", "-lv", "4")},
-		"cpu":        {engine.Spec{Path: "P", Placement: engine.Placement{Kind: engine.PlaceCPU}}, with("-ngl", "0", "--fit", "off", "-lv", "4")},
-		"no context": {engine.Spec{Path: "P"}, with("-ngl", "all", "--fit", "off", "-lv", "4")},
+			chat([]string{"-c", "8192", "--fit", "on", "-fitt", "384"})},
+		"layers 20":  {engine.Spec{Path: "P", Placement: layers(20)}, chat([]string{"-ngl", "20", "--fit", "off"})},
+		"layers 0":   {engine.Spec{Path: "P", Placement: layers(0)}, chat([]string{"-ngl", "0", "--fit", "off"})},
+		"cpu":        {engine.Spec{Path: "P", Placement: engine.Placement{Kind: engine.PlaceCPU}}, chat([]string{"-ngl", "0", "--fit", "off"})},
+		"no context": {engine.Spec{Path: "P"}, chat([]string{"-ngl", "all", "--fit", "off"})},
 		"projector and user's args last": {engine.Spec{Path: "P", Context: 16384, Projector: "M", Args: []string{"--temp", "0.7"}},
-			with("-c", "16384", "-ngl", "all", "--fit", "off", "-lv", "4", "--mmproj", "M", "--temp", "0.7")},
+			chat([]string{"-c", "16384", "-ngl", "all", "--fit", "off"}, "--mmproj", "M", "--temp", "0.7")},
+		"a user's -ctk comes after the default": {engine.Spec{Path: "P", Args: []string{"-ctk", "f16"}},
+			chat([]string{"-ngl", "all", "--fit", "off"}, "-ctk", "f16")},
 		"embedding": {engine.Spec{Path: "P", Embedding: true, Context: 8192, Projector: "M", Placement: layers(3)},
 			with("--embeddings")},
 	}
@@ -113,7 +120,7 @@ func TestStartLogsWithModelPrefix(t *testing.T) {
 	if !strings.HasPrefix(out.String(), "[fake] fake-server listening") {
 		t.Fatalf("log = %q, want the start-up line prefixed [fake] ", out.String())
 	}
-	if !strings.Contains(out.String(), "[fake] fake-server args: -m model.gguf --host 127.0.0.1 -c 8192 -ngl all --cpu-moe --fit off -lv 4 --mmproj mmproj.gguf --port ") {
+	if !strings.Contains(out.String(), "[fake] fake-server args: -m model.gguf --host 127.0.0.1 -c 8192 --fit on -fitt 384 -lv 4 -fa on -ctk q8_0 -ctv q8_0 -np 1 -ub 1024 --mmproj mmproj.gguf --port ") {
 		t.Fatalf("log = %q, want the arguments line", out.String())
 	}
 }
