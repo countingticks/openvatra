@@ -45,7 +45,8 @@ const chatModel: ModelInfo = {
   moe: false,
   name: 'Qwen3-8B',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 
 describe('welcome card', () => {

@@ -1004,6 +1004,21 @@
         ],
         "type": "object"
       },
+      "Memory": {
+        "properties": {
+          "ramBytes": {
+            "type": "integer"
+          },
+          "vramBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vramBytes",
+          "ramBytes"
+        ],
+        "type": "object"
+      },
       "MessageCompleted": {
         "properties": {
           "chatId": {
@@ -1257,6 +1272,17 @@
             ],
             "type": "string"
           },
+          "memory": {
+            "description": "null unless the model is ready; measured, else the fit estimate",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Memory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "moe": {
             "type": "boolean"
           },
@@ -1303,7 +1329,8 @@
           "moe",
           "name",
           "quant",
-          "tags"
+          "tags",
+          "memory"
         ],
         "type": "object"
       },
@@ -3365,6 +3392,41 @@
           }
         },
         "summary": "Load a model and answer once it is ready",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/models/{id}/remove": {
+      "post": {
+        "operationId": "removeModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: model_not_found, model_busy, no_models_folder, outside_models_folder, unload_timeout, trash_failed, internal."
+          }
+        },
+        "summary": "Move a model's files to the Recycle Bin",
         "tags": [
           "models"
         ],

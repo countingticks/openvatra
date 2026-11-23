@@ -370,6 +370,43 @@ func TestLoadRecordsWhatTheServerMeasured(t *testing.T) {
 	}
 }
 
+func TestStatesShowWhatTheServerMeasured(t *testing.T) {
+	for name, kind := range map[string]provider.Kind{"chat": provider.KindChat, "embedding": provider.KindEmbedding} {
+		t.Run(name, func(t *testing.T) {
+			r := recordingProvider(&recorder{}, nil, measuredMemory, nil)
+			id := "a"
+			if kind == provider.KindEmbedding {
+				id = "embed"
+			}
+			_, release, err := r.Acquire(context.Background(), kind, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release()
+			st := r.States()
+			if len(st) != 1 || st[0].State != provider.StateReady || st[0].Memory == nil || *st[0].Memory != measuredMemory {
+				t.Fatalf("states = %+v, want %s ready with %+v", st, id, measuredMemory)
+			}
+		})
+	}
+}
+
+func TestStatesWithoutMeasurement(t *testing.T) {
+	r := recordingProvider(&recorder{}, nil, engine.Resources{}, nil)
+	_, release, err := r.Acquire(context.Background(), provider.KindChat, "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	if st := r.States(); len(st) != 1 || st[0].State != provider.StateReady || st[0].Memory != nil {
+		t.Fatalf("states = %+v, want a ready with no memory", st)
+	}
+	r.Unload("a")
+	if st := r.States(); len(st) != 0 {
+		t.Fatalf("states after unload = %+v, want none", st)
+	}
+}
+
 func TestLoadRecordsNothingWhenNothingWasMeasured(t *testing.T) {
 	cases := map[string]struct {
 		kind     provider.Kind

@@ -18,7 +18,7 @@ func (r *Provider) States() []provider.ModelState {
 			st := provider.ModelState{ID: l.id, State: provider.StateLoading, Busy: l.active > 0}
 			select {
 			case <-l.ready:
-				st.State = provider.StateReady
+				st.State, st.Memory = provider.StateReady, l.measured
 			default:
 			}
 			out = append(out, st)

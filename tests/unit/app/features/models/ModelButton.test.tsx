@@ -17,7 +17,8 @@ const qwen: ModelInfo = {
   moe: false,
   name: 'Qwen3-8B',
   quant: null,
-  tags: []
+  tags: [],
+  memory: null
 }
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 

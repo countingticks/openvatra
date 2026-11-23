@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/countingticks/openvatra/core/internal/engine"
 	"github.com/countingticks/openvatra/core/internal/seam"
 )
 
@@ -192,4 +193,7 @@ type ModelState struct {
 	State string `json:"state" enum:"stopped,loading,ready,error"`
 	Busy  bool   `json:"busy"`
 	Error string `json:"error,omitempty"`
+	// Memory is what the running server measured; nil when nothing was measured. Never in JSON: the seam's state
+	// stays the same on the wire.
+	Memory *engine.Resources `json:"-"`
 }

@@ -158,6 +158,7 @@ describe('modelDetail', () => {
     moe: false,
     quant: 'Q4_K_M',
     tags: [],
+    memory: null,
     context: { context: 32768 } as Choice
   }
 

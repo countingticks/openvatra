@@ -181,7 +181,8 @@ describe('Models dialog', () => {
             moe: false,
             name: 'm',
             quant: null,
-            tags: []
+            tags: [],
+            memory: null
           }
         ]
       }

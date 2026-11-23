@@ -27,6 +27,7 @@ const model = (id: string, overrides: Partial<ModelInfo> = {}): ModelInfo => ({
   name: id,
   quant: null,
   tags: [],
+  memory: null,
   ...overrides
 })
 

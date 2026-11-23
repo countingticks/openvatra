@@ -156,6 +156,10 @@ const injectedRtkApi = api
         query: (queryArg) => ({ url: `/api/models/${queryArg.id}/load`, method: 'POST' }),
         invalidatesTags: ['models']
       }),
+      removeModel: build.mutation<RemoveModelApiResponse, RemoveModelApiArg>({
+        query: (queryArg) => ({ url: `/api/models/${queryArg.id}/remove`, method: 'POST' }),
+        invalidatesTags: ['models']
+      }),
       unloadModel: build.mutation<UnloadModelApiResponse, UnloadModelApiArg>({
         query: (queryArg) => ({ url: `/api/models/${queryArg.id}/unload`, method: 'POST' }),
         invalidatesTags: ['models']
@@ -311,6 +315,10 @@ export type GetModelFitApiArg = {
 }
 export type LoadModelApiResponse = /** status 200 OK */ StatusBody
 export type LoadModelApiArg = {
+  id: string
+}
+export type RemoveModelApiResponse = unknown
+export type RemoveModelApiArg = {
   id: string
 }
 export type UnloadModelApiResponse = /** status 202 Accepted */ StatusBody
@@ -553,12 +561,18 @@ export type Choice = {
   tokensPerSecond: number
   vramBytes: number
 }
+export type Memory = {
+  ramBytes: number
+  vramBytes: number
+}
 export type Model = {
   busy: boolean
   context: Choice | null
   error?: string
   id: string
   kind: 'chat' | 'embedding' | 'unreadable'
+  /** null unless the model is ready; measured, else the fit estimate */
+  memory: Memory | null
   moe: boolean
   name: string
   projector?: string
@@ -903,6 +917,7 @@ export const {
   useRefreshModelsMutation,
   useGetModelFitQuery,
   useLoadModelMutation,
+  useRemoveModelMutation,
   useUnloadModelMutation,
   useStartRunMutation,
   useGetRunQuery,

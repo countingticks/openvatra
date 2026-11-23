@@ -12,9 +12,10 @@ type Catalog interface {
 	View() catalog.View
 }
 
-// Removal takes a downloaded catalog model off the disk; *removal.Remover in production.
+// Removal takes a model off the disk, by catalog entry or by model id; *removal.Remover in production.
 type Removal interface {
 	Remove(ctx context.Context, id string) error
+	RemoveModel(ctx context.Context, id string) error
 }
 
 func catalogRoutes(c Catalog, rm Removal) []Route {

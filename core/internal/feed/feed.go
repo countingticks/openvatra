@@ -42,6 +42,28 @@ type Model struct {
 	Name  string   `json:"name"`
 	Quant *string  `json:"quant" doc:"null when the file name has no quantisation label"`
 	Tags  []string `json:"tags" doc:"Code, Vision, MoE, Embeddings, in that order"`
+	// Memory is what the loaded model takes.
+	Memory *Memory `json:"memory" doc:"null unless the model is ready; measured, else the fit estimate"`
+}
+
+// Memory is the video and system memory a loaded model takes.
+type Memory struct {
+	VRAMBytes int64 `json:"vramBytes"`
+	RAMBytes  int64 `json:"ramBytes"`
+}
+
+// memoryOf is what a ready model takes: the server's measurement, else the estimate of the choice it loaded with
+// (chat models only have one); nil in any other state.
+func memoryOf(st provider.ModelState, choice *fit.Choice) *Memory {
+	switch {
+	case st.State != provider.StateReady:
+		return nil
+	case st.Memory != nil:
+		return &Memory{VRAMBytes: st.Memory.VRAMBytes, RAMBytes: st.Memory.RAMBytes}
+	case choice != nil:
+		return &Memory{VRAMBytes: choice.VRAMBytes, RAMBytes: choice.RAMBytes}
+	}
+	return nil
 }
 
 // DownloadsBody is the JSON of GET /api/downloads and the data of the downloads event.
@@ -93,7 +115,8 @@ func State(res provider.Resident, list func() ([]models.Model, error), choose fu
 			tags = []string{} // [] rather than null
 		}
 		out = append(out, Model{ModelState: st, SizeBytes: m.SizeBytes, Projector: projector, Kind: m.Kind, Error: errText,
-			Context: choice, MoE: m.Kind == models.KindChat && fit.MoE(m.Shape), Name: m.Name, Quant: quant, Tags: tags})
+			Context: choice, MoE: m.Kind == models.KindChat && fit.MoE(m.Shape), Name: m.Name, Quant: quant, Tags: tags,
+			Memory: memoryOf(st, choice)})
 	}
 	return StateBody{Models: out}, nil
 }

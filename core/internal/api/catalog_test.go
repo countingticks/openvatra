@@ -63,9 +63,20 @@ func (s *stubRemoval) Remove(_ context.Context, id string) error {
 	return s.err
 }
 
+func (s *stubRemoval) RemoveModel(_ context.Context, id string) error {
+	s.ids = append(s.ids, id)
+	return s.err
+}
+
 func postRemove(t *testing.T, h http.Handler, token, id string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/catalog/"+id+"/remove", nil)
+	return postPath(t, h, token, "/api/catalog/"+id+"/remove")
+}
+
+// postPath posts an empty body to path with token.
+func postPath(t *testing.T, h http.Handler, token, path string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, nil)
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
