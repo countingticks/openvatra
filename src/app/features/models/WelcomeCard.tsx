@@ -43,7 +43,7 @@ export function WelcomeCard({ onSeeOtherModels }: WelcomeCardProps): React.JSX.E
   return (
     <section
       aria-labelledby="welcome-title"
-      className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border border-border bg-card p-6 text-center"
+      className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border border-border bg-popover p-6 text-center"
     >
       <Ember state="idle" scale={3} />
       <h1 id="welcome-title" className="text-xl font-semibold tracking-tight">

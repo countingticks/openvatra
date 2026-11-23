@@ -55,7 +55,7 @@ export function SegmentedControl<T extends string>({
         <span
           aria-hidden
           style={{ width: pill.width, transform: `translateX(${pill.left}px)` }}
-          className="absolute top-[3px] bottom-[3px] left-0 rounded-md bg-card shadow-sm transition-[transform,width] duration-200 ease-out in-data-[motion=reduce]:transition-none dark:bg-accent"
+          className="absolute top-[3px] bottom-[3px] left-0 rounded-md bg-popover shadow-sm transition-[transform,width] duration-200 ease-out in-data-[motion=reduce]:transition-none dark:bg-accent"
         />
       )}
       {options.map((option) => (

@@ -39,7 +39,7 @@ export function ModelsDialog(): React.JSX.Element {
     <Dialog open={open} onOpenChange={(next) => !next && dispatch(modelsDialogClosed())}>
       <DialogContent
         showCloseButton={false}
-        className="flex h-[600px] max-h-[calc(100%-48px)] w-[640px] max-w-[calc(100%-48px)] flex-col gap-3 overflow-y-auto rounded-[14px] bg-card p-6 text-card-foreground shadow-2xl ring-border sm:max-w-[640px]"
+        className="flex h-[600px] max-h-[calc(100%-48px)] w-[640px] max-w-[calc(100%-48px)] flex-col gap-3 overflow-y-auto rounded-[14px] bg-popover p-6 text-popover-foreground shadow-2xl ring-border sm:max-w-[640px]"
       >
         <div className="flex items-center justify-between">
           <DialogTitle className="text-base font-semibold">Get more models</DialogTitle>

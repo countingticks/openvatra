@@ -17,7 +17,7 @@
   --radius: 0.625rem;
   --background: oklch(1 0 0); /* #FFFFFF */
   --foreground: oklch(0.21 0.006 285.9); /* #18181B */
-  --card: oklch(1 0 0); /* #FFFFFF */
+  --card: oklch(0.967 0.001 286.4); /* #F4F4F5 */
   --card-foreground: oklch(0.21 0.006 285.9); /* #18181B */
   --popover: oklch(1 0 0); /* #FFFFFF */
   --popover-foreground: oklch(0.21 0.006 285.9); /* #18181B */
@@ -35,6 +35,10 @@
   --success: oklch(0.527 0.154 150); /* #15803D, 5.0:1 on white */
   --border: oklch(0.92 0.004 286.3); /* #E4E4E7 */
   --border-strong: oklch(0.871 0.006 286.3); /* #D4D4D8 */
+  --soft: oklch(0.94 0.018 34.3); /* #F7E7E3 */
+  --soft-foreground: oklch(0.481 0.142 32.9); /* #9E3622 */
+  --subtle: oklch(0.552 0.014 285.9); /* #71717A */
+  --warning: oklch(0.554 0.121 66.4); /* #A16207 */
   --input: oklch(0.92 0.004 286.3); /* #E4E4E7 */
   --ring: oklch(0.538 0.159 32.6); /* #B8402A */
   /* Small ember highlights, e.g. the model status dot. Not for text on white. */
@@ -62,7 +66,7 @@
 .dark {
   --background: oklch(0.179 0.004 286); /* #111113 */
   --foreground: oklch(0.985 0 0); /* #FAFAFA */
-  --card: oklch(0.241 0.008 285.8); /* #1F1F23 */
+  --card: oklch(0.258 0.007 285.9); /* #232327 */
   --card-foreground: oklch(0.985 0 0); /* #FAFAFA */
   --popover: oklch(0.241 0.008 285.8); /* #1F1F23 */
   --popover-foreground: oklch(0.985 0 0); /* #FAFAFA */
@@ -80,6 +84,10 @@
   --success: oklch(0.723 0.19 149.6); /* #22C55E, bright enough on near-black */
   --border: oklch(0.303 0.009 285.9); /* #2E2E33 */
   --border-strong: oklch(0.37 0.013 285.8); /* #3F3F46 */
+  --soft: oklch(0.271 0.046 33); /* #3A1E18 */
+  --soft-foreground: oklch(0.786 0.101 36.1); /* #F2A28C */
+  --subtle: oklch(0.64 0.013 286); /* #8B8B94 */
+  --warning: oklch(0.837 0.164 84.4); /* #FBBF24 */
   --input: oklch(0.303 0.009 285.9); /* #2E2E33 */
   /* The deep ember is too faint on near-black; the brighter orange keeps focus and highlights visible. */
   --ring: oklch(0.726 0.162 60.2); /* #EE8A1E */
@@ -140,6 +148,10 @@
   --color-success: var(--success);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+  --color-soft: var(--soft);
+  --color-soft-foreground: var(--soft-foreground);
+  --color-subtle: var(--subtle);
+  --color-warning: var(--warning);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
