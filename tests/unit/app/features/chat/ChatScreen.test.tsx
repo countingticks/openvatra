@@ -388,7 +388,7 @@ describe('ChatScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }))
     const popover = await screen.findByRole('dialog', { name: 'Models service' })
-    fireEvent.click(within(popover).getByRole('button', { name: 'Use m2' }))
+    fireEvent.click(within(popover).getByRole('option', { name: 'm2' }))
 
     await waitFor(() =>
       expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
@@ -411,7 +411,7 @@ describe('ChatScreen', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /^Model:/ }))
     const popover = await screen.findByRole('dialog', { name: 'Models service' })
-    fireEvent.click(within(popover).getByRole('button', { name: 'Use m2' }))
+    fireEvent.click(within(popover).getByRole('option', { name: 'm2' }))
 
     expect(await within(popover).findByRole('alert')).toHaveTextContent('m2 is no longer installed.')
     expect(coreWrites(coreHttp)).toContainEqual({

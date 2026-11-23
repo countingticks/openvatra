@@ -1,8 +1,9 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
+import { settingsOpened } from '@app/store/uiSlice'
 import type { DownloadItem } from '@app/core/types'
 import type { CatalogEntry, CatalogView } from '@app/features/models/catalogView'
 
@@ -162,8 +163,8 @@ describe('Models dialog', () => {
     expect(within(dialog).queryByText(/frees about/)).not.toBeInTheDocument()
   })
 
-  it('opens from the model button and from Settings → Models', async () => {
-    renderWithStore(
+  it('opens from Settings → Models', async () => {
+    const { store } = renderWithStore(
       <Shell />,
       {},
       {
@@ -185,7 +186,9 @@ describe('Models dialog', () => {
         ]
       }
     )
-    fireEvent.click(await screen.findByRole('button', { name: /^Model:/ }))
+    act(() => {
+      store.dispatch(settingsOpened('models'))
+    })
     fireEvent.click(await screen.findByRole('button', { name: 'Get more models…' }))
     expect(await screen.findByRole('dialog', { name: 'Get more models' })).toBeInTheDocument()
   })

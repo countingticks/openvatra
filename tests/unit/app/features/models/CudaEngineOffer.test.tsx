@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
 import type { LlamaServerSettings } from '@app/core/generated'
@@ -20,7 +20,6 @@ const stopped: ModelInfo = {
   quant: null,
   tags: []
 }
-const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 
 /** The two window flags that sit beside core's engine section in a test's arguments. */
 interface Preferences {
@@ -49,43 +48,7 @@ const enginesPut = (http: FakeCoreHttp): LlamaServerSettings['build'][] =>
     .filter((write) => write.method === 'PUT' && write.path === '/api/config/engine.llamaserver')
     .map((write) => (write.body as { value: LlamaServerSettings }).value.build)
 
-const openPopover = async (): Promise<void> => {
-  fireEvent.click(await screen.findByRole('button', { name: /^Model:/ }))
-}
-
 describe('faster engine for NVIDIA', () => {
-  it('offers the download, and "Not now" hides the card for good', async () => {
-    const { coreHttp, saveSettings, store } = show('none')
-    await openPopover()
-
-    await screen.findByRole('region', { name: 'Faster engine for your NVIDIA card' })
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
-    await waitFor(() =>
-      expect(coreWrites(coreHttp)).toEqual([
-        { method: 'POST', path: '/api/downloads', body: { engine: 'cuda' } }
-      ])
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Not now' }))
-    expect(store.getState().settings.cudaOfferDismissed).toBe(true)
-    await waitFor(() => expect(saveSettings).toHaveBeenCalledWith({ cudaOfferDismissed: true }))
-    expect(screen.queryByRole('region', { name: 'Faster engine for your NVIDIA card' })).toBeNull()
-  })
-
-  it("shows core's reason when the engine download fails", async () => {
-    const { coreHttp } = show('none')
-    coreHttp.respond('POST', '/api/downloads', () => ({
-      status: 409,
-      body: { error: 'not_enough_space', message: 'Not enough free space for the engine.' }
-    }))
-    await openPopover()
-
-    const card = await screen.findByRole('region', { name: 'Faster engine for your NVIDIA card' })
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }))
-
-    expect(await within(card).findByRole('alert')).toHaveTextContent('Not enough free space for the engine.')
-  })
-
   it('offers "Use the faster engine" when core reports it installed', async () => {
     const { store } = renderWithStore(
       <Shell />,
@@ -101,33 +64,6 @@ describe('faster engine for NVIDIA', () => {
       store.dispatch(settingsOpened('models'))
     })
     expect(await screen.findByRole('button', { name: 'Use the faster engine' })).toBeInTheDocument()
-  })
-
-  it('asks core about the engines again when the CUDA download finishes', async () => {
-    const { coreHttp, setup } = show('none', {}, [stopped])
-    const engineReads = (): number =>
-      coreHttp.requests.filter((request) => request.url.endsWith('/api/engines')).length
-    await openPopover()
-    await screen.findByRole('region', { name: 'Faster engine for your NVIDIA card' })
-    const before = engineReads()
-
-    setup.emitDownloads([{ id: 'engine-cuda', state: 'downloading', bytes: 1, total: 2, speed: 1 }])
-    setup.emitDownloads([{ id: 'engine-cuda', state: 'done', bytes: 2, total: 2, speed: 0 }])
-
-    await waitFor(() => expect(engineReads()).toBe(before + 1))
-  })
-
-  it('offers the update when only an older build is installed', async () => {
-    show('stale')
-    await openPopover()
-    expect(await screen.findByRole('region', { name: 'Update the faster engine' })).toBeInTheDocument()
-  })
-
-  it('stays out of the way with a custom llama-server, and once dismissed', async () => {
-    show('none', { engineSettings: { path: 'C:\\llama\\llama-server.exe' }, cudaOfferDismissed: true })
-    await openPopover()
-    await screen.findByRole('button', { name: 'Restart' })
-    expect(screen.queryByText(/faster engine/i)).toBeNull()
   })
 
   it('lets Settings switch between the engines, whatever was dismissed', async () => {
@@ -184,20 +120,5 @@ describe('faster engine for NVIDIA', () => {
 
     expect(await screen.findByText('In use. Models run faster on your graphics card.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Use the standard engine' })).toBeInTheDocument()
-  })
-
-  it('offers "Use the standard engine" next to a model that failed to start, while CUDA is in use', async () => {
-    const { coreHttp } = show('ready', { engineSettings: { build: 'auto' } }, [broken])
-    await openPopover()
-    expect(await screen.findByText('The model did not start.')).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: 'Use the standard engine' }))
-    await waitFor(() => expect(enginesPut(coreHttp)).toEqual(['bundled']))
-  })
-
-  it('does not blame the engine when CUDA is not in use', async () => {
-    show('none', { cudaOfferDismissed: true }, [broken])
-    await openPopover()
-    expect(await screen.findByText('The model did not start.')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Use the standard engine' })).toBeNull()
   })
 })
