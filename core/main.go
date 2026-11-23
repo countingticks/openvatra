@@ -270,7 +270,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 	resolve := func() llamacpp.Resolved {
 		return config.Get[llamacpp.LlamaCppSettings](cfg, llamacpp.ID).Resolve(home)
 	}
-	listModels := func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }
 	engineSeam := seam.NewRegistry[engine.Engine]()
 	llama := llamaserver.New(enginePath, logOut)
 	engineSeam.Register(llama)
@@ -323,6 +322,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		logger.Warn("using a test catalog", "file", *testCatalog)
 	}
 	cat := catalog.New(entries, hardware.Get, func() string { return resolve().ModelsDir })
+	owner := func(p string) (models.Owner, bool) {
+		n, t, ok := cat.Owner(p)
+		return models.Owner{Name: n, Tags: t}, ok
+	}
+	listModels := func() ([]models.Model, error) {
+		found, err := models.Discover(resolve().ModelsDir)
+		return models.Describe(found, owner), err
+	}
 	// A finished download changes what is on disk: tell every listener to re-read the models.
 	dl := downloads.New(downloads.Config{
 		Downloader: dler,

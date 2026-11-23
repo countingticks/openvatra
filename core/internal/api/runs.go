@@ -92,9 +92,18 @@ type TranscriptItem struct {
 	Failed  bool                `json:"failed,omitempty"`
 }
 
+type ContextParts struct {
+	System       int `json:"system"`
+	Messages     int `json:"messages" doc:"the summary of earlier messages included"`
+	MessageCount int `json:"messageCount"`
+	Search       int `json:"search"`
+	Files        int `json:"files"`
+}
+
 type ContextUse struct {
-	Used int `json:"used"`
-	Size int `json:"size" doc:"0 when the chat's model is not installed"`
+	Used  int          `json:"used"`
+	Size  int          `json:"size" doc:"0 when the chat's model is not installed"`
+	Parts ContextParts `json:"parts" doc:"may sum to a little more or less than used: used is the estimate"`
 }
 
 type Transcript struct {
@@ -217,9 +226,14 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 				if err != nil {
 					return Transcript{}, err
 				}
-				if out.Context.Used, out.Context.Size, err = svc.Context(ctx, in.ID); err != nil {
+				use, err := svc.Context(ctx, in.ID)
+				if err != nil {
 					return Transcript{}, err
 				}
+				out.Context = ContextUse{Used: use.Used, Size: use.Size, Parts: ContextParts{
+					System: use.Parts.System, Messages: use.Parts.Messages, MessageCount: use.Parts.MessageCount,
+					Search: use.Parts.Search, Files: use.Parts.Files,
+				}}
 				return out, nil
 			}).
 			WithErrors("chat_not_found", "chat_unavailable"),

@@ -100,7 +100,10 @@ describe('core events', () => {
         kind: 'chat',
         sizeBytes: 5_000_000_000,
         context: null,
-        moe: false
+        moe: false,
+        name: 'qwen3-8b',
+        quant: null,
+        tags: []
       }
 
       http.push({ data: { time: 1, stream: 'system', type: 'model.state', v: 1, data: { models: [model] } } })

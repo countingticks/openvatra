@@ -43,7 +43,12 @@ export interface LiveAnswer {
 
 export type AnswerState = 'idle' | 'thinking' | 'streaming'
 
-export const emptyTranscript: Transcript = { seq: 0, items: [], runs: [], context: { used: 0, size: 0 } }
+export const emptyTranscript: Transcript = {
+  seq: 0,
+  items: [],
+  runs: [],
+  context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
+}
 
 const inputEntry = (item: TranscriptItem, queued: boolean): TranscriptEntry => ({
   kind: 'input',
@@ -175,6 +180,7 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
         ...next,
         items: [...next.items, { kind: 'answer', seq, runId, parts, stats, partial }],
         context: {
+          ...next.context,
           used: stats.promptTokens + stats.answerTokens,
           size: stats.contextSize > 0 ? stats.contextSize : next.context.size
         }

@@ -357,7 +357,7 @@ func TestDeleteStopsTheActiveRunThenRemovesTheChat(t *testing.T) {
 
 func TestContextOfAnUnknownChatIsErrNotFound(t *testing.T) {
 	f := newFixture(t, installed)
-	if _, _, err := f.svc.Context(bg, "nope"); !errors.Is(err, store.ErrNotFound) {
+	if _, err := f.svc.Context(bg, "nope"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("err = %v, want store.ErrNotFound", err)
 	}
 }

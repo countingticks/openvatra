@@ -259,7 +259,7 @@ func (s *Service) Transcript(ctx context.Context, id string) ([]store.MessageRow
 }
 
 // Context is ContextUse for a chat; store.ErrNotFound for an unknown chat.
-func (s *Service) Context(ctx context.Context, id string) (used, size int, err error) {
+func (s *Service) Context(ctx context.Context, id string) (run.ContextUse, error) {
 	return s.c.Engine.ContextUse(ctx, id)
 }
 

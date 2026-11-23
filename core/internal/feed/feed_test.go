@@ -103,7 +103,7 @@ func TestStateMergesRouterWithDiscoveredModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := json.Marshal(body)
-	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding","context":null,"moe":false},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat","context":null,"moe":false},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file","context":null,"moe":false}]}`
+	want := `{"models":[{"id":"a","state":"stopped","busy":false,"sizeBytes":10,"kind":"embedding","context":null,"moe":false,"name":"","quant":null,"tags":[]},{"id":"b","state":"ready","busy":true,"sizeBytes":20,"projector":"mmproj-b.gguf","kind":"chat","context":null,"moe":false,"name":"","quant":null,"tags":[]},{"id":"c","state":"stopped","busy":false,"sizeBytes":5,"kind":"unreadable","error":"not a GGUF file","context":null,"moe":false,"name":"","quant":null,"tags":[]}]}`
 	if strings.TrimSpace(string(got)) != want {
 		t.Fatalf("body = %s\nwant   %s", got, want)
 	}
@@ -338,5 +338,29 @@ func TestModelStateEventCarriesContextAndMoE(t *testing.T) {
 	}
 	if c, ok := got[1]["context"].(map[string]any); !ok || c["context"] != float64(8192) {
 		t.Fatalf("context = %+v", got[1]["context"])
+	}
+}
+
+func TestStateCarriesNameQuantAndTags(t *testing.T) {
+	list := func() ([]models.Model, error) {
+		return []models.Model{
+			{ID: "a", Kind: models.KindChat, Name: "Gemma 3 12B", Quant: "Q4_K_M", Tags: []string{"Vision"}},
+			{ID: "b", Kind: models.KindChat, Name: "b"},
+		}, nil
+	}
+	body, err := State(&stubRouter{}, list, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := body.Models[0]
+	if a.Name != "Gemma 3 12B" || a.Quant == nil || *a.Quant != "Q4_K_M" || len(a.Tags) != 1 || a.Tags[0] != "Vision" {
+		t.Errorf("model a = %+v", a)
+	}
+	raw, err := json.Marshal(body.Models[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"quant":null`) || !strings.Contains(string(raw), `"tags":[]`) {
+		t.Errorf("model b JSON = %s, want quant null and tags []", raw)
 	}
 }

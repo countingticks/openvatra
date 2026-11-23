@@ -35,7 +35,13 @@ const run = (overrides: Partial<RunSnapshot> = {}): RunSnapshot => ({
 })
 
 function transcript(items: TranscriptItem[], runs: RunSnapshot[] = [run()], active?: RunSnapshot): Wire {
-  return { seq: 10, items, runs, activeRun: active ?? null, context: { used: 0, size: 0 } }
+  return {
+    seq: 10,
+    items,
+    runs,
+    activeRun: active ?? null,
+    context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
+  }
 }
 
 const input = (seq: number, text: string): TranscriptItem => ({ kind: 'input', seq, runId: 'r1', text })

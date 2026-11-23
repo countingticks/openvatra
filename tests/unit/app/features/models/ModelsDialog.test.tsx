@@ -170,7 +170,18 @@ describe('Models dialog', () => {
         coreState: ready,
         setup: { catalog: catalog(qwen) },
         models: [
-          { id: 'm', state: 'stopped', busy: false, sizeBytes: GB, kind: 'chat', context: null, moe: false }
+          {
+            id: 'm',
+            state: 'stopped',
+            busy: false,
+            sizeBytes: GB,
+            kind: 'chat',
+            context: null,
+            moe: false,
+            name: 'm',
+            quant: null,
+            tags: []
+          }
         ]
       }
     )

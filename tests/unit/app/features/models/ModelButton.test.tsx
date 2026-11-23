@@ -14,7 +14,10 @@ const qwen: ModelInfo = {
   sizeBytes: 5 * 1024 ** 3,
   kind: 'chat',
   context: null,
-  moe: false
+  moe: false,
+  name: 'Qwen3-8B',
+  quant: null,
+  tags: []
 }
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 

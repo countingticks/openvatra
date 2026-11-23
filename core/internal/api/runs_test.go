@@ -212,7 +212,8 @@ func TestListChatsShowsTheActiveRunWhileItAnswers(t *testing.T) {
 }
 
 func TestTranscriptIsInputThenAnswerWithStatsAndTheRun(t *testing.T) {
-	f := newRunsFixture(t, chatModels, hiTurn)
+	// The exact prompt size is above the system prompt's estimate, so the parts add up to used.
+	f := newRunsFixture(t, chatModels, providertest.Turn{Text: []string{"h", "i"}, Usage: provider.Usage{PromptTokens: 200, AnswerTokens: 1, Exact: true}})
 	ref := f.start(`{"requestId":"r1","text":"hello"}`)
 	f.waitFor("run.finished", ref.RunID)
 
@@ -237,6 +238,9 @@ func TestTranscriptIsInputThenAnswerWithStatsAndTheRun(t *testing.T) {
 	}
 	if tr.Context.Size != 8192 || tr.Context.Used <= 0 {
 		t.Errorf("context = %+v, want size 8192 and some used", tr.Context)
+	}
+	if p := tr.Context.Parts; p.MessageCount <= 0 || p.System+p.Messages != tr.Context.Used {
+		t.Errorf("parts = %+v, want messages counted and system + messages == used", p)
 	}
 }
 

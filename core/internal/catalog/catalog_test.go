@@ -241,3 +241,30 @@ func TestBaseURLOnlyInTestCatalogAndOnlyLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestOwner(t *testing.T) {
+	dir := t.TempDir()
+	c := testCatalog(dir, 0, nil)
+	c.entries[0].Name = "Model One"
+	c.entries[0].Tags = []string{"chat", "code"}
+
+	name, tags, ok := c.Owner(filepath.Join(dir, "one", "a.gguf"))
+	if !ok || name != "Model One" || len(tags) != 2 || tags[1] != "code" {
+		t.Errorf("listed file: %q %v %v", name, tags, ok)
+	}
+	for label, p := range map[string]string{
+		"the same name in another folder":  filepath.Join(dir, "other", "a.gguf"),
+		"an unlisted file in the folder":   filepath.Join(dir, "one", "x.gguf"),
+		"another entry's file in this one": filepath.Join(dir, "one", "b.gguf"),
+	} {
+		if _, _, ok := c.Owner(p); ok {
+			t.Errorf("%s: want false", label)
+		}
+	}
+	if _, _, ok := c.Owner(filepath.Join(strings.ToUpper(dir), "ONE", "A.GGUF")); !ok {
+		t.Error("different letter case: want true")
+	}
+	if _, _, ok := testCatalog("", 0, nil).Owner(filepath.Join(dir, "one", "a.gguf")); ok {
+		t.Error("no models folder: want false")
+	}
+}

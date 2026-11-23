@@ -15,7 +15,10 @@ const stopped: ModelInfo = {
   sizeBytes: 1,
   kind: 'chat',
   context: null,
-  moe: false
+  moe: false,
+  name: 'Qwen3-8B',
+  quant: null,
+  tags: []
 }
 const broken: ModelInfo = { ...stopped, state: 'error', error: 'The model did not start.' }
 
