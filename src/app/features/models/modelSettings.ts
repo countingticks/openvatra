@@ -12,7 +12,7 @@ import type {
 } from '@app/core/generated'
 
 /** core's defaults for engine.llamaserver (llamaserver.DefaultSettings). */
-export const defaultEngineSettings: Readonly<LlamaServerSettings> = { build: 'bundled', path: null }
+export const defaultEngineSettings: Readonly<LlamaServerSettings> = { build: 'auto', path: null }
 
 /** core's defaults for provider.llamacpp (llamacpp.DefaultSettings). */
 export const defaultLlamacppSettings: Readonly<LlamaCppSettings> = {
