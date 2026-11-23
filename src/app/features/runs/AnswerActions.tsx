@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { RotateCw } from 'lucide-react'
 import type { MessagePart, MessageStats } from '@app/core/generated'
 import { Button } from '@app/ui/button'
-import { answerCopyText, statsLine } from './answerText'
+import { answerCopyText, speedText, statsLine } from './answerText'
+import { CopyButton, MessageActions } from './MessageActions'
 
-/** Copy and the stats line under a finished answer; shown on hover or focus, always in the accessibility tree. */
+/** Copy, Regenerate and the speed under a finished answer; shown on hover or focus, always in the accessibility tree. */
 export function AnswerActions({
   parts,
   stats,
@@ -13,32 +14,20 @@ export function AnswerActions({
   stats: MessageStats | null
   onRegenerate?: () => void
 }): React.JSX.Element {
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  const copy = (): void => {
-    navigator.clipboard
-      .writeText(answerCopyText(parts))
-      .then(() => setCopied(true))
-      .catch((error: unknown) => console.error('Could not copy the answer', error))
-  }
-
+  const speed = stats ? speedText(stats) : ''
   return (
-    <div className="mt-2 flex items-center gap-3 font-sans opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-      <Button variant="ghost" size="xs" aria-label="Copy answer" onClick={copy}>
-        {copied ? 'Copied' : 'Copy'}
-      </Button>
+    <MessageActions className="mt-1.5 -ml-1.5">
+      <CopyButton text={answerCopyText(parts)} label="Copy answer" />
       {onRegenerate && (
-        <Button variant="ghost" size="xs" onClick={onRegenerate}>
-          Regenerate
+        <Button variant="ghost" size="icon-sm" aria-label="Regenerate answer" onClick={onRegenerate}>
+          <RotateCw aria-hidden className="size-3.5" />
         </Button>
       )}
-      {stats && <span className="text-xs text-muted-foreground tabular-nums">{statsLine(stats)}</span>}
-    </div>
+      {stats && speed && (
+        <span title={statsLine(stats)} className="ml-1 text-xs text-muted-foreground tabular-nums">
+          {speed}
+        </span>
+      )}
+    </MessageActions>
   )
 }

@@ -502,12 +502,12 @@ describe('ChatScreen', () => {
     it('regenerates from the button, and edits with the new text', async () => {
       const { coreHttp } = show({ open: { transcript: done() } })
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Regenerate' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Regenerate answer' }))
       await waitFor(() =>
         expect(runPosts(coreHttp)).toEqual([{ requestId: expect.any(String), chatId: 'c1', replace: 'last' }])
       )
 
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       fireEvent.change(screen.getByRole('textbox', { name: 'Edit message' }), { target: { value: 'hello' } })
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
       await waitFor(() =>

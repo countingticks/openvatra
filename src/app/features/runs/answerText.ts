@@ -13,6 +13,12 @@ export function statsLine(stats: MessageStats): string {
   ].join(' · ')
 }
 
+/** "38 tok/s", or "" when the speed rounds to 0. */
+export function speedText(stats: MessageStats): string {
+  const speed = Math.round(stats.tokensPerSecond)
+  return speed > 0 ? `${speed} tok/s` : ''
+}
+
 /** The thinking disclosure's label once the answer is done. */
 export function thoughtLabel(reasoningMs: number | undefined): string {
   if (!reasoningMs) return 'Thoughts'

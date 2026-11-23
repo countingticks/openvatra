@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { coreEvent } from '@app/core/events'
 import type {
@@ -198,7 +198,7 @@ describe('Transcript', () => {
     expect(writeText).toHaveBeenCalledWith('Hello world')
   })
 
-  it('shows the stats line of an exact and an estimated answer', () => {
+  it('shows the speed with the full stats line as its title, and nothing for no speed', () => {
     show(
       transcript([
         input(1, 'A'),
@@ -208,8 +208,56 @@ describe('Transcript', () => {
       ])
     )
 
-    expect(screen.getByText('38 tok/s · 412 in · 286 out · 7.5 s')).toBeInTheDocument()
-    expect(screen.getByText('~412 in · ~286 out · 1.2 s')).toBeInTheDocument()
+    expect(screen.getByText('38 tok/s')).toHaveAttribute('title', '38 tok/s · 412 in · 286 out · 7.5 s')
+    expect(screen.getAllByText(/tok\/s/)).toHaveLength(1)
+  })
+
+  it.each([
+    ['the last idle answer', 'Copy answer', 4, ['Copy answer', 'Regenerate answer']],
+    ['an earlier answer', 'Copy answer', 2, ['Copy answer']]
+  ])('gives %s its actions', (_name, _first, seq, names) => {
+    show(transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)]))
+    const copies = screen.getAllByRole('button', { name: 'Copy answer' })
+    expect(copies).toHaveLength(2)
+    const row = copies[seq === 4 ? 1 : 0].parentElement as HTMLElement
+    expect(
+      within(row)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label'))
+    ).toEqual(names)
+    expect(within(row).getAllByText('38 tok/s')).toHaveLength(1)
+  })
+
+  it('gives the last idle input Edit and Copy, and an earlier input Copy only', () => {
+    show(transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)]))
+    const rows = screen
+      .getAllByRole('button', { name: 'Copy message' })
+      .map((button) => button.parentElement as HTMLElement)
+    expect(rows).toHaveLength(2)
+    expect(within(rows[0]).queryByRole('button', { name: 'Edit message' })).toBeNull()
+    expect(within(rows[1]).getByRole('button', { name: 'Edit message' })).toBeInTheDocument()
+  })
+
+  it('copies the input text and names the button Copied for 1.5 s', async () => {
+    show(transcript([input(1, 'Hello there')]))
+    vi.useFakeTimers({
+      toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame', 'cancelAnimationFrame']
+    })
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy message' }))
+    })
+    expect(writeText).toHaveBeenCalledWith('Hello there')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(1499)
+    })
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1)
+    })
+    expect(screen.getByRole('button', { name: 'Copy message' })).toBeInTheDocument()
   })
 
   it('ends a stopped partial answer with "Stopped", but not a failed one', () => {
@@ -266,15 +314,15 @@ describe('Transcript', () => {
   it('offers Regenerate under the last answer only, and not while a run is active', () => {
     const two = [input(1, 'A'), answer(2), input(3, 'B'), answer(4)]
     const idle = show(transcript(two))
-    expect(screen.getAllByRole('button', { name: 'Regenerate' })).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Regenerate' }))
+    expect(screen.getAllByRole('button', { name: 'Regenerate answer' })).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Regenerate answer' }))
     expect(idle.onRegenerate).toHaveBeenCalled()
     idle.unmount()
 
     const running = run({ state: 'running' })
     show(transcript([...two, input(5, 'C')], [running], running))
-    expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Regenerate answer' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull()
   })
 
   it('offers Retry, not Regenerate, for a failed last turn', () => {
@@ -285,7 +333,7 @@ describe('Transcript', () => {
       )
     )
 
-    expect(screen.queryByRole('button', { name: 'Regenerate' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Regenerate answer' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(failed.onRegenerate).toHaveBeenCalled()
   })
@@ -296,9 +344,9 @@ describe('Transcript', () => {
 
     it('offers Edit on the last input only, and Esc restores the bubble', () => {
       show(two())
-      expect(screen.getAllByRole('button', { name: 'Edit' })).toHaveLength(1)
+      expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1)
 
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       expect(editor()).toHaveValue('B')
       expect(editor()).toHaveFocus()
       fireEvent.keyDown(editor(), { key: 'Escape' })
@@ -309,7 +357,7 @@ describe('Transcript', () => {
 
     it('sends the new text with Enter, closes on success, and sends nothing when empty', async () => {
       const shown = show(two())
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
 
       fireEvent.change(editor(), { target: { value: '  ' } })
       fireEvent.keyDown(editor(), { key: 'Enter' })
@@ -327,7 +375,7 @@ describe('Transcript', () => {
     it('stays open with its text when sending fails', async () => {
       const onEdit = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('no'))
       show(two(), { onEdit })
-      fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       fireEvent.change(editor(), { target: { value: 'B2' } })
 
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
