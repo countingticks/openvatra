@@ -128,7 +128,7 @@ export function GpuCard(): React.JSX.Element | null {
             <span className="shrink-0 text-muted-foreground">· {size}</span>
           </p>
           {nvidia && !custom && (
-            <div className="shrink-0">
+            <div className="-my-1 shrink-0">
               <span id={labelId} className="sr-only">
                 Engine
               </span>
