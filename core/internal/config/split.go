@@ -71,7 +71,11 @@ func SplitModels(ctx context.Context, db DB, logger *slog.Logger) error {
 		logger.Error("stored models section is invalid; both new sections start from their defaults", "err", err)
 		return nil
 	}
-	engine, err := json.Marshal(splitEngine{Path: old.LlamaServerPath, Build: old.Engine})
+	build := old.Engine
+	if build == "bundled" {
+		build = "auto" // the default before migration 0009 turned it into auto
+	}
+	engine, err := json.Marshal(splitEngine{Path: old.LlamaServerPath, Build: build})
 	if err != nil {
 		return fmt.Errorf("split models: %w", err)
 	}

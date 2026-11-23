@@ -581,7 +581,7 @@ func TestSplitModelsRowsRegisterIntact(t *testing.T) {
 	}{
 		"default row": {
 			`{"llamaServerPath":null,"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{},"engine":"bundled"}`,
-			`{"path":null,"build":"bundled"}`,
+			`{"path":null,"build":"auto"}`,
 			`{"modelsDir":null,"embeddingModel":null,"idleUnloadMinutes":15,"options":{}}`,
 			1,
 		},

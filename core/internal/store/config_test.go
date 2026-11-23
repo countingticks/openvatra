@@ -101,7 +101,7 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 8 {
+	if v, _ := s.Version(); v != 9 {
 		t.Fatalf("version = %d", v)
 	}
 	if _, _, err := s.ConfigGet(context.Background(), "x"); err != nil {
@@ -316,5 +316,85 @@ func TestProjectorErrorRollsTheConfigMoveBack(t *testing.T) {
 		if rev, _, _ := s.ConfigGet(ctx, name); rev != 0 {
 			t.Fatalf("%s written", name)
 		}
+	}
+}
+
+func TestMigration0009TurnsAStoredBundledBuildIntoAuto(t *testing.T) {
+	const engine = "engine.llamaserver"
+	dir := t.TempDir()
+	old, err := open(dir, event.NewBus(16), embeddedUpTo(t, 8), "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	put := func(section string, rows ...string) {
+		t.Helper()
+		for i, v := range rows {
+			if _, err := old.ConfigPut(ctx, section, i, []byte(v)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	// rev 3 for the bundled row, so the migration's bump to 4 shows
+	put(engine, `{"path":null,"build":"cuda"}`, `{"path":null,"build":"cuda"}`, `{"path":null,"build":"bundled"}`)
+	put("other", `{"path":null,"build":"bundled"}`)
+	old.Close()
+
+	s, err := Open(dir, event.NewBus(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	check := func(section string, wantRev int, want string) {
+		t.Helper()
+		rev, v, err := s.ConfigGet(ctx, section)
+		if err != nil || rev != wantRev || string(v) != want {
+			t.Fatalf("%s = rev %d, %s, %v; want rev %d, %s", section, rev, v, err, wantRev, want)
+		}
+	}
+	check(engine, 4, `{"path":null,"build":"auto"}`)
+	check("other", 1, `{"path":null,"build":"bundled"}`)
+
+	// a bundled picked after the migration is a choice and survives a reopen
+	if _, err := s.ConfigPut(ctx, engine, 4, []byte(`{"path":null,"build":"bundled"}`)); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	again, err := Open(dir, event.NewBus(16))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if rev, v, _ := again.ConfigGet(ctx, engine); rev != 5 || string(v) != `{"path":null,"build":"bundled"}` {
+		t.Fatalf("after reopen = rev %d, %s", rev, v)
+	}
+}
+
+func TestMigration0009KeepsCudaAndAPathRow(t *testing.T) {
+	const engine = "engine.llamaserver"
+	for name, tc := range map[string]struct{ old, want string }{
+		"cuda":             {`{"path":null,"build":"cuda"}`, `{"path":null,"build":"cuda"}`},
+		"auto":             {`{"path":null,"build":"auto"}`, `{"path":null,"build":"auto"}`},
+		"path and bundled": {`{"path":"C:\\x\\llama-server.exe","build":"bundled"}`, `{"path":"C:\\x\\llama-server.exe","build":"auto"}`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			old, err := open(dir, event.NewBus(16), embeddedUpTo(t, 8), "migrations")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := old.ConfigPut(context.Background(), engine, 0, []byte(tc.old)); err != nil {
+				t.Fatal(err)
+			}
+			old.Close()
+			s, err := Open(dir, event.NewBus(16))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			if _, v, _ := s.ConfigGet(context.Background(), engine); string(v) != tc.want {
+				t.Fatalf("row = %s, want %s", v, tc.want)
+			}
+		})
 	}
 }
