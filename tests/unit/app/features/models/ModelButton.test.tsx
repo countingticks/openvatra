@@ -55,6 +55,8 @@ describe('model button', () => {
 
   it('opens Settings on Models from "Manage models…" and closes the popover', async () => {
     const { store } = renderWithStore(<Shell />, {}, { models: [qwen] })
+    // The chat's model is known once the list has arrived; "Manage models…" names it.
+    await waitFor(() => expect(button()).toHaveAccessibleName(/^Model: Qwen3-8B,/))
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Manage models…' }))
