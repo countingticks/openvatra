@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { InstalledRow } from './InstalledRow'
+import { InstalledRow, UnreadableRow } from './InstalledRow'
 import { useCoreState } from '@app/core/useCoreState'
 import { useLlamacppSettings } from './useLlamacppSettings'
 import { useModels } from './useModels'
@@ -20,6 +20,8 @@ export function InstalledList(): React.JSX.Element {
     ...models.filter((model) => model.kind === 'chat').sort(byName),
     ...models.filter((model) => model.kind === 'embedding').sort(byName)
   ]
+
+  const unreadable = models.filter((model) => model.kind === 'unreadable').sort(byName)
 
   function setOptions(id: string, next: ModelOptions | undefined): Promise<void> {
     // The patch carries the whole map: one model's change can't drop another's.
@@ -54,6 +56,9 @@ export function InstalledList(): React.JSX.Element {
           expanded={openId === model.id}
           onToggle={() => setOpenId(openId === model.id ? null : model.id)}
         />
+      ))}
+      {unreadable.map((model) => (
+        <UnreadableRow key={model.id} model={model} />
       ))}
     </ul>
   )

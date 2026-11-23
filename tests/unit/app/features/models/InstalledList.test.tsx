@@ -162,6 +162,92 @@ describe('the installed list', () => {
     })
   })
 
+  describe('removing', () => {
+    const removal = (id: string): { method: string; path: string; body: unknown } => ({
+      method: 'POST',
+      path: `/api/models/${id}/remove`,
+      body: undefined
+    })
+
+    it('asks first, with the size and the Recycle Bin, and posts only after Remove it', async () => {
+      const { coreHttp, group } = await openOptionsOf(qwen)
+      coreHttp.respond('POST', `/api/models/${qwen.id}/remove`, () => ({ status: 204 }))
+
+      fireEvent.click(within(group).getByRole('button', { name: 'Remove model…' }))
+
+      expect(within(group).getByRole('alert')).toHaveTextContent(
+        'Remove Qwen3 8B? This frees about 5.0 GB. It goes to the Recycle Bin.'
+      )
+      expect(coreWrites(coreHttp).filter((write) => write.path.endsWith('/remove'))).toEqual([])
+
+      fireEvent.click(within(group).getByRole('button', { name: 'Remove it' }))
+
+      await waitFor(() =>
+        expect(coreWrites(coreHttp).filter((write) => write.path.endsWith('/remove'))).toEqual([
+          removal(qwen.id)
+        ])
+      )
+    })
+
+    it('posts nothing on Keep it, and gives the focus back to Remove model…', async () => {
+      const { coreHttp, group } = await openOptionsOf(qwen)
+      const remove = within(group).getByRole('button', { name: 'Remove model…' })
+
+      fireEvent.click(remove)
+      fireEvent.click(within(group).getByRole('button', { name: 'Keep it' }))
+
+      expect(within(group).queryByRole('alert')).not.toBeInTheDocument()
+      expect(remove).toHaveFocus()
+      expect(coreWrites(coreHttp).filter((write) => write.path.endsWith('/remove'))).toEqual([])
+    })
+
+    it('shows core’s message when a run is answering with the model', async () => {
+      const { coreHttp, group } = await openOptionsOf(qwen)
+      coreHttp.respond('POST', `/api/models/${qwen.id}/remove`, () => ({
+        status: 409,
+        body: { error: 'model_busy', message: 'Qwen3 8B is answering a chat right now.' }
+      }))
+
+      fireEvent.click(within(group).getByRole('button', { name: 'Remove model…' }))
+      fireEvent.click(within(group).getByRole('button', { name: 'Remove it' }))
+
+      expect(await screen.findByText('Qwen3 8B is answering a chat right now.')).toHaveAttribute(
+        'role',
+        'alert'
+      )
+      expect(screen.queryByRole('button', { name: 'Remove it' })).not.toBeInTheDocument()
+    })
+
+    it('lists an unreadable file with its reason and no options, and removes it', async () => {
+      const junk: ModelInfo = {
+        ...qwen,
+        id: 'broken.gguf',
+        name: 'broken.gguf',
+        kind: 'unreadable',
+        error: 'not a GGUF file',
+        sizeBytes: 10 * 1024 ** 2
+      }
+      const { coreHttp } = await openModels(chosen, { coreState: ready, models: [qwen, junk] })
+      coreHttp.respond('POST', '/api/models/broken.gguf/remove', () => ({ status: 204 }))
+      const list = await screen.findByRole('list', { name: 'Installed models' })
+
+      expect(within(list).getByText('not a GGUF file')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Options for broken.gguf' })).not.toBeInTheDocument()
+
+      fireEvent.click(within(list).getByRole('button', { name: 'Remove…' }))
+      expect(within(list).getByRole('alert')).toHaveTextContent(
+        'Remove broken.gguf? This frees about 10 MB. It goes to the Recycle Bin.'
+      )
+      fireEvent.click(within(list).getByRole('button', { name: 'Remove it' }))
+
+      await waitFor(() =>
+        expect(coreWrites(coreHttp).filter((write) => write.path.endsWith('/remove'))).toEqual([
+          removal('broken.gguf')
+        ])
+      )
+    })
+  })
+
   describe('Extra arguments', () => {
     it('saves when the box loses focus, keeping other models’ options', async () => {
       const { coreHttp, group } = await openOptionsOf(qwen, { 'nomic-embed': { args: '--jinja' } })

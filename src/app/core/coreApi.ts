@@ -6,6 +6,8 @@ export const coreApi = generatedApi.enhanceEndpoints({
   endpoints: {
     listModels: { keepUnusedDataFor: Infinity },
     listDownloads: { keepUnusedDataFor: Infinity },
+    // A removed model can be a catalog entry's file: the catalog's "installed" flag changes with it.
+    removeModel: { invalidatesTags: ['models', 'catalog'] },
     // The answer already is the new entry, and the write queue puts it in the cache.
     putConfigEngineLlamaserver: { invalidatesTags: [] },
     putConfigProviderLlamacpp: { invalidatesTags: [] }
