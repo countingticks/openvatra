@@ -1,0 +1,2 @@
+0.00.000.001 I load_tensors:   CUDA0 model buffer size =   100.00 MiB
+0.00.000.002 I common_params_fit_impl: will leave 900 >= 384 MiB of free device memory, no changes needed

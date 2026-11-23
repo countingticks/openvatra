@@ -54,6 +54,7 @@ type Resources struct {
 	Known               bool
 	Source              string  // "estimate" or "measured"; "" when !Known
 	TokensPerSecond     float64 // measured only; 0 = not known
+	GPUExpertLayers     int     // experts placement, measured: layers whose experts stayed on the GPU; 0 = not known
 }
 
 type State string

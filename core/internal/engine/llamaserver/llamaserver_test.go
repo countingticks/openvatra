@@ -238,12 +238,12 @@ func TestNeeds(t *testing.T) {
 }
 
 // startLoad starts the fake server printing the load log at path, and returns its instance and the prefixed log.
-func startLoad(t *testing.T, path string) (engine.Instance, *bytes.Buffer) {
+func startLoad(t *testing.T, spec engine.Spec, path string) (engine.Instance, *bytes.Buffer) {
 	t.Helper()
 	var out bytes.Buffer
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	spec := engine.Spec{Model: "fake", Path: "model.gguf", Context: 8192}
+	spec.Model, spec.Path, spec.Context = "fake", "model.gguf", 8192
 	if path != "" {
 		spec.Args = []string{"-load-log", path}
 	}
@@ -256,22 +256,33 @@ func startLoad(t *testing.T, path string) (engine.Instance, *bytes.Buffer) {
 
 func TestStartMeasuresTheLoad(t *testing.T) {
 	const mib = 1 << 20
+	experts := engine.Spec{Placement: engine.Placement{Kind: engine.PlaceExperts}, Shape: engine.Shape{Layers: 40}}
+	gpu := engine.Spec{Shape: engine.Shape{Layers: 40}}
 	cases := map[string]struct {
+		spec       engine.Spec
 		log        string
 		vram, ram  int64
+		gpuExperts int
 		wantKnown  bool
 		wantSource string
 	}{
-		"a real b12078 load": {"testdata/load-b12078-moe-experts.log", 2271205130, 19818736518, true, "measured"},
-		"odd lines":          {"testdata/load-odd.log", 150*mib + mib/2, 11 * mib, true, "measured"},
-		"no buffer line":     {"", 0, 0, false, ""},
+		"a real b12078 load":      {engine.Spec{}, "testdata/load-b12078-moe-experts.log", 2271205130, 19818736518, 0, true, "measured"},
+		"odd lines":               {engine.Spec{}, "testdata/load-odd.log", 150*mib + mib/2, 11 * mib, 0, true, "measured"},
+		"no buffer line":          {engine.Spec{}, "", 0, 0, 0, false, ""},
+		"the captured fit":        {experts, "testdata/load-b12078-moe-fit.log", 11176205353, 13701679678, 16, true, "measured"},
+		"the captured fit on gpu": {gpu, "testdata/load-b12078-moe-fit.log", 11176205353, 13701679678, 0, true, "measured"},
+		"the whole model stayed":  {experts, "testdata/fit-whole.log", 100 * mib, 0, 40, true, "measured"},
+		"41 layers, no overflow":  {experts, "testdata/fit-no-overflow.log", 100 * mib, 0, 40, true, "measured"},
+		"fit failed":              {experts, "testdata/fit-failed.log", 100 * mib, 0, 0, true, "measured"},
+		"overflow above layers":   {experts, "testdata/fit-overflow-too-big.log", 100 * mib, 0, 0, true, "measured"},
+		"experts without fit":     {experts, "testdata/load-odd.log", 150*mib + mib/2, 11 * mib, 0, true, "measured"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			inst, _ := startLoad(t, tc.log)
+			inst, _ := startLoad(t, tc.spec, tc.log)
 			defer inst.Stop(5 * time.Second)
 			got, ok := inst.Measured()
-			want := engine.Resources{VRAMBytes: tc.vram, RAMBytes: tc.ram, Known: tc.wantKnown, Source: tc.wantSource}
+			want := engine.Resources{VRAMBytes: tc.vram, RAMBytes: tc.ram, Known: tc.wantKnown, Source: tc.wantSource, GPUExpertLayers: tc.gpuExperts}
 			if ok != tc.wantKnown || got != want {
 				t.Fatalf("Measured = %+v, %v, want %+v, %v", got, ok, want, tc.wantKnown)
 			}
@@ -280,7 +291,7 @@ func TestStartMeasuresTheLoad(t *testing.T) {
 }
 
 func TestMeasuringKeepsTheLogWhole(t *testing.T) {
-	inst, out := startLoad(t, "testdata/load-odd.log")
+	inst, out := startLoad(t, engine.Spec{}, "testdata/load-odd.log")
 	inst.Stop(5 * time.Second) // the buffer is read only after the process and its output copier are gone
 	for _, line := range []string{
 		"[fake] 0.00.000.001 I load_tensors:   CUDA0 model buffer size =   100.00 MiB\n",

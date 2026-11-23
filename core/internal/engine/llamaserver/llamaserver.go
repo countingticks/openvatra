@@ -97,6 +97,9 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Instance, 
 		return e.runner.Start(ctx, e.Command(spec), logs.Prefixed(out, spec.Model))
 	}
 	m := &measurer{}
+	if spec.Placement.Kind == engine.PlaceExperts {
+		m.layers = max(spec.Shape.Layers, 0)
+	}
 	inst, err := e.runner.Start(ctx, e.Command(spec), io.MultiWriter(m, logs.Prefixed(out, spec.Model)))
 	if err != nil {
 		return nil, err
