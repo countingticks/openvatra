@@ -4,31 +4,34 @@ import { useSetup } from './useSetup'
 import type { DownloadItem } from '@app/core/types'
 
 export interface CudaEngine {
-  /** An NVIDIA card and no llama-server of the user's own: the only case where the faster engine is on offer. */
-  offered: boolean
   status: EnginesBody['cuda']
-  /** Models are running on it right now (build auto or cuda, installed for this app's tag, and no custom path). */
+  /** A llama-server.exe of the user's own is set (engine path not null). */
+  custom: boolean
+  /** Models run on CUDA now: not custom, build auto or cuda, status ready. */
   inUse: boolean
-  /** The download while it is queued, running, paused or failed; undefined otherwise. */
+  /** The engine-cuda download while queued, downloading, verifying, paused or failed. */
   item: DownloadItem | undefined
+  /** Whole percent of item (floor of bytes / total × 100; 0 when total is 0); null without an item. */
+  progress: number | null
 }
 
 /**
- * What the "faster engine for NVIDIA" card and the Settings line show. core decides what actually runs; this only
- * asks it what is installed (the event stream asks again when the download finishes) and reads the queue.
+ * What the GPU card shows about the faster engine. core decides what actually runs; this only asks it what is
+ * installed (the event stream asks again when the download finishes) and reads the queue.
  */
 export function useCudaEngine(): CudaEngine {
-  const { hardware, downloads } = useSetup()
+  const { downloads } = useSetup()
   const { build, path } = useEngineSettings().value
-  // The card is optional; without an answer it just stays hidden.
+  // Without an answer the engine counts as not installed.
   const status = useGetEnginesQuery().data?.cuda ?? 'none'
 
   const item = downloads.find((candidate) => candidate.id === 'engine-cuda' && candidate.state !== 'done')
   const custom = path !== null
   return {
-    offered: hardware?.gpu?.vendor === 'nvidia' && !custom,
     status,
+    custom,
     inUse: !custom && (build === 'auto' || build === 'cuda') && status === 'ready',
-    item
+    item,
+    progress: item ? (item.total > 0 ? Math.floor((item.bytes / item.total) * 100) : 0) : null
   }
 }

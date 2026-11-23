@@ -10,6 +10,9 @@ import type { ModelInfo } from '@app/core/types'
 import { coreWrites, fitQueries, type FakeCoreHttp } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
 
+// The GPU card asks for fresh hardware numbers whenever the section opens; that is not a write under test.
+const HARDWARE = '/api/hardware/refresh'
+
 const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection: exampleConnection }
 /** The two window flags that sit beside core's models section in a test's arguments. */
 type Preferences = Partial<LlamaCppSettings> & {
@@ -294,11 +297,11 @@ describe('Settings → Models', () => {
       const { coreHttp } = await openModels({ showAdvanced: false }, { coreState: ready, setup: { catalog } })
 
       fireEvent.click(await screen.findByRole('button', { name: 'Remove Small 3B' }))
-      expect(coreWrites(coreHttp)).toEqual([])
+      expect(coreWrites(coreHttp).filter((write) => write.path !== HARDWARE)).toEqual([])
       fireEvent.click(screen.getByRole('button', { name: 'Remove it' }))
 
       await waitFor(() =>
-        expect(coreWrites(coreHttp)).toEqual([
+        expect(coreWrites(coreHttp).filter((write) => write.path !== HARDWARE)).toEqual([
           { method: 'POST', path: '/api/catalog/small-3b/remove', body: undefined }
         ])
       )
@@ -509,7 +512,7 @@ describe('Settings → Models', () => {
 
       expect(first).toHaveAttribute('aria-expanded', 'false')
       expect(second).toHaveAttribute('aria-expanded', 'true')
-      expect(screen.getAllByRole('group')).toHaveLength(1)
+      expect(screen.getAllByRole('group', { name: /^Options for / })).toHaveLength(1)
     })
 
     it('saves the arguments when the box loses focus, keeping other models’ options', async () => {
