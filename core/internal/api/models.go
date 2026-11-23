@@ -103,6 +103,13 @@ func modelRoutes(d Deps) []Route {
 			}).
 			WithStatus(http.StatusAccepted).
 			WithErrors("model_not_loaded"),
+		// Answers when the files are in the Recycle Bin, which can take a while: the model is stopped first.
+		JSON(http.MethodPost, "/api/models/{id}/remove", UI, "removeModel", "Move a model's files to the Recycle Bin",
+			func(ctx context.Context, in ModelPath) (NoContent, error) {
+				return NoContent{}, d.Removal.RemoveModel(ctx, in.ID)
+			}).
+			WithErrors("model_not_found", "model_busy", "no_models_folder", "outside_models_folder", "unload_timeout",
+				"trash_failed", "internal"),
 		// For changes core can't see itself: main moves a removed model to the Recycle Bin, and the list has to drop
 		// it.
 		JSON(http.MethodPost, "/api/models/refresh", UI, "refreshModels", "Tell every listener to re-read the models folder",

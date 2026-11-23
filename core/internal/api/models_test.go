@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/fit"
 	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
+	"github.com/countingticks/openvatra/core/internal/removal"
 )
 
 func callModels(t *testing.T, rt provider.Resident, method, path string) *httptest.ResponseRecorder {
@@ -213,4 +216,40 @@ func TestFitRoute(t *testing.T) {
 			t.Fatalf("status = %d", rec.Code)
 		}
 	})
+}
+
+func TestRemoveModel(t *testing.T) {
+	rm := &stubRemoval{}
+	rec := postPath(t, testHandler(t, Deps{Removal: rm}), testToken, "/api/models/qwen-q4/remove")
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+	if len(rm.ids) != 1 || rm.ids[0] != "qwen-q4" {
+		t.Errorf("removed %v, want [qwen-q4]", rm.ids)
+	}
+}
+
+func TestRemoveModelErrors(t *testing.T) {
+	tests := []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{removal.ErrModelBusy, http.StatusConflict, "model_busy"},
+		{provider.ErrUnknownModel, http.StatusNotFound, "model_not_found"},
+		{removal.ErrOutside, http.StatusConflict, "outside_models_folder"},
+		{fmt.Errorf("%w: %v", removal.ErrTrashFailed, errors.New("0x7c")), http.StatusInternalServerError, "trash_failed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			rec := postPath(t, testHandler(t, Deps{Removal: &stubRemoval{err: tt.err}}), testToken, "/api/models/qwen/remove")
+			var body ErrorBody
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("body %s: %v", rec.Body, err)
+			}
+			if rec.Code != tt.status || body.Error != tt.code {
+				t.Errorf("got %d %+v, want %d %s", rec.Code, body, tt.status, tt.code)
+			}
+		})
+	}
 }

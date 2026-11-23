@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/models"
 	"github.com/countingticks/openvatra/core/internal/provider"
 )
 
@@ -82,6 +84,14 @@ func (f *fakeCatalog) View() catalog.View {
 	}}
 }
 
+// EntryOf owns every file directly in the entry's folder.
+func (f *fakeCatalog) EntryOf(path string) (string, bool) {
+	if strings.EqualFold(filepath.Dir(path), f.folder) {
+		return entryID, true
+	}
+	return "", false
+}
+
 type fakeDownloads struct {
 	items     []downloads.DownloadItem
 	cancelErr error
@@ -96,16 +106,17 @@ func (f *fakeDownloads) Cancel(id string) error {
 }
 
 type fakeTrash struct {
-	mu    sync.Mutex
-	fails int // the first fails calls fail
-	paths []string
+	mu       sync.Mutex
+	fails    int    // the first fails calls fail
+	failPath string // every call for this path fails
+	paths    []string
 }
 
 func (f *fakeTrash) move(path string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.paths = append(f.paths, path)
-	if len(f.paths) <= f.fails {
+	if len(f.paths) <= f.fails || path == f.failPath {
 		return errors.New("Operation was aborted")
 	}
 	return nil
@@ -119,19 +130,20 @@ type fixture struct {
 	dl      *fakeDownloads
 	trash   *fakeTrash
 	log     *bytes.Buffer
+	list    []models.Model // what List reports
 	cfg     Config
 }
 
 // newFixture has a models folder holding the entry's folder, nothing running and nothing queued.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	models := t.TempDir()
-	folder := filepath.Join(models, entryID)
+	dir := t.TempDir()
+	folder := filepath.Join(dir, entryID)
 	if err := os.Mkdir(folder, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	f := &fixture{
-		models:  models,
+		models:  dir,
 		folder:  folder,
 		router:  &fakeRouter{},
 		catalog: &fakeCatalog{folder: folder},
@@ -144,6 +156,7 @@ func newFixture(t *testing.T) *fixture {
 		Catalog:    f.catalog,
 		Downloads:  f.dl,
 		ModelsDir:  func() string { return f.models },
+		List:       func() ([]models.Model, error) { return f.list, nil },
 		Trash:      f.trash.move,
 		Logger:     slog.New(slog.NewTextHandler(f.log, nil)),
 		Poll:       time.Millisecond,
@@ -373,6 +386,222 @@ func TestRemoveRunsOneAtATime(t *testing.T) {
 		}
 		if n := len(f.catalog.entered); n != 2 {
 			t.Errorf("Folder called %d times, want 2", n)
+		}
+	})
+}
+
+// own writes the user's own files into the models folder and returns their paths.
+func (f *fixture) own(t *testing.T, names ...string) []string {
+	t.Helper()
+	var paths []string
+	for _, n := range names {
+		p := filepath.Join(f.models, filepath.FromSlash(n))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	return paths
+}
+
+func (f *fixture) removeModel(id string) error {
+	return New(f.cfg).RemoveModel(context.Background(), id)
+}
+
+func TestRemoveModelOwnFile(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "mine/llama.gguf")
+	f.list = []models.Model{{ID: "llama", Path: p[0], Parts: p}}
+	if err := f.removeModel("llama"); err != nil {
+		t.Fatalf("RemoveModel: %v", err)
+	}
+	if !slices.Equal(f.trash.paths, p) {
+		t.Errorf("trashed %v, want %v", f.trash.paths, p)
+	}
+	if f.router.notified != 1 {
+		t.Errorf("Notify called %d times, want 1", f.router.notified)
+	}
+}
+
+func TestRemoveModelMovesEveryPart(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "big-00001-of-00003.gguf", "big-00002-of-00003.gguf", "big-00003-of-00003.gguf")
+	f.list = []models.Model{{ID: "big", Path: p[0], Parts: p}}
+	if err := f.removeModel("big"); err != nil {
+		t.Fatalf("RemoveModel: %v", err)
+	}
+	if !slices.Equal(f.trash.paths, p) {
+		t.Errorf("trashed %v, want %v", f.trash.paths, p)
+	}
+}
+
+func TestRemoveModelProjector(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "v/a.gguf", "v/b.gguf", "v/mmproj-a.gguf", "w/c.gguf", "w/mmproj-c.gguf")
+	shared, own := p[2], p[4]
+	f.list = []models.Model{
+		{ID: "a", Path: p[0], Parts: p[0:1], MMProj: shared},
+		{ID: "b", Path: p[1], Parts: p[1:2], MMProj: strings.ToUpper(shared)},
+		{ID: "c", Path: p[3], Parts: p[3:4], MMProj: own},
+	}
+	if err := f.removeModel("c"); err != nil {
+		t.Fatalf("RemoveModel c: %v", err)
+	}
+	if err := f.removeModel("a"); err != nil {
+		t.Fatalf("RemoveModel a: %v", err)
+	}
+	if want := []string{p[3], own, p[0]}; !slices.Equal(f.trash.paths, want) {
+		t.Errorf("trashed %v, want %v (a projector another model names stays)", f.trash.paths, want)
+	}
+}
+
+func TestRemoveModelInCatalogFolder(t *testing.T) {
+	f := newFixture(t)
+	p := filepath.Join(f.folder, "qwen-q4.gguf")
+	f.list = []models.Model{{ID: "qwen-q4", Path: p, Parts: []string{p}}}
+	f.dl.items = []downloads.DownloadItem{{ID: entryID, State: downloads.Done}}
+	if err := f.removeModel("qwen-q4"); err != nil {
+		t.Fatalf("RemoveModel: %v", err)
+	}
+	if len(f.trash.paths) != 1 || f.trash.paths[0] != f.folder {
+		t.Errorf("trashed %v, want the entry folder %s", f.trash.paths, f.folder)
+	}
+	if len(f.dl.cancelled) != 1 || f.dl.cancelled[0] != entryID {
+		t.Errorf("cancelled %v, want [%s]", f.dl.cancelled, entryID)
+	}
+}
+
+func TestRemoveModelBusy(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "llama.gguf")
+	f.list = []models.Model{{ID: "llama", Path: p[0], Parts: p}}
+	f.router.states = []provider.ModelState{{ID: "llama", State: provider.StateReady, Busy: true}}
+	if err := f.removeModel("llama"); !errors.Is(err, ErrModelBusy) {
+		t.Fatalf("err = %v, want ErrModelBusy", err)
+	}
+	if len(f.router.unloaded) != 0 || len(f.trash.paths) != 0 {
+		t.Errorf("unloaded %v, trashed %v; want nothing", f.router.unloaded, f.trash.paths)
+	}
+}
+
+func TestRemoveModelUnloadsFirst(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "llama.gguf")
+	f.list = []models.Model{{ID: "llama", Path: p[0], Parts: p}}
+	f.router.states = []provider.ModelState{{ID: "llama", State: provider.StateReady}}
+	f.router.stopAfter = 2
+	stoppedFirst := false
+	f.cfg.Trash = func(path string) error {
+		stoppedFirst = len(f.router.States()) == 0
+		return f.trash.move(path)
+	}
+	if err := f.removeModel("llama"); err != nil {
+		t.Fatalf("RemoveModel: %v", err)
+	}
+	if !slices.Equal(f.router.unloaded, []string{"llama"}) {
+		t.Errorf("unloaded %v, want [llama]", f.router.unloaded)
+	}
+	if !stoppedFirst {
+		t.Error("the file moved while the model was still running")
+	}
+}
+
+func TestRemoveModelNotFound(t *testing.T) {
+	f := newFixture(t)
+	if err := f.removeModel("nope"); !errors.Is(err, provider.ErrUnknownModel) {
+		t.Fatalf("err = %v, want provider.ErrUnknownModel", err)
+	}
+	f.cfg.ModelsDir = func() string { return "" }
+	if err := f.removeModel("nope"); !errors.Is(err, catalog.ErrNoFolder) {
+		t.Fatalf("no folder: err = %v, want catalog.ErrNoFolder", err)
+	}
+}
+
+func TestRemoveModelOutside(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "split-00001-of-00002.gguf")
+	escaped := f.models + string(filepath.Separator) + ".." + string(filepath.Separator) + "split-00002-of-00002.gguf"
+	f.list = []models.Model{{ID: "split", Path: p[0], Parts: []string{p[0], escaped}}}
+	if err := f.removeModel("split"); !errors.Is(err, ErrOutside) {
+		t.Fatalf("err = %v, want ErrOutside", err)
+	}
+	if len(f.trash.paths) != 0 {
+		t.Errorf("trashed %v, want nothing", f.trash.paths)
+	}
+}
+
+func TestRemoveModelSymlinkOutside(t *testing.T) {
+	f := newFixture(t)
+	target := filepath.Join(t.TempDir(), "elsewhere.gguf")
+	if err := os.WriteFile(target, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(f.models, "link.gguf")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+	f.list = []models.Model{{ID: "link", Path: link, Parts: []string{link}}}
+	if err := f.removeModel("link"); !errors.Is(err, ErrOutside) {
+		t.Fatalf("err = %v, want ErrOutside", err)
+	}
+	if len(f.trash.paths) != 0 {
+		t.Errorf("trashed %v, want nothing", f.trash.paths)
+	}
+}
+
+func TestRemoveModelTrashFails(t *testing.T) {
+	f := newFixture(t)
+	p := f.own(t, "two-00001-of-00002.gguf", "two-00002-of-00002.gguf")
+	f.list = []models.Model{{ID: "two", Path: p[0], Parts: p}}
+	f.trash.failPath = p[1]
+	if err := f.removeModel("two"); !errors.Is(err, ErrTrashFailed) {
+		t.Fatalf("err = %v, want ErrTrashFailed", err)
+	}
+	if want := []string{p[0], p[1], p[1], p[1]}; !slices.Equal(f.trash.paths, want) {
+		t.Errorf("trashed %v, want %v", f.trash.paths, want)
+	}
+	if !strings.Contains(f.log.String(), p[1]) {
+		t.Errorf("the log does not name the file that failed:\n%s", f.log)
+	}
+}
+
+func TestRemoveModelSharesRemovesTurn(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFixture(t)
+		p := f.own(t, "llama.gguf")
+		f.list = []models.Model{{ID: "llama", Path: p[0], Parts: p}}
+		release := make(chan struct{})
+		inTrash := make(chan struct{})
+		f.cfg.Trash = func(path string) error {
+			inTrash <- struct{}{}
+			<-release
+			return f.trash.move(path)
+		}
+		f.catalog.entered = make(chan struct{}, 1)
+		r := New(f.cfg)
+
+		errs := make(chan error, 2)
+		go func() { errs <- r.RemoveModel(context.Background(), "llama") }()
+		<-inTrash
+		go func() { errs <- r.Remove(context.Background(), entryID) }()
+		synctest.Wait() // the catalog removal waits for its turn
+		if n := len(f.catalog.entered); n != 0 {
+			t.Fatalf("Folder called %d times while RemoveModel was moving, want 0", n)
+		}
+
+		close(release)
+		if err := <-errs; err != nil {
+			t.Fatalf("RemoveModel: %v", err)
+		}
+		<-inTrash
+		if err := <-errs; err != nil {
+			t.Fatalf("Remove: %v", err)
+		}
+		if n := len(f.catalog.entered); n != 1 {
+			t.Errorf("Folder called %d times, want 1", n)
 		}
 	})
 }

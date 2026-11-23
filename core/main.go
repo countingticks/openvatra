@@ -341,7 +341,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	defer dl.Close()
 	remover := removal.New(removal.Config{
 		Resident: lc, Catalog: cat, Downloads: dl, ModelsDir: func() string { return resolve().ModelsDir },
-		Trash: trash.Move, Logger: logger,
+		List: listModels, Trash: trash.Move, Logger: logger,
 	})
 	pinned := downloads.PinnedTag(*llamaManifest)
 	engines := func() downloads.EnginesBody { return downloads.Engines(*llamaDir, *enginesDir, pinned) }

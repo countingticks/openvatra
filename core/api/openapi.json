@@ -3371,6 +3371,41 @@
         "x-scope": "ui"
       }
     },
+    "/api/models/{id}/remove": {
+      "post": {
+        "operationId": "removeModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: model_not_found, model_busy, no_models_folder, outside_models_folder, unload_timeout, trash_failed, internal."
+          }
+        },
+        "summary": "Move a model's files to the Recycle Bin",
+        "tags": [
+          "models"
+        ],
+        "x-scope": "ui"
+      }
+    },
     "/api/models/{id}/unload": {
       "post": {
         "operationId": "unloadModel",

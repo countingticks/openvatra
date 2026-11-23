@@ -156,6 +156,10 @@ const injectedRtkApi = api
         query: (queryArg) => ({ url: `/api/models/${queryArg.id}/load`, method: 'POST' }),
         invalidatesTags: ['models']
       }),
+      removeModel: build.mutation<RemoveModelApiResponse, RemoveModelApiArg>({
+        query: (queryArg) => ({ url: `/api/models/${queryArg.id}/remove`, method: 'POST' }),
+        invalidatesTags: ['models']
+      }),
       unloadModel: build.mutation<UnloadModelApiResponse, UnloadModelApiArg>({
         query: (queryArg) => ({ url: `/api/models/${queryArg.id}/unload`, method: 'POST' }),
         invalidatesTags: ['models']
@@ -311,6 +315,10 @@ export type GetModelFitApiArg = {
 }
 export type LoadModelApiResponse = /** status 200 OK */ StatusBody
 export type LoadModelApiArg = {
+  id: string
+}
+export type RemoveModelApiResponse = unknown
+export type RemoveModelApiArg = {
   id: string
 }
 export type UnloadModelApiResponse = /** status 202 Accepted */ StatusBody
@@ -903,6 +911,7 @@ export const {
   useRefreshModelsMutation,
   useGetModelFitQuery,
   useLoadModelMutation,
+  useRemoveModelMutation,
   useUnloadModelMutation,
   useStartRunMutation,
   useGetRunQuery,

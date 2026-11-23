@@ -54,6 +54,7 @@ var errorTable = []mapped{
 	{removal.ErrOutside, http.StatusConflict, "outside_models_folder", ""},
 	{removal.ErrNotInstalled, http.StatusConflict, "not_installed", ""},
 	{removal.ErrUnloadTimeout, http.StatusConflict, "unload_timeout", ""},
+	{removal.ErrModelBusy, http.StatusConflict, "model_busy", ""},
 	// The fixed sentence, not the shell's error it wraps.
 	{removal.ErrTrashFailed, http.StatusInternalServerError, "trash_failed", removal.ErrTrashFailed.Error()},
 	{catalog.ErrNoFolder, http.StatusConflict, "no_models_folder", "no models folder is set"},
