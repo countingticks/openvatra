@@ -30,14 +30,21 @@ type ModelFit struct {
 	Memory              bool // vram/ram were measured
 	VRAMBytes, RAMBytes int64
 	TokensPerSecond     float64 // 0 = no answer measured
+	GPUExpertLayers     int     // experts placement, measured: layers whose experts stayed on the GPU; 0 = not known
 	MeasuredAt          time.Time
 }
 
-// RecordFitMemory stores the memory a load of m at p used. The row's speed stays, unless the file changed.
-func (s *Store) RecordFitMemory(ctx context.Context, m FitModel, p FitPlace, vram, ram int64) error {
+// RecordFitMemory stores the memory a load of m at p used, and how many expert layers stayed on the GPU (0 = not
+// known). The row's speed stays, unless the file changed.
+func (s *Store) RecordFitMemory(ctx context.Context, m FitModel, p FitPlace, vram, ram int64, gpuExpertLayers int) error {
+	var layers any // 0 is stored as NULL
+	if gpuExpertLayers > 0 {
+		layers = gpuExpertLayers
+	}
 	return s.recordFit(ctx, m, p,
-		"vram_bytes, ram_bytes", "?, ?", "vram_bytes = excluded.vram_bytes, ram_bytes = excluded.ram_bytes",
-		vram, ram)
+		"vram_bytes, ram_bytes, gpu_expert_layers", "?, ?, ?",
+		"vram_bytes = excluded.vram_bytes, ram_bytes = excluded.ram_bytes, gpu_expert_layers = excluded.gpu_expert_layers",
+		vram, ram, layers)
 }
 
 // RecordFitSpeed stores the speed of answers from m at p. The row's memory stays, unless the file changed.
@@ -82,7 +89,7 @@ func (s *Store) recordFit(ctx context.Context, m FitModel, p FitPlace, columns, 
 // ModelFits returns what was measured for m: rows of other args, projector or file are left out (and left in the
 // table). No order is promised.
 func (s *Store) ModelFits(ctx context.Context, m FitModel) ([]ModelFit, error) {
-	rows, err := s.r.QueryContext(ctx, `SELECT context, placement, layers, vram_bytes, ram_bytes, tokens_per_second, measured_at
+	rows, err := s.r.QueryContext(ctx, `SELECT context, placement, layers, vram_bytes, ram_bytes, tokens_per_second, gpu_expert_layers, measured_at
 		FROM model_fit WHERE model_id = ? AND projector = ? AND args = ? AND file_bytes = ? AND file_mtime = ?`,
 		m.ModelID, boolInt(m.Projector), m.Args, m.FileBytes, m.FileMtime.UnixNano())
 	if err != nil {
@@ -94,13 +101,15 @@ func (s *Store) ModelFits(ctx context.Context, m FitModel) ([]ModelFit, error) {
 		var f ModelFit
 		var vram, ram sql.NullInt64
 		var speed sql.NullFloat64
+		var experts sql.NullInt64
 		var at int64
-		if err := rows.Scan(&f.Context, &f.Placement, &f.Layers, &vram, &ram, &speed, &at); err != nil {
+		if err := rows.Scan(&f.Context, &f.Placement, &f.Layers, &vram, &ram, &speed, &experts, &at); err != nil {
 			return nil, fmt.Errorf("model fits: %w", err)
 		}
 		f.Memory = vram.Valid && ram.Valid
 		f.VRAMBytes, f.RAMBytes = vram.Int64, ram.Int64
 		f.TokensPerSecond = speed.Float64
+		f.GPUExpertLayers = int(experts.Int64)
 		f.MeasuredAt = time.UnixMilli(at)
 		fits = append(fits, f)
 	}

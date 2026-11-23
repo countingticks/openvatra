@@ -440,7 +440,7 @@ func measuredNeeds(rows []store.ModelFit, needs fit.Needs) fit.Needs {
 			}
 			if row.Memory {
 				return engine.Resources{VRAMBytes: row.VRAMBytes, RAMBytes: row.RAMBytes, Known: true, Source: "measured",
-					TokensPerSecond: row.TokensPerSecond}
+					TokensPerSecond: row.TokensPerSecond, GPUExpertLayers: row.GPUExpertLayers}
 			}
 			res := needs(s)
 			if res.Known {
@@ -504,7 +504,7 @@ func recordFunc(db *store.Store, logger *slog.Logger) func(llamacpp.Measurement)
 				place.Layers = m.Spec.Placement.Layers
 			}
 			if m.Memory.Known {
-				err = db.RecordFitMemory(context.Background(), key, place, m.Memory.VRAMBytes, m.Memory.RAMBytes)
+				err = db.RecordFitMemory(context.Background(), key, place, m.Memory.VRAMBytes, m.Memory.RAMBytes, m.Memory.GPUExpertLayers)
 			}
 			if err == nil && m.TokensPerSecond > 0 {
 				err = db.RecordFitSpeed(context.Background(), key, place, m.TokensPerSecond)
