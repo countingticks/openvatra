@@ -15,8 +15,9 @@ export type TabId = (typeof tabIds)[number]
  * 6: added `models.engine`, `showAdvanced` and `cudaOfferDismissed` (model setup).
  * 7: model settings moved to core; the two view preferences moved to the top level.
  * 8: `lastTab` became `lastRoute`, a route path.
+ * 9: `cudaOfferDismissed` was removed (the GPU card has no offer to dismiss).
  */
-export const settingsSchemaVersion = 8
+export const settingsSchemaVersion = 9
 
 /** The smallest the window may be. Shared so the schema, the window and the bounds math agree. */
 export const windowMinSize = { width: 800, height: 560 } as const
@@ -67,9 +68,7 @@ const topLevelShape = {
 export const settingsSchema = z.object({
   ...topLevelShape,
   /** Show the full model list and technical details instead of the simple view. */
-  showAdvancedModels: z.boolean().default(false),
-  /** The user said "no thanks" to the faster NVIDIA engine offer. */
-  cudaOfferDismissed: z.boolean().default(false)
+  showAdvancedModels: z.boolean().default(false)
 })
 
 /**
@@ -103,8 +102,7 @@ export const settingsPatchSchema = z.strictObject({
   closeAction: closeAction.optional(),
   sidebarOpen: sidebarOpen.optional(),
   motion: motion.optional(),
-  showAdvancedModels: z.boolean().optional(),
-  cudaOfferDismissed: z.boolean().optional()
+  showAdvancedModels: z.boolean().optional()
 })
 
 export type SettingsPatch = z.infer<typeof settingsPatchSchema>

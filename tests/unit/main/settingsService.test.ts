@@ -67,7 +67,7 @@ describe('settings service', () => {
     await service.update({ theme: 'dark' }) // saved again, but nothing changed
     expect(listener).toHaveBeenCalledTimes(1)
 
-    await service.update({ cudaOfferDismissed: true })
+    await service.update({ showAdvancedModels: true })
     expect(listener).toHaveBeenCalledTimes(2)
   })
 })

@@ -18,7 +18,6 @@ const ready: CoreState = { status: 'ready', port: 1234, version: '1', connection
 type Preferences = Partial<LlamaCppSettings> & {
   engineSettings?: Partial<LlamaServerSettings>
   showAdvanced?: boolean
-  cudaOfferDismissed?: boolean
 }
 
 const chosen: Preferences = {
@@ -91,10 +90,10 @@ async function openModels(
   options: NonNullable<Parameters<typeof renderWithStore>[2]> = {}
 ): Promise<Rendered & { section: HTMLElement }> {
   // Most tests are about the advanced view, so it is on unless a test says otherwise.
-  const { showAdvanced = true, cudaOfferDismissed = false, engineSettings, ...core } = models
+  const { showAdvanced = true, engineSettings, ...core } = models
   const rendered = renderWithStore(
     <Shell />,
-    { showAdvancedModels: showAdvanced, cudaOfferDismissed },
+    { showAdvancedModels: showAdvanced },
     { llamacppSettings: core, engineSettings, ...options }
   )
   act(() => {

@@ -21,7 +21,6 @@ describe('defaultSettings', () => {
       sidebarOpen: true,
       motion: 'system',
       showAdvancedModels: false,
-      cudaOfferDismissed: false,
       closeToTrayNoticeShown: false
     })
   })
@@ -33,8 +32,8 @@ describe('defaultSettings', () => {
 
 describe('settingsFileSchema', () => {
   it('fills in the file defaults: the view flags at the top level and no models', () => {
-    expect(settingsFileSchema.parse({ schemaVersion: 8 })).toEqual({
-      schemaVersion: 8,
+    expect(settingsFileSchema.parse({ schemaVersion: 9 })).toEqual({
+      schemaVersion: 9,
       theme: 'system',
       startWithWindows: false,
       lastRoute: 'chat',
@@ -42,31 +41,29 @@ describe('settingsFileSchema', () => {
       sidebarOpen: true,
       motion: 'system',
       closeToTrayNoticeShown: false,
-      showAdvancedModels: false,
-      cudaOfferDismissed: false
+      showAdvancedModels: false
     })
-    expect(defaultSettingsFile).toEqual(settingsFileSchema.parse({ schemaVersion: 8 }))
+    expect(defaultSettingsFile).toEqual(settingsFileSchema.parse({ schemaVersion: 9 }))
     expect(Object.isFrozen(defaultSettingsFile)).toBe(true)
   })
 
   it('strips a legacyModels key a file still has', () => {
-    const parsed = settingsFileSchema.parse({ schemaVersion: 8, legacyModels: { modelsDir: 'D:/models' } })
+    const parsed = settingsFileSchema.parse({ schemaVersion: 9, legacyModels: { modelsDir: 'D:/models' } })
     expect(parsed).not.toHaveProperty('legacyModels')
-    expect(parsed).toEqual(settingsFileSchema.parse({ schemaVersion: 8 }))
+    expect(parsed).toEqual(settingsFileSchema.parse({ schemaVersion: 9 }))
   })
 })
 
 describe('the window settings', () => {
-  it('has the two model view flags and no models', () => {
-    expect(defaultSettings).toMatchObject({ showAdvancedModels: false, cudaOfferDismissed: false })
+  it('has the model view flag and no models', () => {
+    expect(defaultSettings).toMatchObject({ showAdvancedModels: false })
     expect(defaultSettings).not.toHaveProperty('models')
   })
 
-  it('the patch schema accepts the two flags and rejects models', () => {
-    expect(
-      settingsPatchSchema.safeParse({ showAdvancedModels: true, cudaOfferDismissed: true }).success
-    ).toBe(true)
+  it('the patch schema accepts the flag, rejects models and the removed offer flag', () => {
+    expect(settingsPatchSchema.safeParse({ showAdvancedModels: true }).success).toBe(true)
     expect(settingsPatchSchema.safeParse({ models: { engine: 'cuda' } }).success).toBe(false)
+    expect(settingsPatchSchema.safeParse({ cudaOfferDismissed: true }).success).toBe(false)
   })
 })
 
@@ -85,7 +82,7 @@ describe('settingsPatchSchema', () => {
 
   it.each([
     ['not an object', null],
-    ['schemaVersion', { schemaVersion: 8 }],
+    ['schemaVersion', { schemaVersion: 9 }],
     ['window bounds', { window: { x: 0, y: 0, width: 1280, height: 800 } }],
     ['the close-to-tray notice flag', { closeToTrayNoticeShown: true }],
     ['an unknown key', { theme: 'dark', admin: true }],
@@ -99,10 +96,10 @@ describe('applyPatch', () => {
   const chosen: Settings = { ...defaultSettings, theme: 'light', showAdvancedModels: true }
 
   it('replaces top-level keys and leaves the rest', () => {
-    expect(applyPatch(chosen, { theme: 'dark', cudaOfferDismissed: true })).toEqual({
+    expect(applyPatch(chosen, { theme: 'dark', showAdvancedModels: false })).toEqual({
       ...chosen,
       theme: 'dark',
-      cudaOfferDismissed: true
+      showAdvancedModels: false
     })
   })
 

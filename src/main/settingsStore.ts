@@ -16,7 +16,6 @@ export type FilePatch = Partial<
     | 'sidebarOpen'
     | 'motion'
     | 'showAdvancedModels'
-    | 'cudaOfferDismissed'
   >
 >
 
