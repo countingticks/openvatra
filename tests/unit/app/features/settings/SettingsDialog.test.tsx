@@ -63,13 +63,33 @@ describe('Settings dialog', () => {
         'page'
       )
       expect(within(open).getByRole('heading', { level: 2, name: 'General' })).toBeInTheDocument()
-      expect(within(sections).queryByRole('button', { name: /Services/ })).not.toBeInTheDocument()
-      expect(within(sections).getByRole('button', { name: /About/ })).toBeDisabled()
+      for (const later of [/Services/, /About/]) {
+        const button = within(sections).getByRole('button', { name: later })
+        expect(button).toBeDisabled()
+        expect(button).toHaveTextContent('Later')
+      }
 
       fireEvent.click(within(sections).getByRole('button', { name: 'Models' }))
 
       expect(within(sections).getByRole('button', { name: 'Models' })).toHaveAttribute('aria-current', 'page')
       expect(within(open).getByRole('heading', { level: 2, name: 'Models' })).toBeInTheDocument()
+      expect(within(open).getByRole('button', { name: 'Close settings' })).toBeInTheDocument()
+    })
+
+    it('starts a section at its top when switching from a scrolled one', async () => {
+      renderWithStore(<Shell />)
+      const open = await openSettings()
+      const viewport = within(open).getByRole('region', { name: 'Settings body' })
+      viewport.scrollTop = 120
+      expect(viewport.scrollTop).toBe(120)
+
+      fireEvent.click(
+        within(within(open).getByRole('navigation', { name: 'Settings sections' })).getByRole('button', {
+          name: 'Models'
+        })
+      )
+
+      await waitFor(() => expect(viewport.scrollTop).toBe(0))
     })
   })
 
