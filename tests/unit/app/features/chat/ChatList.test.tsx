@@ -290,6 +290,36 @@ describe('chat actions', () => {
     expect(itemNames(await screen.findByRole('menu'))).toEqual(['Rename', 'Export as Markdown', 'Delete'])
   })
 
+  it('puts one separator right before Delete in both menus', async () => {
+    show([chat('c1', 'Trip to Cluj')])
+    const beforeDelete = (menu: HTMLElement): void => {
+      const separators = within(menu).getAllByRole('separator')
+      expect(separators).toHaveLength(1)
+      expect(
+        separators[0].compareDocumentPosition(within(menu).getByRole('menuitem', { name: 'Delete' }))
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+      expect(itemNames(menu)).toEqual(['Rename', 'Export as Markdown', 'Delete'])
+    }
+
+    beforeDelete(await openActions('Trip to Cluj'))
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+
+    fireEvent.contextMenu(row('Trip to Cluj'))
+    beforeDelete(await screen.findByRole('menu'))
+  })
+
+  it('keeps the separator before Delete on a host without files', async () => {
+    show([chat('c1', 'Trip to Cluj')], {}, ['files'])
+    const menu = await openActions('Trip to Cluj')
+
+    const separator = within(menu).getByRole('separator')
+    expect(separator.compareDocumentPosition(within(menu).getByRole('menuitem', { name: 'Delete' }))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(itemNames(menu)).toEqual(['Rename', 'Delete'])
+  })
+
   it('renames on Enter with the trimmed text', async () => {
     const rendered = show([chat('c1', 'Trip to Cluj')])
     rendered.coreHttp.respond('PATCH', '/api/chats/c1', () => ({

@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { MoreHorizontal } from 'lucide-react'
+import { Fragment, useEffect, useRef, useState } from 'react'
+import { Download, MoreHorizontal, PenLine, Trash2, type LucideIcon } from 'lucide-react'
 import {
   useDeleteChatMutation,
   useUpdateChatMutation,
@@ -8,11 +8,18 @@ import {
 } from '@app/core/generated'
 import { cn } from '@app/lib/utils'
 import { usePlatform } from '@app/platform/usePlatform'
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@app/ui/context-menu'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger
+} from '@app/ui/context-menu'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '@app/ui/dropdown-menu'
 import { useReducedMotion } from '@app/ui/useReducedMotion'
@@ -30,6 +37,7 @@ interface ChatRowProps {
 
 interface Action {
   label: string
+  icon: LucideIcon
   run(): void
   destructive?: boolean
 }
@@ -79,11 +87,12 @@ export function ChatRow({ chat, current, snippet }: ChatRowProps): React.JSX.Ele
   }
 
   const actions: Action[] = [
-    { label: 'Rename', run: () => setRenameNext(true) },
+    { label: 'Rename', icon: PenLine, run: () => setRenameNext(true) },
     ...(platform.files
       ? [
           {
             label: 'Export as Markdown',
+            icon: Download,
             run: () => {
               platform.files?.exportChat(chat.id).catch((error: unknown) => {
                 console.error('Could not export the chat', error)
@@ -92,7 +101,7 @@ export function ChatRow({ chat, current, snippet }: ChatRowProps): React.JSX.Ele
           }
         ]
       : []),
-    { label: 'Delete', run: () => setConfirmingDelete(true), destructive: true }
+    { label: 'Delete', icon: Trash2, run: () => setConfirmingDelete(true), destructive: true }
   ]
   // Rename's field takes focus once the menu has closed, so the closing menu mustn't hand it back to its trigger.
   const finalFocus = !renameNext
@@ -135,7 +144,7 @@ export function ChatRow({ chat, current, snippet }: ChatRowProps): React.JSX.Ele
               className={cn(
                 'flex w-full items-center gap-2 rounded-sm py-1.5 pr-8 pl-2.5 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
                 current
-                  ? 'bg-sidebar-accent text-sidebar-accent-foreground'
+                  ? 'bg-background text-foreground'
                   : 'text-muted-foreground group-hover:bg-sidebar-accent/60 group-hover:text-sidebar-foreground'
               )}
             >
@@ -175,13 +184,19 @@ export function ChatRow({ chat, current, snippet }: ChatRowProps): React.JSX.Ele
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44" finalFocus={finalFocus}>
                 {actions.map((action) => (
-                  <DropdownMenuItem
-                    key={action.label}
-                    variant={action.destructive ? 'destructive' : 'default'}
-                    onClick={action.run}
-                  >
-                    {action.label}
-                  </DropdownMenuItem>
+                  <Fragment key={action.label}>
+                    {action.destructive && <DropdownMenuSeparator />}
+                    <DropdownMenuItem
+                      variant={action.destructive ? 'destructive' : 'default'}
+                      onClick={action.run}
+                    >
+                      <action.icon
+                        aria-hidden
+                        className={cn('size-3.5', !action.destructive && 'text-muted-foreground')}
+                      />
+                      {action.label}
+                    </DropdownMenuItem>
+                  </Fragment>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -189,13 +204,16 @@ export function ChatRow({ chat, current, snippet }: ChatRowProps): React.JSX.Ele
         </ContextMenuTrigger>
         <ContextMenuContent className="w-44" finalFocus={finalFocus}>
           {actions.map((action) => (
-            <ContextMenuItem
-              key={action.label}
-              variant={action.destructive ? 'destructive' : 'default'}
-              onClick={action.run}
-            >
-              {action.label}
-            </ContextMenuItem>
+            <Fragment key={action.label}>
+              {action.destructive && <ContextMenuSeparator />}
+              <ContextMenuItem variant={action.destructive ? 'destructive' : 'default'} onClick={action.run}>
+                <action.icon
+                  aria-hidden
+                  className={cn('size-3.5', !action.destructive && 'text-muted-foreground')}
+                />
+                {action.label}
+              </ContextMenuItem>
+            </Fragment>
           ))}
         </ContextMenuContent>
       </ContextMenu>
