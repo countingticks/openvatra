@@ -42,7 +42,7 @@ const FitMarginMiB = 384
 // Command is llama-server's command line for spec: core's own flags first, then the user's. llama.cpp keeps the last
 // value of a repeated flag, so a model's own -ctk, -ub, -np or -fitt win over core's defaults.
 func (e *Engine) Command(spec engine.Spec) engine.Command {
-	args := []string{"-m", spec.Path, "--host", "127.0.0.1"}
+	args := []string{"-m", longPath(spec.Path), "--host", "127.0.0.1"}
 	if spec.Embedding {
 		// Embedding servers keep llama-server's own size and placement, and never take images (a projector would
 		// only cost memory there).
@@ -62,7 +62,7 @@ func (e *Engine) Command(spec engine.Spec) engine.Command {
 		}
 		args = append(args, "-lv", "4", "-fa", "on", "-ctk", "q8_0", "-ctv", "q8_0", "-np", "1", "-ub", "1024")
 		if spec.Projector != "" {
-			args = append(args, "--mmproj", spec.Projector)
+			args = append(args, "--mmproj", longPath(spec.Projector))
 		}
 	}
 	return engine.Command{
