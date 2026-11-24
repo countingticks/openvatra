@@ -530,6 +530,7 @@ export type DownloadItem = {
   bytes: number
   error?: string
   id: string
+  name: string
   speed: number
   state: 'queued' | 'downloading' | 'verifying' | 'paused' | 'error' | 'done'
   total: number

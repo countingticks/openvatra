@@ -29,9 +29,10 @@ const (
 	Done        State = "done"
 )
 
-// DownloadItem is one download as the "downloads" event shows it. ID is the catalog id.
+// DownloadItem is one download as the "downloads" event shows it. ID is the catalog id, the engine's or a pick's.
 type DownloadItem struct {
 	ID    string `json:"id"`
+	Name  string `json:"name"` // the first file's name
 	State State  `json:"state" enum:"queued,downloading,verifying,paused,error,done"`
 	Bytes int64  `json:"bytes"`
 	Total int64  `json:"total"`
@@ -58,19 +59,50 @@ const speedWindow = 500 * time.Millisecond
 // Config is everything a Manager needs from outside.
 type Config struct {
 	Downloader *download.Downloader
-	Entries    []catalog.Entry
-	ModelsDir  func() string // read on every use: the user can change the folder while core runs
+	// Sources yield what can be queued, in list order; Items keeps it.
+	Sources   []Source
+	ModelsDir func() string // read on every use: the user can change the folder while core runs
 	// DiskFree is a seam for tests; nil means the real drive.
 	DiskFree func(dir string) (uint64, error)
 	// OnFinish runs after a model finished, so the caller can rescan the folder and tell the UI.
 	OnFinish func()
 	// OnEngineReady runs once after the CUDA engine download finished in this run; nil = nothing.
 	OnEngineReady func()
-	// Engine is the optional CUDA build; nil when core was started without a manifest.
-	Engine *Engine
 }
 
-// target is what one queue entry downloads: a catalog model or the engine. Both are "some files into a folder",
+// Source yields queue targets for the models folder of the moment ("" = none set).
+type Source interface {
+	targets(modelsDir string) []target
+}
+
+type catalogSource []catalog.Entry
+
+// CatalogSource is the catalog's entries as targets (<modelsDir>/<id>).
+func CatalogSource(entries []catalog.Entry) Source { return catalogSource(entries) }
+
+func (c catalogSource) targets(dir string) []target {
+	out := make([]target, 0, len(c))
+	for _, e := range c {
+		base := "https://huggingface.co"
+		if e.BaseURL != "" {
+			base = e.BaseURL
+		}
+		t := target{
+			id:    e.ID,
+			files: e.Files,
+			url: func(f catalog.File) string {
+				return fmt.Sprintf("%s/%s/resolve/%s/%s", base, e.Repo, e.Revision, f.Name)
+			},
+		}
+		if dir != "" {
+			t.folder = filepath.Join(dir, e.ID)
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// target is what one queue entry downloads: a catalog model, a pick or the engine. All are "some files into a folder",
 // which is why one worker and one set of rules serve both.
 type target struct {
 	id        string
@@ -154,7 +186,7 @@ func (m *Manager) notify() {
 	}
 }
 
-// Items lists every download worth showing, in catalog order. A model with no job but a leftover .part file from an
+// Items lists every download worth showing, in source order. A model with no job but a leftover .part file from an
 // earlier run shows as paused: that is how a download survives closing the app, with no state file of our own.
 func (m *Manager) Items() []DownloadItem {
 	m.mu.Lock()
@@ -162,14 +194,14 @@ func (m *Manager) Items() []DownloadItem {
 	out := []DownloadItem{}
 	for _, t := range m.targets() {
 		if j := m.jobs[t.id]; j != nil {
-			out = append(out, DownloadItem{ID: t.id, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
+			out = append(out, DownloadItem{ID: t.id, Name: t.files[0].Name, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
 			continue
 		}
 		if t.folder == "" {
 			continue
 		}
 		if have := partBytes(t.folder, t.files); have > 0 {
-			out = append(out, DownloadItem{ID: t.id, State: Paused, Bytes: have, Total: totalSize(t.files)})
+			out = append(out, DownloadItem{ID: t.id, Name: t.files[0].Name, State: Paused, Bytes: have, Total: totalSize(t.files)})
 		}
 	}
 	return out
@@ -412,29 +444,12 @@ func (m *Manager) target(id string) (target, bool) {
 	return target{}, false
 }
 
-// targets lists every catalog model, then the engine if core has one.
+// targets lists every source's targets, in order.
 func (m *Manager) targets() []target {
 	dir := m.cfg.ModelsDir()
 	var out []target
-	for _, e := range m.cfg.Entries {
-		base := "https://huggingface.co"
-		if e.BaseURL != "" {
-			base = e.BaseURL
-		}
-		t := target{
-			id:    e.ID,
-			files: e.Files,
-			url: func(f catalog.File) string {
-				return fmt.Sprintf("%s/%s/resolve/%s/%s", base, e.Repo, e.Revision, f.Name)
-			},
-		}
-		if dir != "" {
-			t.folder = filepath.Join(dir, e.ID)
-		}
-		out = append(out, t)
-	}
-	if m.cfg.Engine != nil {
-		out = append(out, m.cfg.Engine.target())
+	for _, src := range m.cfg.Sources {
+		out = append(out, src.targets(dir)...)
 	}
 	return out
 }

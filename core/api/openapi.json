@@ -559,6 +559,9 @@
           "id": {
             "type": "string"
           },
+          "name": {
+            "type": "string"
+          },
           "speed": {
             "type": "integer"
           },
@@ -579,6 +582,7 @@
         },
         "required": [
           "id",
+          "name",
           "state",
           "bytes",
           "total",

@@ -97,9 +97,9 @@ func TestListDownloads(t *testing.T) {
 	if rec := callDownloads(t, &stubDownloads{}, "GET", "/api/downloads", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
 		t.Fatalf("empty queue: %d %s", rec.Code, rec.Body)
 	}
-	dl := &stubDownloads{items: []downloads.DownloadItem{{ID: "qwen", State: downloads.Downloading, Bytes: 5, Total: 10}}}
+	dl := &stubDownloads{items: []downloads.DownloadItem{{ID: "qwen", Name: "qwen.gguf", State: downloads.Downloading, Bytes: 5, Total: 10}}}
 	rec := callDownloads(t, dl, "GET", "/api/downloads", "")
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `{"items":[{"id":"qwen","state":"downloading"`) {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `{"items":[{"id":"qwen","name":"qwen.gguf","state":"downloading"`) {
 		t.Fatalf("one item: %d %s", rec.Code, rec.Body)
 	}
 }

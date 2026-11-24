@@ -85,6 +85,9 @@ func LoadEngine(manifestPath, enginesDir string) (*Engine, error) {
 	return e, nil
 }
 
+// targets makes the engine a Source; its folder does not depend on the models folder.
+func (e *Engine) targets(string) []target { return []target{e.target()} }
+
 func (e *Engine) target() target {
 	base, allow := "https://github.com/ggml-org/llama.cpp/releases/download", e.allowHost
 	if e.baseURL != "" {

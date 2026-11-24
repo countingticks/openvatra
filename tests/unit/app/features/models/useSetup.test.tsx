@@ -9,7 +9,14 @@ import {
   renderWithStore
 } from '../../../renderWithStore'
 
-const running = { id: 'qwen3-4b', state: 'downloading', bytes: 1, total: 10, speed: 1 } as const
+const running = {
+  id: 'qwen3-4b',
+  name: 'qwen3-4b.gguf',
+  state: 'downloading',
+  bytes: 1,
+  total: 10,
+  speed: 1
+} as const
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 
 function Probe(): React.JSX.Element {

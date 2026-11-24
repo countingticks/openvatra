@@ -348,12 +348,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return models.Describe(found, owner), err
 	}
 	// A finished download changes what is on disk: tell every listener to re-read the models.
+	sources := []downloads.Source{downloads.CatalogSource(entries)}
+	if cuda != nil { // a nil *Engine inside the interface would not read as nil
+		sources = append(sources, cuda)
+	}
 	dl := downloads.New(downloads.Config{
 		Downloader: dler,
-		Entries:    entries,
+		Sources:    sources,
 		ModelsDir:  func() string { return resolve().ModelsDir },
 		OnFinish:   lc.Notify,
-		Engine:     cuda,
 	})
 	defer dl.Close()
 	remover := removal.New(removal.Config{

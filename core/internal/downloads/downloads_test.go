@@ -30,12 +30,13 @@ func entry(id string, srvURL string) catalog.Entry {
 
 // fixture serves payload for every model; gate (if set) holds each response until it is closed.
 type fixture struct {
-	m     *Manager
-	dir   string
-	srv   *httptest.Server
-	done  atomic.Int32 // OnFinish calls
-	ready atomic.Int32 // OnEngineReady calls
-	gate  chan struct{}
+	m       *Manager
+	entries []catalog.Entry // the catalog source's entries: a test may change their files
+	dir     string
+	srv     *httptest.Server
+	done    atomic.Int32 // OnFinish calls
+	ready   atomic.Int32 // OnEngineReady calls
+	gate    chan struct{}
 }
 
 func newFixture(t *testing.T, gated bool, ids ...string) *fixture {
@@ -55,16 +56,15 @@ func newFixture(t *testing.T, gated bool, ids ...string) *fixture {
 		http.ServeContent(w, r, path.Base(r.URL.Path), time.Time{}, strings.NewReader(string(payload)))
 	}))
 	t.Cleanup(f.srv.Close)
-	var entries []catalog.Entry
 	for _, id := range ids {
-		entries = append(entries, entry(id, f.srv.URL))
+		f.entries = append(f.entries, entry(id, f.srv.URL))
 	}
 	f.m = New(Config{
 		Downloader: &download.Downloader{
 			Client: &http.Client{}, AllowHost: func(string) bool { return true }, AllowLocalHTTP: true,
 			Backoff: []time.Duration{time.Millisecond, time.Millisecond},
 		},
-		Entries:       entries,
+		Sources:       []Source{CatalogSource(f.entries)},
 		ModelsDir:     func() string { return f.dir },
 		DiskFree:      func(string) (uint64, error) { return 1 << 40, nil },
 		OnFinish:      func() { f.done.Add(1) },
@@ -186,6 +186,23 @@ func TestLeftoverPartShowsPausedAndResumes(t *testing.T) {
 	f.waitFor(t, "a", Done)
 }
 
+func TestEveryItemIsNamedAfterItsFirstFile(t *testing.T) {
+	f := newFixture(t, true, "a", "b")
+	defer close(f.gate)
+	dir := filepath.Join(f.dir, "b") // b was left half done by an earlier run
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "b.gguf.part"), payload[:1000], 0o644)
+	_ = f.m.Start("a")
+	f.waitFor(t, "a", Downloading)
+	got := map[string]string{}
+	for _, it := range f.m.Items() {
+		got[it.ID] = it.Name
+	}
+	if got["a"] != "a.gguf" || got["b"] != "b.gguf" || len(got) != 2 {
+		t.Fatalf("names = %v", got)
+	}
+}
+
 func TestCancelPausedLeftoverDeletesIt(t *testing.T) {
 	f := newFixture(t, false, "a")
 	dir := filepath.Join(f.dir, "a")
@@ -205,7 +222,7 @@ func TestCancelPausedLeftoverDeletesIt(t *testing.T) {
 
 func TestCancelDeletesFinishedFilesOfAnUnfinishedModel(t *testing.T) {
 	f := newFixture(t, false, "a")
-	f.m.cfg.Entries[0].Files = append(f.m.cfg.Entries[0].Files, catalog.File{Name: "mmproj.gguf", SizeBytes: 50})
+	f.entries[0].Files = append(f.entries[0].Files, catalog.File{Name: "mmproj.gguf", SizeBytes: 50})
 	dir := filepath.Join(f.dir, "a")
 	_ = os.MkdirAll(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "a.gguf"), payload, 0o644) // first file done
@@ -257,7 +274,7 @@ func TestNoConnectionPauses(t *testing.T) {
 
 func TestDamagedFileFails(t *testing.T) {
 	f := newFixture(t, false, "a")
-	f.m.cfg.Entries[0].Files[0].SHA256 = strings.Repeat("0", 64)
+	f.entries[0].Files[0].SHA256 = strings.Repeat("0", 64)
 	_ = f.m.Start("a")
 	f.waitFor(t, "a", Failed)
 	if it := f.m.Items()[0]; !strings.Contains(it.Error, "damaged") {

@@ -77,7 +77,7 @@ func newEngineFixture(t *testing.T, gated bool, extract func(ctx context.Context
 		},
 		ModelsDir:     func() string { return t.TempDir() },
 		DiskFree:      func(string) (uint64, error) { return 1 << 40, nil },
-		Engine:        f.engine,
+		Sources:       []Source{f.engine},
 		OnEngineReady: func() { f.ready.Add(1) },
 	})
 	t.Cleanup(f.m.Close)
@@ -118,6 +118,9 @@ func TestEngineDownloadsUnpacksAndLeavesOnlyTheFinalFolder(t *testing.T) {
 	it := f.wait(t, Done)
 	if it.Total != int64(len(engineZips["engine.zip"])+len(engineZips["runtime.zip"])) {
 		t.Fatalf("total = %d", it.Total)
+	}
+	if it.Name != "engine.zip" {
+		t.Fatalf("name = %q, want engine.zip", it.Name)
 	}
 	final := filepath.Join(f.engine.Dir, testTag+"-cuda")
 	for _, name := range []string{"llama-server.exe", "cudart64.dll"} {

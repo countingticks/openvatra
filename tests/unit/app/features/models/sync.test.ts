@@ -28,7 +28,7 @@ const downloadProgress = (items: { id: string; state: 'downloading' | 'done' }[]
   stream: 'system',
   type: 'download.progress',
   v: 1,
-  data: { items: items.map((item) => ({ ...item, bytes: 1, total: 1, speed: 0 })) }
+  data: { items: items.map((item) => ({ ...item, name: `${item.id}.gguf`, bytes: 1, total: 1, speed: 0 })) }
 })
 
 /** A store connected to a fake core, with getEngines cached and subscribed, as the faster-engine card keeps it. */
