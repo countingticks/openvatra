@@ -89,7 +89,8 @@ describe('a Hugging Face repo opened to its quants', () => {
     )
 
     fireEvent.click(chevron)
-    expect(await within(dialog).findByText('Loading files…')).toBeInTheDocument()
+    // Checked synchronously: the fake answers within a few microtasks, so a polling find can miss it on a slow runner.
+    expect(within(dialog).getByText('Loading files…')).toBeInTheDocument()
 
     expect(await within(dialog).findByText('Q4_K_M')).toBeInTheDocument()
     expect(within(dialog).getByText('4.0 GB')).toBeInTheDocument()
