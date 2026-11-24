@@ -3147,7 +3147,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_quant_not_found, downloads_unavailable, internal."
+            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_quant_not_found, hf_incomplete_model, downloads_unavailable, internal."
           }
         },
         "summary": "Queue a catalog model, the CUDA engine or a Hugging Face quant",

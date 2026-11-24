@@ -46,6 +46,7 @@ type GroupFile struct {
 	SizeBytes int64  `json:"sizeBytes"`
 	SHA256    string `json:"sha256"`
 	Path      string `json:"-"` // the path inside the repo, for the download URL
+	Projector bool   `json:"-"` // the vision projector; false for model parts
 }
 
 var (
@@ -263,6 +264,7 @@ func (c *Client) listing(owner, name string, a repoAnswer) Listing {
 	}
 
 	projector, hasProjector := pickProjector(projectors)
+	projector.Projector = true
 	report := c.hardware()
 	dir := c.modelsDir()
 	groups := []Group{}

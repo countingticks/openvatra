@@ -522,6 +522,97 @@ func TestFitModel(t *testing.T) {
 	})
 }
 
+func TestPlanModel(t *testing.T) {
+	shape := engine.Shape{FileBytes: 1 << 30, Layers: 32, KVHeads: 8, KeyLen: 128, ValueLen: 128, MaxContext: 131072}
+	incomplete := "Not a complete model: it holds 1 of 49 layers."
+	found := []models.Model{
+		{ID: "qwen", Path: "qwen.gguf", Kind: models.KindChat, Shape: shape},
+		{ID: "nomic", Path: "nomic.gguf", Kind: models.KindEmbedding},
+		{ID: "broken", Path: "broken.gguf", Kind: models.KindUnreadable, Error: incomplete},
+		{ID: "junk", Path: "junk.gguf", Kind: models.KindUnreadable},
+	}
+	report := hw.Report{GPU: &hw.GPU{TotalBytes: 24 << 30}, RAMBytes: 64 << 30}
+	needs := func(engine.Spec) engine.Resources {
+		return engine.Resources{VRAMBytes: 1 << 30, Known: true, Source: "estimate"}
+	}
+	c := llamacpp.LlamaCppSettings{}.Resolve("")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	for _, tt := range []struct {
+		name      string
+		id        string
+		embedding bool
+		reason    string
+	}{
+		{"an unreadable model is refused with its error", "broken", false, incomplete},
+		{"an unreadable model without an error says it can't be read", "junk", false, "This file can't be read"},
+		{"an embedding model asked for chat", "nomic", false, "This file is not a chat model"},
+		{"a chat model asked for embeddings", "qwen", true, "This file is not an embedding model"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			spec, err := planModel(c, found, tt.id, tt.embedding, report, plain(needs), logger)
+			var refused *provider.RefusedError
+			if !errors.As(err, &refused) || refused.Reason != tt.reason || refused.Model != tt.id || spec.Path != "" {
+				t.Fatalf("spec %+v, err %v; want a RefusedError %q and no spec", spec, err, tt.reason)
+			}
+		})
+	}
+	t.Run("a chat model for chat gets a spec", func(t *testing.T) {
+		spec, err := planModel(c, found, "qwen", false, report, plain(needs), logger)
+		if err != nil || spec.Path != "qwen.gguf" || spec.Embedding || spec.Context == 0 {
+			t.Fatalf("spec %+v, err %v", spec, err)
+		}
+	})
+	t.Run("an embedding model for embeddings gets a spec", func(t *testing.T) {
+		spec, err := planModel(c, found, "nomic", true, report, plain(needs), logger)
+		if err != nil || spec.Path != "nomic.gguf" || !spec.Embedding {
+			t.Fatalf("spec %+v, err %v", spec, err)
+		}
+	})
+	t.Run("an unknown id is unknown", func(t *testing.T) {
+		if _, err := planModel(c, found, "nope", false, report, plain(needs), logger); !errors.Is(err, provider.ErrUnknownModel) {
+			t.Fatalf("err = %v, want ErrUnknownModel", err)
+		}
+	})
+}
+
+func TestRunModelFunc(t *testing.T) {
+	unknown := func(context.Context, string) (provider.Model, error) {
+		return provider.Model{}, fmt.Errorf("lookup: %w", provider.ErrUnknownModel)
+	}
+	listed := []models.Model{{ID: "broken", Kind: models.KindUnreadable, Error: "Not a complete model: it holds 1 of 49 layers."}}
+	list := func() ([]models.Model, error) { return listed, nil }
+
+	t.Run("an unreadable file on disk is refused with its reason", func(t *testing.T) {
+		_, err := runModelFunc(unknown, list)(context.Background(), "broken")
+		var refused *provider.RefusedError
+		if !errors.As(err, &refused) || refused.Reason != listed[0].Error {
+			t.Fatalf("err = %v, want a RefusedError", err)
+		}
+	})
+	t.Run("an id not on disk stays unknown", func(t *testing.T) {
+		if _, err := runModelFunc(unknown, list)(context.Background(), "gone"); !errors.Is(err, provider.ErrUnknownModel) {
+			t.Fatalf("err = %v, want ErrUnknownModel", err)
+		}
+	})
+	t.Run("a failing list leaves the lookup's answer", func(t *testing.T) {
+		failing := func() ([]models.Model, error) { return nil, errors.New("disk gone") }
+		if _, err := runModelFunc(unknown, failing)(context.Background(), "broken"); !errors.Is(err, provider.ErrUnknownModel) {
+			t.Fatalf("err = %v, want ErrUnknownModel", err)
+		}
+	})
+	t.Run("a model the lookup knows is returned without listing", func(t *testing.T) {
+		found := func(_ context.Context, id string) (provider.Model, error) {
+			return provider.Model{ID: id, Kind: provider.ModelChat, Context: 4096}, nil
+		}
+		listed := false
+		got, err := runModelFunc(found, func() ([]models.Model, error) { listed = true; return nil, nil })(context.Background(), "qwen")
+		if err != nil || got.ID != "qwen" || got.Context != 4096 || listed {
+			t.Fatalf("got %+v, err %v, listed %v", got, err, listed)
+		}
+	})
+}
+
 func TestTestCatalogFlagFailsOnMissingOrInvalidFile(t *testing.T) {
 	t.Setenv(logDirEnv, t.TempDir())
 	bad := filepath.Join(t.TempDir(), "bad.json")

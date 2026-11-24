@@ -48,3 +48,10 @@ func TestLoadError(t *testing.T) {
 		t.Fatal("errors.Is does not reach the wrapped error")
 	}
 }
+
+func TestRefusedErrorIsTheReason(t *testing.T) {
+	err := error(&RefusedError{Model: "draft", Reason: "This file is not a chat model"})
+	if err.Error() != "This file is not a chat model" {
+		t.Fatalf("Error() = %q", err.Error())
+	}
+}

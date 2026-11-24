@@ -84,6 +84,10 @@ func TestLoadAndUnload(t *testing.T) {
 		{"load", &stubRouter{}, "/api/models/qwen/load", 200, `{"status":"ready"}`},
 		{"load of an unknown model", &stubRouter{err: provider.ErrUnknownModel}, "/api/models/nope/load", 404, `"error":"model_not_found"`},
 		{"failed load", &stubRouter{err: errors.New("llama-server exited")}, "/api/models/qwen/load", 503, `"error":"model_load_failed","message":"llama-server exited"`},
+		{
+			"refused load", &stubRouter{err: &provider.RefusedError{Model: "x", Reason: "This file is not a chat model"}},
+			"/api/models/x/load", 503, `"error":"model_load_failed","message":"This file is not a chat model"`,
+		},
 		{"unload", &stubRouter{unloadOK: true}, "/api/models/qwen/unload", 202, `{"status":"stopped"}`},
 		{"unload of a model not loaded", &stubRouter{}, "/api/models/qwen/unload", 404, `"error":"model_not_loaded"`},
 	}

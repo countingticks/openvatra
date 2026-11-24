@@ -668,6 +668,28 @@ func TestFailures(t *testing.T) {
 			t.Fatalf("finished %+v", fin)
 		}
 	})
+
+	t.Run("a refused model fails with model_load_failed and its reason", func(t *testing.T) {
+		reason := "Not a complete model: it holds 1 of 49 layers."
+		f := newFixture(t, providertest.Turn{Err: &provider.RefusedError{Model: "m1", Reason: reason}})
+		ref := f.send("hi", "req-1")
+		if fin := f.finished(ref.RunID); fin.Error == nil || fin.Error.Code != "model_load_failed" || fin.Error.Message != reason {
+			t.Fatalf("finished %+v", fin)
+		}
+	})
+
+	t.Run("a model lookup refused fails with its reason before the model is asked", func(t *testing.T) {
+		reason := "Not a complete model: it holds 1 of 49 layers."
+		f := newFixture(t, answer("a"))
+		f.modelErrs["m1"] = &provider.RefusedError{Model: "m1", Reason: reason}
+		ref := f.send("hi", "req-1")
+		if fin := f.finished(ref.RunID); fin.Error == nil || fin.Error.Code != "model_load_failed" || fin.Error.Message != reason {
+			t.Fatalf("finished %+v", fin)
+		}
+		if n := len(f.model.Requests()); n != 0 {
+			t.Fatalf("the model was asked %d times", n)
+		}
+	})
 }
 
 func TestBudget(t *testing.T) {
@@ -797,6 +819,16 @@ func TestContextUse(t *testing.T) {
 		f.modelErrs["m1"] = provider.ErrUnknownModel
 		use, err := f.eng.ContextUse(bg, ref.ChatID)
 		if err != nil || use.Size != 0 || use.Used == 0 {
+			t.Fatalf("use %+v, err %v", use, err)
+		}
+	})
+
+	t.Run("a refused model gives size 0", func(t *testing.T) {
+		f := newFixture(t, answer("a"))
+		ref, _ := f.say("", "hi")
+		f.modelErrs["m1"] = &provider.RefusedError{Model: "m1", Reason: "This file is not a chat model"}
+		use, err := f.eng.ContextUse(bg, ref.ChatID)
+		if err != nil || use.Size != 0 {
 			t.Fatalf("use %+v, err %v", use, err)
 		}
 	})

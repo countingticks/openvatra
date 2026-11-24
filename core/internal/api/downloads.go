@@ -7,6 +7,7 @@ import (
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/feed"
+	"github.com/countingticks/openvatra/core/internal/hf"
 	"github.com/countingticks/openvatra/core/internal/store"
 )
 
@@ -67,6 +68,9 @@ func startPick(ctx context.Context, dl Downloads, h HF, in HFStart) error {
 		if g.Quant != in.Quant {
 			continue
 		}
+		if err := checkGroup(ctx, h, in.Repo, listing.Revision, g); err != nil {
+			return err
+		}
 		pick := store.HFPick{ID: "hf:" + in.Repo + ":" + in.Quant, Repo: in.Repo, Revision: listing.Revision, Quant: in.Quant}
 		for _, f := range g.Files {
 			pick.Files = append(pick.Files, store.HFPickFile{Name: f.Name, Path: f.Path, SizeBytes: f.SizeBytes, SHA256: f.SHA256})
@@ -74,6 +78,29 @@ func startPick(ctx context.Context, dl Downloads, h HF, in HFStart) error {
 		return dl.StartPick(ctx, pick)
 	}
 	return errQuantNotFound
+}
+
+// checkGroup refuses a group whose one model file is not a complete model. Only a single-file group that isn't
+// installed is checked: a split group would cost a request per part, and an installed one gets already_installed
+// from the queue. A check that fails lets the download start; the scanner still catches the file afterwards.
+func checkGroup(ctx context.Context, h HF, repo, revision string, g hf.Group) error {
+	if g.Installed {
+		return nil
+	}
+	var model []hf.GroupFile
+	for _, f := range g.Files {
+		if !f.Projector {
+			model = append(model, f)
+		}
+	}
+	if len(model) != 1 {
+		return nil
+	}
+	text, err := h.Check(ctx, repo, revision, model[0])
+	if err != nil || text == "" {
+		return nil
+	}
+	return &Error{Status: http.StatusUnprocessableEntity, Code: "hf_incomplete_model", Message: text}
 }
 
 func downloadRoutes(dl Downloads, h HF) []Route {
@@ -104,7 +131,7 @@ func downloadRoutes(dl Downloads, h HF) []Route {
 			WithStatus(http.StatusAccepted).
 			WithErrors("invalid_request", "bad_request", "unknown_model", "no_models_folder", "already_installed",
 				"not_enough_space", "hf_repo_not_found", "hf_gated", "hf_unreachable", "hf_bad_answer",
-				"hf_quant_not_found", "downloads_unavailable", "internal"),
+				"hf_quant_not_found", "hf_incomplete_model", "downloads_unavailable", "internal"),
 		JSON(http.MethodDelete, "/api/downloads/{id}", UI, "cancelDownload", "Cancel a download and drop its partial files",
 			func(_ context.Context, in ModelPath) (StatusBody, error) { return accepted, dl.Cancel(in.ID) }).
 			WithStatus(http.StatusAccepted).

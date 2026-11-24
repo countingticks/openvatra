@@ -11,6 +11,7 @@ import (
 type HF interface {
 	Search(ctx context.Context, q string) ([]hf.Repo, error)
 	Files(ctx context.Context, owner, name string) (hf.Listing, error)
+	Check(ctx context.Context, repo, revision string, f hf.GroupFile) (string, error)
 }
 
 type HFSearchQuery struct {

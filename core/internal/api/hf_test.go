@@ -18,6 +18,14 @@ type stubHF struct {
 	err         error
 	q           string
 	owner, name string
+	checkText   string
+	checkErr    error
+	checked     []string // the paths Check was asked
+}
+
+func (s *stubHF) Check(_ context.Context, _, _ string, f hf.GroupFile) (string, error) {
+	s.checked = append(s.checked, f.Path)
+	return s.checkText, s.checkErr
 }
 
 func (s *stubHF) Search(_ context.Context, q string) ([]hf.Repo, error) {

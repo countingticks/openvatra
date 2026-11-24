@@ -3,8 +3,10 @@ package models
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -433,5 +435,129 @@ func TestDiscoverReadsGeneralName(t *testing.T) {
 	}
 	if names["named"] != "Gemma 3 12B" || names["odd"] != "" {
 		t.Fatalf("general names = %v", names)
+	}
+}
+
+// blockTensors is a tensor table with token_embd.weight, one blk.N.attn_norm.weight per block and output.weight,
+// 32 bytes apart from offset 0; the file needs 32 × len(result) data bytes.
+func blockTensors(blocks ...int) []tensor {
+	ts := []tensor{{"token_embd.weight", []uint64{1}, 0}}
+	for _, b := range blocks {
+		ts = append(ts, tensor{fmt.Sprintf("blk.%d.attn_norm.weight", b), []uint64{1}, uint64(32 * len(ts))})
+	}
+	return append(ts, tensor{"output.weight", []uint64{1}, uint64(32 * len(ts))})
+}
+
+// blockRange is from … to, both included, without the skipped blocks.
+func blockRange(from, to int, skip ...int) []int {
+	var out []int
+	for b := from; b <= to; b++ {
+		if !slices.Contains(skip, b) {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// layerKeys are a llama model's keys with block_count and, when nextn >= 0, nextn_predict_layers.
+func layerKeys(blockCount, nextn int, extra ...kv) []kv {
+	keys := []kv{strKV("general.architecture", "llama"), u32KV("llama.block_count", uint32(blockCount))}
+	if nextn >= 0 {
+		keys = append(keys, u32KV("llama.nextn_predict_layers", uint32(nextn)))
+	}
+	return append(keys, extra...)
+}
+
+// withBlocks is a whole file holding blockTensors(blocks...).
+func withBlocks(keys []kv, blocks ...int) []byte {
+	ts := blockTensors(blocks...)
+	return buildFile(3, keys, ts, 32*len(ts))
+}
+
+// discoverOne writes data as the only model under a new folder and returns what Discover lists.
+func discoverOne(t *testing.T, data []byte) Model {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "m.gguf"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Discover(root)
+	if err != nil || len(got) != 1 {
+		t.Fatalf("Discover = %+v, %v; want one model", got, err)
+	}
+	return got[0]
+}
+
+func TestDiscoverIncompleteModels(t *testing.T) {
+	draft := withBlocks(layerKeys(49, 1), 48)
+	pastTheEnd := blockTensors(blockRange(0, 48)...)
+	for i := range pastTheEnd {
+		pastTheEnd[i].offset += 1 << 30
+	}
+	tests := []struct {
+		name    string
+		data    []byte
+		kind    Kind
+		message string // the Error of an unreadable model
+	}{
+		{"only the MTP layer", draft, KindUnreadable, "Not a complete model: it holds 1 of 49 layers. It may be a draft " +
+			"file for faster replies; download the model's main file instead."},
+		{"all 49 blocks with nextn 1", withBlocks(layerKeys(49, 1), blockRange(0, 48)...), KindChat, ""},
+		{"MTP layer stripped", withBlocks(layerKeys(49, 1), blockRange(0, 47)...), KindChat, ""},
+		{"a block missing in the middle", withBlocks(layerKeys(49, -1), blockRange(0, 48, 20)...), KindUnreadable, IncompleteMessage(48, 49)},
+		{"no blk. tensors is not judged", withBlocks(layerKeys(49, -1)), KindChat, ""},
+		{"an embedding model with a gap is not judged", withBlocks(layerKeys(49, -1, u32KV("llama.pooling_type", 1)), 0, 5), KindEmbedding, ""},
+		{"enc.blk. tensors are not judged", buildFile(3, layerKeys(49, -1), []tensor{{"enc.blk.0.attn_q.weight", []uint64{1}, 0}}, 32), KindChat, ""},
+		{"a table that fails to parse is not judged", buildFile(3, layerKeys(49, -1), []tensor{{"blk.0.attn_q.weight", make([]uint64, 9), 0}}, 32), KindChat, ""},
+		{"offsets past the file size with every block present", buildFile(3, layerKeys(49, -1), pastTheEnd, 0), KindChat, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := discoverOne(t, tt.data)
+			if m.Kind != tt.kind || m.Error != tt.message {
+				t.Fatalf("kind %q, error %q; want %q, %q", m.Kind, m.Error, tt.kind, tt.message)
+			}
+			if tt.kind == KindUnreadable && m.Shape != (engine.Shape{FileBytes: m.SizeBytes}) {
+				t.Fatalf("shape = %+v, want only FileBytes %d", m.Shape, m.SizeBytes)
+			}
+		})
+	}
+
+	t.Run("nextn does not change the shape", func(t *testing.T) {
+		with := discoverOne(t, withBlocks(layerKeys(49, 1), blockRange(0, 48)...)).Shape
+		without := discoverOne(t, withBlocks(layerKeys(49, -1), blockRange(0, 48)...)).Shape
+		with.FileBytes, without.FileBytes = 0, 0
+		if with != without || with.Layers != 49 {
+			t.Fatalf("shape with nextn %+v, without %+v", with, without)
+		}
+	})
+	t.Run("a table that fails to parse keeps the shape unknown", func(t *testing.T) {
+		m := discoverOne(t, buildFile(3, layerKeys(49, -1), []tensor{{"blk.0.attn_q.weight", make([]uint64, 9), 0}}, 32))
+		if m.Shape.Layers != 0 {
+			t.Fatalf("Layers = %d, want 0 (unknown)", m.Shape.Layers)
+		}
+	})
+}
+
+func TestCheckHeader(t *testing.T) {
+	tests := []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"draft file", withBlocks(layerKeys(49, 1), 48), IncompleteMessage(1, 49)},
+		{"full file", withBlocks(layerKeys(49, 1), blockRange(0, 48)...), ""},
+		{"no blk. tensors", withBlocks(layerKeys(49, -1)), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := CheckHeader(bytes.NewReader(tt.data))
+			if err != nil || got != tt.want {
+				t.Fatalf("CheckHeader = %q, %v; want %q", got, err, tt.want)
+			}
+		})
+	}
+	if _, err := CheckHeader(bytes.NewReader([]byte("not a model at all"))); err == nil {
+		t.Fatal("a non-GGUF stream gave no error")
 	}
 }

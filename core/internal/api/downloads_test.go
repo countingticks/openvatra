@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -68,9 +69,62 @@ func listedRepo() *stubHF {
 		{Quant: "Q8_0", Files: []hf.GroupFile{{Name: "m-Q8_0.gguf", Path: "m-Q8_0.gguf", SizeBytes: 9, SHA256: "s8"}}},
 		{Quant: "Q4_K_M", Files: []hf.GroupFile{
 			{Name: "m-Q4_K_M.gguf", Path: "m-Q4_K_M.gguf", SizeBytes: 5, SHA256: "s4"},
-			{Name: "mmproj-F16.gguf", Path: "proj/mmproj-F16.gguf", SizeBytes: 2, SHA256: "sp"},
+			{Name: "mmproj-F16.gguf", Path: "proj/mmproj-F16.gguf", SizeBytes: 2, SHA256: "sp", Projector: true},
 		}},
 	}}}
+}
+
+func TestStartHFChecksASingleFileGroup(t *testing.T) {
+	incomplete := "Not a complete model: it holds 1 of 49 layers. It may be a draft file for faster replies; " +
+		"download the model's main file instead."
+	t.Run("an incomplete file is refused and nothing is queued", func(t *testing.T) {
+		dl, h := &stubDownloads{}, listedRepo()
+		h.checkText = incomplete
+		rec := callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
+		if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"error":"hf_incomplete_model"`) ||
+			!strings.Contains(rec.Body.String(), "it holds 1 of 49 layers") {
+			t.Fatalf("start = %d %s", rec.Code, rec.Body)
+		}
+		if len(dl.calls) != 0 {
+			t.Fatalf("calls = %v, want none", dl.calls)
+		}
+	})
+	t.Run("a failing check lets the download start", func(t *testing.T) {
+		dl, h := &stubDownloads{}, listedRepo()
+		h.checkErr = hf.ErrUnreachable
+		rec := callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
+		if rec.Code != http.StatusAccepted || !slices.Equal(dl.calls, []string{"start pick hf:o/r:Q4_K_M"}) {
+			t.Fatalf("start = %d %s, calls %v", rec.Code, rec.Body, dl.calls)
+		}
+	})
+	t.Run("the model file is checked once, not the projector", func(t *testing.T) {
+		dl, h := &stubDownloads{}, listedRepo()
+		callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
+		if !slices.Equal(h.checked, []string{"m-Q4_K_M.gguf"}) {
+			t.Fatalf("checked %v", h.checked)
+		}
+	})
+	t.Run("an installed group is not checked", func(t *testing.T) {
+		dl, h := &stubDownloads{}, listedRepo()
+		h.listing.Groups[1].Installed = true
+		h.checkText = incomplete
+		callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
+		if len(h.checked) != 0 || !slices.Equal(dl.calls, []string{"start pick hf:o/r:Q4_K_M"}) {
+			t.Fatalf("checked %v, calls %v", h.checked, dl.calls)
+		}
+	})
+	t.Run("a split group is not checked", func(t *testing.T) {
+		dl, h := &stubDownloads{}, listedRepo()
+		h.listing.Groups = append(h.listing.Groups, hf.Group{Quant: "BF16", Files: []hf.GroupFile{
+			{Name: "m-BF16-00001-of-00002.gguf", Path: "BF16/m-BF16-00001-of-00002.gguf", SizeBytes: 5, SHA256: "a"},
+			{Name: "m-BF16-00002-of-00002.gguf", Path: "BF16/m-BF16-00002-of-00002.gguf", SizeBytes: 5, SHA256: "b"},
+		}})
+		h.checkText = incomplete
+		callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"BF16"}}`)
+		if len(h.checked) != 0 || !slices.Equal(dl.calls, []string{"start pick hf:o/r:BF16"}) {
+			t.Fatalf("checked %v, calls %v", h.checked, dl.calls)
+		}
+	})
 }
 
 func TestStartHFQueuesThePickAtTheListedRevision(t *testing.T) {

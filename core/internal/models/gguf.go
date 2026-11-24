@@ -8,7 +8,9 @@ import (
 	"io"
 	"math"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -75,7 +77,7 @@ var encoderArchitectures = map[string]bool{
 var shapeSuffixes = []string{
 	".context_length", ".block_count", ".embedding_length", ".expert_count",
 	".attention.head_count", ".attention.head_count_kv", ".attention.key_length", ".attention.value_length",
-	".full_attention_interval",
+	".full_attention_interval", ".nextn_predict_layers",
 }
 
 func isShapeKey(key string) bool {
@@ -87,10 +89,27 @@ func isShapeKey(key string) bool {
 	return key == "general.alignment"
 }
 
-// tensorRef is what the tensor table is kept for: where a tensor starts and whether it holds expert weights.
+// tensorRef is what the tensor table is kept for: where a tensor starts, whether it holds expert weights and the
+// layer it belongs to (the N of "blk.N.", -1 for any other name).
 type tensorRef struct {
 	offset uint64
 	expert bool
+	block  int
+}
+
+var blockName = regexp.MustCompile(`^blk\.(\d+)\.`)
+
+// blockOf is the layer a tensor name belongs to, -1 when it isn't a "blk.N." tensor.
+func blockOf(name string) int {
+	m := blockName.FindStringSubmatch(name)
+	if m == nil {
+		return -1
+	}
+	n, err := strconv.Atoi(m[1])
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 // attentionLayersSuffix marks, in header.ints, how many entries of a head_count_kv array are positive: the layers
@@ -322,7 +341,7 @@ func (g *ggufReader) readTable(count uint64, h *header) error {
 		if err != nil {
 			return err
 		}
-		refs = append(refs, tensorRef{off, strings.Contains(name, "_exps")})
+		refs = append(refs, tensorRef{off, strings.Contains(name, "_exps"), blockOf(name)})
 	}
 	h.tensors = refs
 	align := h.ints["general.alignment"]
@@ -499,6 +518,72 @@ func (h header) shape(fileSize int64) engine.Shape {
 	return s
 }
 
+// blocks is the sorted distinct layer numbers of the parsed tensor table; nil when the table didn't parse or holds no
+// "blk.N." tensor. It ignores the offsets (decision 48), so a header stream without a file size gives the same answer.
+func (h header) blocks() []int {
+	if !h.tableOK {
+		return nil
+	}
+	seen := map[int]bool{}
+	var out []int
+	for _, t := range h.tensors {
+		if t.block >= 0 && !seen[t.block] {
+			seen[t.block] = true
+			out = append(out, t.block)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+// layerCounts is block_count and nextn_predict_layers (0 when absent).
+func (h header) layerCounts() (blockCount, nextn int) {
+	return int(max(h.ints[h.architecture+".block_count"], 0)), int(max(h.ints[h.architecture+".nextn_predict_layers"], 0))
+}
+
+// IncompleteMessage is the Error of a model that holds have of its total layers.
+func IncompleteMessage(have, total int) string {
+	return fmt.Sprintf("Not a complete model: it holds %d of %d layers. It may be a draft file for faster replies; "+
+		"download the model's main file instead.", have, total)
+}
+
+// incomplete applies the completeness rule: a chat model with block_count > 0 and at least one "blk." tensor needs
+// every layer below block_count − nextn (the MTP layers above are optional). have counts the distinct layers present
+// below block_count; bad is false when the model is complete or not judged.
+func incomplete(kind Kind, blockCount, nextn int, blocks []int) (have int, bad bool) {
+	if kind != KindChat || blockCount <= 0 || len(blocks) == 0 {
+		return 0, false
+	}
+	present := map[int]bool{}
+	for _, b := range blocks {
+		if b < blockCount && !present[b] {
+			present[b] = true
+			have++
+		}
+	}
+	for i := 0; i < blockCount-nextn; i++ {
+		if !present[i] {
+			return have, true
+		}
+	}
+	return have, false
+}
+
+// CheckHeader parses one file's header from r (general.architecture required, nothing cached) and applies the
+// completeness rule. It returns IncompleteMessage(…) for an incomplete model, "" for a complete or unjudged one.
+// err is non-nil only when the header itself can't be parsed (parseHeader's error).
+func CheckHeader(r io.Reader) (incompleteMsg string, err error) {
+	h, err := parseHeader(r, true)
+	if err != nil {
+		return "", err
+	}
+	blockCount, nextn := h.layerCounts()
+	if have, bad := incomplete(h.kind(), blockCount, nextn, h.blocks()); bad {
+		return IncompleteMessage(have, blockCount), nil
+	}
+	return "", nil
+}
+
 // fileInfo is what one read of a file's header gives.
 type fileInfo struct {
 	kind  Kind
@@ -510,6 +595,10 @@ type fileInfo struct {
 	tableOK    bool
 	moe        bool // expert_count > 0
 	name       string
+	// blocks, blockCount and nextn are what the completeness rule reads (see incomplete).
+	blocks     []int
+	blockCount int
+	nextn      int
 }
 
 // classify reads one file's header and returns its kind and shape, or KindUnreadable with the reason.
@@ -524,7 +613,11 @@ func classify(path string, size int64, requireArch bool) fileInfo {
 		return fileInfo{kind: KindUnreadable, msg: err.Error()}
 	}
 	raw, ok := h.expertBytes(size)
-	return fileInfo{kind: h.kind(), shape: h.shape(size), rawExperts: raw, tableOK: ok, moe: h.ints[h.architecture+".expert_count"] > 0, name: h.name}
+	blockCount, nextn := h.layerCounts()
+	return fileInfo{
+		kind: h.kind(), shape: h.shape(size), rawExperts: raw, tableOK: ok, moe: h.ints[h.architecture+".expert_count"] > 0,
+		name: h.name, blocks: h.blocks(), blockCount: blockCount, nextn: nextn,
+	}
 }
 
 type cacheKey struct {

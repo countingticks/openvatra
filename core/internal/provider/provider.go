@@ -180,6 +180,14 @@ type LoadError struct {
 func (e *LoadError) Error() string { return "load " + e.Model + ": " + e.Err.Error() }
 func (e *LoadError) Unwrap() error { return e.Err }
 
+// RefusedError says core won't start a model it found on disk: the file is unreadable or the wrong kind.
+type RefusedError struct {
+	Model  string
+	Reason string // shown to the user as is
+}
+
+func (e *RefusedError) Error() string { return e.Reason }
+
 // Model states a Resident reports. "stopped" is left to the caller: a provider only knows the models it has touched.
 const (
 	StateLoading = "loading"
