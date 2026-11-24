@@ -50,6 +50,7 @@ type Client struct {
 	log       *slog.Logger
 	now       func() time.Time
 	http      *http.Client
+	checkHTTP *http.Client // Check's: a large vocabulary makes a header several MB, so it gets twice the time
 	cache     *cache
 }
 
@@ -107,6 +108,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	// No cookie jar: nothing a server sets is ever sent back.
 	c.http = &http.Client{Timeout: timeout, CheckRedirect: c.checkRedirect}
+	c.checkHTTP = &http.Client{Timeout: 2 * timeout, CheckRedirect: c.checkRedirect}
 	c.cache = newCache(c.now)
 	return c, nil
 }
@@ -119,7 +121,8 @@ func localBase(raw string) bool {
 }
 
 // checkRedirect follows Hugging Face's own hosts over https (or, in tests, the same loopback server) and nothing
-// else. The headers are set afresh, so nothing the standard client would copy rides along.
+// else. The headers are set afresh, so nothing the standard client would copy rides along; only Check's Range is
+// carried over from the first request.
 func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) > maxRedirects {
 		return errRedirect
@@ -133,6 +136,9 @@ func (c *Client) checkRedirect(req *http.Request, via []*http.Request) error {
 		return errRedirect
 	}
 	c.setHeaders(req)
+	if r := via[0].Header.Get("Range"); r != "" {
+		req.Header.Set("Range", r)
+	}
 	return nil
 }
 

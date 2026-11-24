@@ -102,6 +102,9 @@ func TestFilesProjectorJoinsEveryGroup(t *testing.T) {
 		if len(g.Files) != 2 || last.Name != "mmproj-F16.gguf" || g.SizeBytes != g.Files[0].SizeBytes+851251328 {
 			t.Fatalf("group %s = %+v", g.Quant, g)
 		}
+		if !last.Projector || g.Files[0].Projector {
+			t.Fatalf("group %s: projector flags %v, %v; want only the projector's set", g.Quant, g.Files[0].Projector, last.Projector)
+		}
 	}
 	if !slices.Equal(l.Tags, []string{"Vision"}) {
 		t.Fatalf("tags = %v, want Vision", l.Tags)
