@@ -34,11 +34,30 @@ type hfModel struct {
 const searchLimit = "30"
 
 // Search lists the GGUF repos matching q (trimmed, 2–100 characters), in Hugging Face's order.
+// Answers are cached for ten minutes; the log line holds the count and the time, never q.
 func (c *Client) Search(ctx context.Context, q string) ([]Repo, error) {
+	start := time.Now()
 	q = strings.TrimSpace(q)
 	if n := utf8.RuneCountInString(q); n < 2 || n > 100 {
+		c.log.Warn("hf search failed", "reason", reason(ErrBadQuery), "ms", time.Since(start).Milliseconds())
 		return nil, ErrBadQuery
 	}
+	key := "search:" + strings.ToLower(q)
+	if v, ok := c.cache.get(key); ok {
+		return slices.Clone(v.([]Repo)), nil
+	}
+	repos, err := c.search(ctx, q)
+	ms := time.Since(start).Milliseconds()
+	if err != nil {
+		c.log.Warn("hf search failed", "reason", reason(err), "ms", ms)
+		return nil, err
+	}
+	c.cache.put(key, repos)
+	c.log.Info("hf search", "results", len(repos), "ms", ms)
+	return slices.Clone(repos), nil
+}
+
+func (c *Client) search(ctx context.Context, q string) ([]Repo, error) {
 	query := url.Values{
 		"search":    {q},
 		"filter":    {"gguf"},

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/catalog"
 	"github.com/countingticks/openvatra/core/internal/hw"
@@ -93,15 +94,27 @@ type repoAnswer struct {
 }
 
 // Files lists owner/name's GGUF groups.
+// Hugging Face's answer is cached for ten minutes; fit, installed and disk space are worked out on every call.
 func (c *Client) Files(ctx context.Context, owner, name string) (Listing, error) {
+	start := time.Now()
+	repo := owner + "/" + name
 	if !safeSegment(owner) || !safeSegment(name) {
+		c.log.Warn("hf files failed", "repo", repo, "reason", reason(ErrRepoNotFound))
 		return Listing{}, ErrRepoNotFound
+	}
+	key := "files:" + strings.ToLower(repo)
+	if v, ok := c.cache.get(key); ok {
+		return c.listing(owner, name, v.(repoAnswer)), nil
 	}
 	answer, err := c.askRepo(ctx, owner, name)
 	if err != nil {
+		c.log.Warn("hf files failed", "repo", repo, "reason", reason(err))
 		return Listing{}, err
 	}
-	return c.listing(owner, name, answer), nil
+	c.cache.put(key, answer)
+	l := c.listing(owner, name, answer)
+	c.log.Info("hf files", "repo", repo, "groups", len(l.Groups), "ms", time.Since(start).Milliseconds())
+	return l, nil
 }
 
 // Folder is where a group's files go: <modelsDir>/hf/<owner>/<name>/<quant>; "" when modelsDir is "".

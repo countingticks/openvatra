@@ -50,6 +50,7 @@ type Client struct {
 	log       *slog.Logger
 	now       func() time.Time
 	http      *http.Client
+	cache     *cache
 }
 
 var (
@@ -106,6 +107,7 @@ func New(cfg Config) (*Client, error) {
 	}
 	// No cookie jar: nothing a server sets is ever sent back.
 	c.http = &http.Client{Timeout: timeout, CheckRedirect: c.checkRedirect}
+	c.cache = newCache(c.now)
 	return c, nil
 }
 
