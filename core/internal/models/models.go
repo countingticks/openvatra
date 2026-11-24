@@ -157,13 +157,19 @@ func Discover(root string) ([]Model, error) {
 		// Read the header only for models that stay listed. Rerankers are hidden until a RAG step can use one.
 		info := inspect(m.Path, true)
 		m.Kind, m.Error, m.Shape, m.GeneralName = info.kind, info.msg, info.shape, info.name
+		blocks := info.blocks
 		if n := partCount[m.Path]; n > 1 && m.Kind != KindUnreadable {
-			m.Shape = withParts(m, n, info)
+			m.Shape, blocks = withParts(m, n, info)
 		}
-		m.Shape.FileBytes = m.SizeBytes
-		if m.MMProj != "" {
-			if fi, err := os.Stat(m.MMProj); err == nil {
-				m.Shape.ProjectorBytes = fi.Size()
+		if have, bad := incomplete(m.Kind, info.blockCount, info.nextn, blocks); bad {
+			m.Kind, m.Error = KindUnreadable, IncompleteMessage(have, info.blockCount)
+			m.Shape = engine.Shape{FileBytes: m.SizeBytes}
+		} else {
+			m.Shape.FileBytes = m.SizeBytes
+			if m.MMProj != "" {
+				if fi, err := os.Stat(m.MMProj); err == nil {
+					m.Shape.ProjectorBytes = fi.Size()
+				}
 			}
 		}
 		if m.Kind == KindReranker {
@@ -227,12 +233,14 @@ func commonPrefixLen(a, b string) int {
 
 // withParts completes the shape of a split model from its other parts: the expert tensors of every part count, and a
 // part that is missing or whose tensor table doesn't read leaves the shape unknown. The keys are the first part's.
-func withParts(m Model, n int, first fileInfo) engine.Shape {
+// blocks is the union of every part's layers, nil when the shape is unknown.
+func withParts(m Model, n int, first fileInfo) (engine.Shape, []int) {
 	s := first.shape
 	ok := first.tableOK
 	if first.moe {
 		s.ExpertBytes = first.rawExperts
 	}
+	blocks := append([]int(nil), first.blocks...)
 	dir := filepath.Dir(m.Path)
 	for k := 2; ok && k <= n; k++ {
 		part := inspect(filepath.Join(dir, fmt.Sprintf("%s-%05d-of-%05d.gguf", m.ID, k, n)), false)
@@ -243,9 +251,11 @@ func withParts(m Model, n int, first fileInfo) engine.Shape {
 		if first.moe {
 			s.ExpertBytes += part.rawExperts
 		}
+		blocks = append(blocks, part.blocks...)
 	}
 	if !ok {
 		s.Layers, s.ExpertBytes = 0, 0
+		return s, nil
 	}
-	return s
+	return s, blocks
 }

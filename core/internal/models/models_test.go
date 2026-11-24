@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -241,7 +242,8 @@ func TestDiscoverShapeSizes(t *testing.T) {
 }
 
 func TestDiscoverSplitMoE(t *testing.T) {
-	keys := denseKeys(u32KV("llama.expert_count", 8))
+	// block_count 3 matches the three expert tensors below, so the completeness rule finds every layer.
+	keys := append(denseKeys()[:2:2], append([]kv{u32KV("llama.block_count", 3)}, denseKeys(u32KV("llama.expert_count", 8))[3:]...)...)
 	// Later parts carry no keys at all, not even the architecture.
 	part := func(n int, tensors []tensor, data int) []byte {
 		if n == 1 {
@@ -257,7 +259,7 @@ func TestDiscoverSplitMoE(t *testing.T) {
 		wantExperts int64
 		wantLayers  int
 	}{
-		{"all parts present", false, 100 + 200 + 300, 32},
+		{"all parts present", false, 100 + 200 + 300, 3},
 		{"part 2 missing", true, 0, 0},
 	}
 	for _, tt := range tests {
@@ -283,6 +285,44 @@ func TestDiscoverSplitMoE(t *testing.T) {
 			}
 			if s := got[0].Shape; s.ExpertBytes != tt.wantExperts || s.Layers != tt.wantLayers {
 				t.Fatalf("shape = %+v, want ExpertBytes %d and Layers %d", s, tt.wantExperts, tt.wantLayers)
+			}
+		})
+	}
+}
+
+func TestDiscoverSplitCompleteness(t *testing.T) {
+	keys := layerKeys(49, -1)
+	tests := []struct {
+		name    string
+		parts   map[int][]int // part number -> blocks; a missing number is a missing part
+		count   int
+		kind    Kind
+		message string
+		layers  int
+	}{
+		{"two halves make a whole", map[int][]int{1: blockRange(0, 24), 2: blockRange(25, 48)}, 2, KindChat, "", 49},
+		{"two parts leave a gap", map[int][]int{1: blockRange(0, 20), 2: blockRange(25, 48)}, 2, KindUnreadable, IncompleteMessage(45, 49), 0},
+		{"a missing part is not judged", map[int][]int{1: blockRange(0, 10), 3: blockRange(40, 48)}, 3, KindChat, "", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			for n, blocks := range tt.parts {
+				var k []kv
+				if n == 1 {
+					k = keys
+				}
+				name := fmt.Sprintf("big-%05d-of-%05d.gguf", n, tt.count)
+				if err := os.WriteFile(filepath.Join(root, name), withBlocks(k, blocks...), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got, err := Discover(root)
+			if err != nil || len(got) != 1 {
+				t.Fatalf("Discover = %+v, %v; want one model", got, err)
+			}
+			if m := got[0]; m.Kind != tt.kind || m.Error != tt.message || m.Shape.Layers != tt.layers {
+				t.Fatalf("kind %q, error %q, Layers %d; want %q, %q, %d", m.Kind, m.Error, m.Shape.Layers, tt.kind, tt.message, tt.layers)
 			}
 		})
 	}
