@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ChevronRight, Download, Heart } from 'lucide-react'
+import { HfFileGroups } from './HfFileGroups'
 import { compactCount, updatedAgo } from './hfText'
 import type { Repo } from '@app/core/generated'
 
@@ -12,6 +13,10 @@ export function HfRepoRow({ repo }: HfRepoRowProps): React.JSX.Element {
   const [open, setOpen] = useState(false)
   // Read once: the age of a result need not tick while the list is open.
   const [now] = useState(() => Date.now())
+  // The listing's tags (it adds Vision) show on the row once the files have been read.
+  const [listed, setListed] = useState<string[]>([])
+  const onTags = useCallback((tags: string[]) => setListed(tags), [])
+  const tags = [...repo.tags, ...listed.filter((tag) => !repo.tags.includes(tag))]
   return (
     <li className="flex flex-col gap-1 border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex min-h-8 items-center gap-2 text-[13px]">
@@ -19,7 +24,7 @@ export function HfRepoRow({ repo }: HfRepoRowProps): React.JSX.Element {
           <span className="text-muted-foreground">{repo.owner} / </span>
           <span className="font-medium">{repo.name}</span>
         </span>
-        {repo.tags.map((tag) => (
+        {tags.map((tag) => (
           <span
             key={tag}
             className="shrink-0 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
@@ -58,6 +63,7 @@ export function HfRepoRow({ repo }: HfRepoRowProps): React.JSX.Element {
           />
         </button>
       </div>
+      {open && <HfFileGroups owner={repo.owner} name={repo.name} onTags={onTags} />}
     </li>
   )
 }
