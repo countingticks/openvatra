@@ -27,6 +27,9 @@ func Quant(stem string) string {
 	return strings.ToUpper(all[len(all)-1])
 }
 
+// IsCode reports whether a model or repo name reads as a code model (coder, devstral, code), the rule Describe uses.
+func IsCode(name string) bool { return codeRe.MatchString(name) }
+
 // Describe returns list with Name, Quant and Tags set on every model. owner may be nil, and may answer false.
 func Describe(list []Model, owner func(path string) (Owner, bool)) []Model {
 	out := make([]Model, len(list))
@@ -45,7 +48,7 @@ func Describe(list []Model, owner func(path string) (Owner, bool)) []Model {
 		}
 		m.Quant = Quant(m.ID)
 		m.Tags = []string{}
-		if owned && hasTag(o.Tags, "code") || codeRe.MatchString(m.ID) {
+		if owned && hasTag(o.Tags, "code") || IsCode(m.ID) {
 			m.Tags = append(m.Tags, "Code")
 		}
 		if m.Kind != KindUnreadable {
