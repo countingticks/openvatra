@@ -28,10 +28,12 @@ type Catalog interface {
 	EntryOf(path string) (id string, ok bool)
 }
 
-// Downloads is the download queue a finished download is dismissed from.
+// Downloads is the download queue a finished download is dismissed from, and the keeper of Hugging Face picks.
 type Downloads interface {
 	Items() []downloads.DownloadItem
 	Cancel(id string) error
+	PickOf(path string) (id, folder string, ok bool)
+	ForgetPick(ctx context.Context, id string) error
 }
 
 // Config is what a Remover works with.
@@ -125,6 +127,9 @@ func (r *Remover) RemoveModel(ctx context.Context, id string) error {
 	if entry, ok := r.cfg.Catalog.EntryOf(m.Path); ok {
 		return r.removeEntry(ctx, entry)
 	}
+	if pick, folder, ok := r.cfg.Downloads.PickOf(m.Path); ok {
+		return r.removePick(ctx, dir, id, pick, folder)
+	}
 
 	paths := slices.Clone(m.Parts)
 	if len(paths) == 0 {
@@ -200,6 +205,25 @@ func (r *Remover) removeEntry(ctx context.Context, id string) error {
 			r.cfg.Logger.Warn("removal: could not dismiss the finished download", "id", id, "err", err)
 		}
 	}
+	return nil
+}
+
+// removePick moves a Hugging Face pick's quant folder (the model and its projector) to the Recycle Bin and forgets the
+// pick. The caller holds the turn. Forgetting is tidying up, so a failure is only logged: the removal itself worked.
+func (r *Remover) removePick(ctx context.Context, dir, modelID, pick, folder string) error {
+	if !insideResolved(dir, folder) {
+		return ErrOutside
+	}
+	if err := r.stop(ctx, []string{modelID}); err != nil {
+		return err
+	}
+	if err := r.trash(ctx, modelID, folder); err != nil {
+		return err
+	}
+	if err := r.cfg.Downloads.ForgetPick(ctx, pick); err != nil {
+		r.cfg.Logger.Warn("removal: could not forget the Hugging Face download", "id", pick, "err", err)
+	}
+	r.cfg.Resident.Notify()
 	return nil
 }
 

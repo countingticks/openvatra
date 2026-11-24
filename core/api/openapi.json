@@ -559,6 +559,9 @@
           "id": {
             "type": "string"
           },
+          "name": {
+            "type": "string"
+          },
           "speed": {
             "type": "integer"
           },
@@ -579,6 +582,7 @@
         },
         "required": [
           "id",
+          "name",
           "state",
           "bytes",
           "total",
@@ -844,6 +848,22 @@
         },
         "required": [
           "repos"
+        ],
+        "type": "object"
+      },
+      "HFStart": {
+        "properties": {
+          "quant": {
+            "type": "string"
+          },
+          "repo": {
+            "description": "owner/name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "quant"
         ],
         "type": "object"
       },
@@ -2082,6 +2102,16 @@
               "cuda"
             ],
             "type": "string"
+          },
+          "hf": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HFStart"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object"
@@ -3117,10 +3147,10 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, internal."
+            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_quant_not_found, downloads_unavailable, internal."
           }
         },
-        "summary": "Queue a catalog model or the CUDA engine",
+        "summary": "Queue a catalog model, the CUDA engine or a Hugging Face quant",
         "tags": [
           "downloads"
         ],
@@ -3163,6 +3193,48 @@
           }
         },
         "summary": "Cancel a download and drop its partial files",
+        "tags": [
+          "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/downloads/{id}/pause": {
+      "post": {
+        "operationId": "pauseDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_model, not_running, internal."
+          }
+        },
+        "summary": "Pause a download",
         "tags": [
           "downloads"
         ],

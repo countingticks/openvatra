@@ -101,7 +101,7 @@ func TestConfigMigrationAppliesOnAnOldDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if v, _ := s.Version(); v != 9 {
+	if v, _ := s.Version(); v != 10 {
 		t.Fatalf("version = %d", v)
 	}
 	if _, _, err := s.ConfigGet(context.Background(), "x"); err != nil {

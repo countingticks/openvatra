@@ -26,6 +26,7 @@ const model = (state: ModelInfo['state'], id = 'Qwen3-8B', vramGib: number | nul
 
 const download = (state: DownloadItem['state'], extra: Partial<DownloadItem> = {}): DownloadItem => ({
   id: 'engine-cuda',
+  name: 'engine.zip',
   state,
   bytes: 0,
   total: 100,

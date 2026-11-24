@@ -92,7 +92,7 @@ func routes(d Deps, t *tokens) []Route {
 	routes = append(routes, modelRoutes(d)...)
 	routes = append(routes, hardwareRoutes(d.Hardware)...)
 	routes = append(routes, catalogRoutes(d.Catalog, d.Removal)...)
-	routes = append(routes, downloadRoutes(d.Downloads)...)
+	routes = append(routes, downloadRoutes(d.Downloads, d.HF)...)
 	routes = append(routes, engineRoutes(d.Engines)...)
 	routes = append(routes, configRoutes(d.Config)...)
 	routes = append(routes, runRoutes(d.Chats, d.Runs)...)

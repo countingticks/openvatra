@@ -28,6 +28,7 @@ const catalog: CatalogView = { entries: [qwen], diskFreeBytes: 100 * GB, recomme
 
 const item = (patch: Partial<DownloadItem> = {}): DownloadItem => ({
   id: qwen.id,
+  name: `${qwen.id}.gguf`,
   state: 'downloading',
   bytes: 4.1 * GB,
   total: 5 * GB,

@@ -112,7 +112,7 @@ describe('Get more models', () => {
 
   it('shows progress and Cancel for a model being downloaded', async () => {
     const { coreHttp, dialog } = await openDialog(catalog(qwen), [
-      { id: qwen.id, state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
+      { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
 
     expect(await within(dialog).findByText('1.0 of 5.0 GB')).toBeInTheDocument()
@@ -126,11 +126,13 @@ describe('Get more models', () => {
 
   it('resumes a download that paused in this run', async () => {
     const { coreHttp, setup, dialog } = await openDialog(catalog(qwen), [
-      { id: qwen.id, state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
+      { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
     await within(dialog).findByText('1.0 of 5.0 GB')
 
-    setup.emitDownloads([{ id: qwen.id, state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }])
+    setup.emitDownloads([
+      { id: qwen.id, name: 'qwen3-8b.gguf', state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }
+    ])
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Resume' }))
 
     await waitFor(() =>

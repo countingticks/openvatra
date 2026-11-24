@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -28,14 +29,41 @@ func entry(id string, srvURL string) catalog.Entry {
 	}
 }
 
-// fixture serves payload for every model; gate (if set) holds each response until it is closed.
+// fixture serves payload for every model; gate (if set) holds each response until it is closed. With stall set, a
+// first request (no Range) gets stallAt bytes and then hangs until the client goes away.
 type fixture struct {
-	m     *Manager
-	dir   string
-	srv   *httptest.Server
-	done  atomic.Int32 // OnFinish calls
-	ready atomic.Int32 // OnEngineReady calls
-	gate  chan struct{}
+	m       *Manager
+	entries []catalog.Entry // the catalog source's entries: a test may change their files
+	dir     string
+	srv     *httptest.Server
+	done    atomic.Int32 // OnFinish calls
+	ready   atomic.Int32 // OnEngineReady calls
+	gate    chan struct{}
+	stall   atomic.Bool
+}
+
+// stallAt is how many bytes a stalled response sends before it hangs.
+const stallAt = 1000
+
+// serve answers with body; with stall, a request without Range gets stallAt bytes and then hangs until the client
+// goes away, so a download is caught mid-file with a .part on disk. A Range request (a resume) is answered in full.
+func serve(w http.ResponseWriter, r *http.Request, body []byte, stall bool) {
+	if !stall || r.Header.Get("Range") != "" {
+		http.ServeContent(w, r, path.Base(r.URL.Path), time.Time{}, strings.NewReader(string(body)))
+		return
+	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	_, _ = w.Write(body[:stallAt])
+	w.(http.Flusher).Flush()
+	<-r.Context().Done()
+}
+
+// testDownloader lets the local test server through.
+func testDownloader() *download.Downloader {
+	return &download.Downloader{
+		Client: &http.Client{}, AllowHost: func(string) bool { return true }, AllowLocalHTTP: true,
+		Backoff: []time.Duration{time.Millisecond, time.Millisecond},
+	}
 }
 
 func newFixture(t *testing.T, gated bool, ids ...string) *fixture {
@@ -52,19 +80,15 @@ func newFixture(t *testing.T, gated bool, ids ...string) *fixture {
 				return
 			}
 		}
-		http.ServeContent(w, r, path.Base(r.URL.Path), time.Time{}, strings.NewReader(string(payload)))
+		serve(w, r, payload, f.stall.Load())
 	}))
 	t.Cleanup(f.srv.Close)
-	var entries []catalog.Entry
 	for _, id := range ids {
-		entries = append(entries, entry(id, f.srv.URL))
+		f.entries = append(f.entries, entry(id, f.srv.URL))
 	}
 	f.m = New(Config{
-		Downloader: &download.Downloader{
-			Client: &http.Client{}, AllowHost: func(string) bool { return true }, AllowLocalHTTP: true,
-			Backoff: []time.Duration{time.Millisecond, time.Millisecond},
-		},
-		Entries:       entries,
+		Downloader:    testDownloader(),
+		Sources:       []Source{CatalogSource(f.entries)},
 		ModelsDir:     func() string { return f.dir },
 		DiskFree:      func(string) (uint64, error) { return 1 << 40, nil },
 		OnFinish:      func() { f.done.Add(1) },
@@ -85,13 +109,43 @@ func (f *fixture) state(id string) State {
 
 func (f *fixture) waitFor(t *testing.T, id string, want State) {
 	t.Helper()
+	waitItem(t, f.m, id, func(it DownloadItem) bool { return it.State == want })
+}
+
+// item is id's entry in m.Items(); a zero item when it is not listed.
+func item(m *Manager, id string) DownloadItem {
+	for _, it := range m.Items() {
+		if it.ID == id {
+			return it
+		}
+	}
+	return DownloadItem{}
+}
+
+// waitItem polls m.Items() until id's item satisfies ok, and returns it.
+func waitItem(t *testing.T, m *Manager, id string, ok func(DownloadItem) bool) DownloadItem {
+	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
-	for f.state(id) != want {
+	for {
+		it := item(m, id)
+		if ok(it) {
+			return it
+		}
 		if time.Now().After(deadline) {
-			t.Fatalf("%s is %q, want %q", id, f.state(id), want)
+			t.Fatalf("%s never got there: %+v", id, it)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// stalled starts id on a stalling server and waits until its .part holds stallAt bytes.
+func (f *fixture) stalled(t *testing.T, id string) {
+	t.Helper()
+	f.stall.Store(true)
+	if err := f.m.Start(id); err != nil {
+		t.Fatal(err)
+	}
+	waitItem(t, f.m, id, func(it DownloadItem) bool { return it.State == Downloading && it.Bytes == stallAt })
 }
 
 func TestStartDownloadsAndFinishes(t *testing.T) {
@@ -186,6 +240,23 @@ func TestLeftoverPartShowsPausedAndResumes(t *testing.T) {
 	f.waitFor(t, "a", Done)
 }
 
+func TestEveryItemIsNamedAfterItsFirstFile(t *testing.T) {
+	f := newFixture(t, true, "a", "b")
+	defer close(f.gate)
+	dir := filepath.Join(f.dir, "b") // b was left half done by an earlier run
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "b.gguf.part"), payload[:1000], 0o644)
+	_ = f.m.Start("a")
+	f.waitFor(t, "a", Downloading)
+	got := map[string]string{}
+	for _, it := range f.m.Items() {
+		got[it.ID] = it.Name
+	}
+	if got["a"] != "a.gguf" || got["b"] != "b.gguf" || len(got) != 2 {
+		t.Fatalf("names = %v", got)
+	}
+}
+
 func TestCancelPausedLeftoverDeletesIt(t *testing.T) {
 	f := newFixture(t, false, "a")
 	dir := filepath.Join(f.dir, "a")
@@ -205,7 +276,7 @@ func TestCancelPausedLeftoverDeletesIt(t *testing.T) {
 
 func TestCancelDeletesFinishedFilesOfAnUnfinishedModel(t *testing.T) {
 	f := newFixture(t, false, "a")
-	f.m.cfg.Entries[0].Files = append(f.m.cfg.Entries[0].Files, catalog.File{Name: "mmproj.gguf", SizeBytes: 50})
+	f.entries[0].Files = append(f.entries[0].Files, catalog.File{Name: "mmproj.gguf", SizeBytes: 50})
 	dir := filepath.Join(f.dir, "a")
 	_ = os.MkdirAll(dir, 0o755)
 	_ = os.WriteFile(filepath.Join(dir, "a.gguf"), payload, 0o644) // first file done
@@ -257,7 +328,7 @@ func TestNoConnectionPauses(t *testing.T) {
 
 func TestDamagedFileFails(t *testing.T) {
 	f := newFixture(t, false, "a")
-	f.m.cfg.Entries[0].Files[0].SHA256 = strings.Repeat("0", 64)
+	f.entries[0].Files[0].SHA256 = strings.Repeat("0", 64)
 	_ = f.m.Start("a")
 	f.waitFor(t, "a", Failed)
 	if it := f.m.Items()[0]; !strings.Contains(it.Error, "damaged") {
@@ -295,5 +366,83 @@ func TestSubscribersAreToldAboutChanges(t *testing.T) {
 	case <-ch:
 	case <-time.After(2 * time.Second):
 		t.Fatal("no signal after Start")
+	}
+}
+
+func TestPauseMidFileKeepsThePartAndResumeFinishes(t *testing.T) {
+	f := newFixture(t, false, "a")
+	f.stalled(t, "a")
+	if err := f.m.Pause("a"); err != nil {
+		t.Fatal(err)
+	}
+	it := waitItem(t, f.m, "a", func(it DownloadItem) bool { return it.State == Paused })
+	if it.Error != "" || it.Speed != 0 || it.Bytes != stallAt {
+		t.Fatalf("paused item = %+v", it)
+	}
+	if info, err := os.Stat(filepath.Join(f.dir, "a", "a.gguf.part")); err != nil || info.Size() != stallAt {
+		t.Fatalf("part file: %v", err)
+	}
+
+	if err := f.m.Resume("a"); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor(t, "a", Done)
+	got, err := os.ReadFile(filepath.Join(f.dir, "a", "a.gguf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sum := sha256.Sum256(got); hex.EncodeToString(sum[:]) != f.entries[0].Files[0].SHA256 {
+		t.Fatal("the resumed file has the wrong sha256")
+	}
+}
+
+func TestPauseThenCancelDeletesThePart(t *testing.T) {
+	f := newFixture(t, false, "a")
+	f.stalled(t, "a")
+	if err := f.m.Pause("a"); err != nil {
+		t.Fatal(err)
+	}
+	f.waitFor(t, "a", Paused)
+	if err := f.m.Cancel("a"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(f.dir, "a")); !os.IsNotExist(err) {
+		t.Fatalf("the model's folder is still there (%v)", err)
+	}
+}
+
+func TestPauseQueuedTakesItOutOfTheQueue(t *testing.T) {
+	f := newFixture(t, true, "a", "b")
+	_ = f.m.Start("a")
+	_ = f.m.Start("b")
+	f.waitFor(t, "a", Downloading)
+	if err := f.m.Pause("b"); err != nil {
+		t.Fatal(err)
+	}
+	if it := item(f.m, "b"); it.State != Paused || it.Error != "" {
+		t.Fatalf("b = %+v, want paused", it)
+	}
+	close(f.gate)
+	f.waitFor(t, "a", Done)
+	if got := f.state("b"); got != Paused {
+		t.Fatalf("b is %q after a finished, want paused", got)
+	}
+}
+
+func TestPauseRefusesWhatIsNotRunning(t *testing.T) {
+	f := newFixture(t, false, "a", "b")
+	if err := f.m.Pause("nope"); !errors.Is(err, ErrUnknown) {
+		t.Fatalf("unknown = %v", err)
+	}
+	dir := filepath.Join(f.dir, "b") // b is paused, left by an earlier run
+	_ = os.MkdirAll(dir, 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "b.gguf.part"), payload[:10], 0o644)
+	if err := f.m.Pause("b"); !errors.Is(err, ErrNotRunning) {
+		t.Fatalf("paused = %v", err)
+	}
+	_ = f.m.Start("a")
+	f.waitFor(t, "a", Done)
+	if err := f.m.Pause("a"); !errors.Is(err, ErrNotRunning) {
+		t.Fatalf("done = %v", err)
 	}
 }

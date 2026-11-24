@@ -29,6 +29,7 @@ const catalog = {
 }
 const paused = (id: string): DownloadItem => ({
   id,
+  name: `${id}.gguf`,
   state: 'paused',
   bytes: 2.1 * GB,
   total: 5 * GB,

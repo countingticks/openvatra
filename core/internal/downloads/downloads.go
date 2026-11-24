@@ -29,9 +29,10 @@ const (
 	Done        State = "done"
 )
 
-// DownloadItem is one download as the "downloads" event shows it. ID is the catalog id.
+// DownloadItem is one download as the "downloads" event shows it. ID is the catalog id, the engine's or a pick's.
 type DownloadItem struct {
 	ID    string `json:"id"`
+	Name  string `json:"name"` // the first file's name
 	State State  `json:"state" enum:"queued,downloading,verifying,paused,error,done"`
 	Bytes int64  `json:"bytes"`
 	Total int64  `json:"total"`
@@ -47,6 +48,7 @@ var (
 	ErrNoSpace      = errors.New("not enough disk space")
 	ErrNotResumable = errors.New("only a paused or failed download can be resumed")
 	ErrNoDownload   = errors.New("no such download")
+	ErrNotRunning   = errors.New("only a queued or running download can be paused")
 )
 
 // diskSpare mirrors the catalog's rule: 2 GB stay free after a download.
@@ -58,19 +60,53 @@ const speedWindow = 500 * time.Millisecond
 // Config is everything a Manager needs from outside.
 type Config struct {
 	Downloader *download.Downloader
-	Entries    []catalog.Entry
-	ModelsDir  func() string // read on every use: the user can change the folder while core runs
+	// Sources yield what can be queued, in list order; Items keeps it.
+	Sources   []Source
+	ModelsDir func() string // read on every use: the user can change the folder while core runs
 	// DiskFree is a seam for tests; nil means the real drive.
 	DiskFree func(dir string) (uint64, error)
 	// OnFinish runs after a model finished, so the caller can rescan the folder and tell the UI.
 	OnFinish func()
 	// OnEngineReady runs once after the CUDA engine download finished in this run; nil = nothing.
 	OnEngineReady func()
-	// Engine is the optional CUDA build; nil when core was started without a manifest.
-	Engine *Engine
+	// Picks are the Hugging Face downloads, listed after Sources; nil = no writable database: StartPick answers
+	// ErrNoPicks.
+	Picks *Picks
 }
 
-// target is what one queue entry downloads: a catalog model or the engine. Both are "some files into a folder",
+// Source yields queue targets for the models folder of the moment ("" = none set).
+type Source interface {
+	targets(modelsDir string) []target
+}
+
+type catalogSource []catalog.Entry
+
+// CatalogSource is the catalog's entries as targets (<modelsDir>/<id>).
+func CatalogSource(entries []catalog.Entry) Source { return catalogSource(entries) }
+
+func (c catalogSource) targets(dir string) []target {
+	out := make([]target, 0, len(c))
+	for _, e := range c {
+		base := "https://huggingface.co"
+		if e.BaseURL != "" {
+			base = e.BaseURL
+		}
+		t := target{
+			id:    e.ID,
+			files: e.Files,
+			url: func(f catalog.File) string {
+				return fmt.Sprintf("%s/%s/resolve/%s/%s", base, e.Repo, e.Revision, f.Name)
+			},
+		}
+		if dir != "" {
+			t.folder = filepath.Join(dir, e.ID)
+		}
+		out = append(out, t)
+	}
+	return out
+}
+
+// target is what one queue entry downloads: a catalog model, a pick or the engine. All are "some files into a folder",
 // which is why one worker and one set of rules serve both.
 type target struct {
 	id        string
@@ -92,6 +128,7 @@ type job struct {
 	err       string
 	cancel    context.CancelFunc // stops the running fetch
 	cancelled bool               // the user asked to cancel: delete the partial files when the fetch has stopped
+	paused    bool               // the user asked to pause: keep the partial files when the fetch has stopped
 	lastAt    time.Time
 	lastBytes int64
 }
@@ -154,7 +191,7 @@ func (m *Manager) notify() {
 	}
 }
 
-// Items lists every download worth showing, in catalog order. A model with no job but a leftover .part file from an
+// Items lists every download worth showing, in source order. A model with no job but a leftover .part file from an
 // earlier run shows as paused: that is how a download survives closing the app, with no state file of our own.
 func (m *Manager) Items() []DownloadItem {
 	m.mu.Lock()
@@ -162,14 +199,14 @@ func (m *Manager) Items() []DownloadItem {
 	out := []DownloadItem{}
 	for _, t := range m.targets() {
 		if j := m.jobs[t.id]; j != nil {
-			out = append(out, DownloadItem{ID: t.id, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
+			out = append(out, DownloadItem{ID: t.id, Name: t.files[0].Name, State: j.state, Bytes: j.done, Total: j.total, Speed: j.speed, Error: j.err})
 			continue
 		}
 		if t.folder == "" {
 			continue
 		}
 		if have := partBytes(t.folder, t.files); have > 0 {
-			out = append(out, DownloadItem{ID: t.id, State: Paused, Bytes: have, Total: totalSize(t.files)})
+			out = append(out, DownloadItem{ID: t.id, Name: t.files[0].Name, State: Paused, Bytes: have, Total: totalSize(t.files)})
 		}
 	}
 	return out
@@ -279,8 +316,37 @@ func (m *Manager) Cancel(id string) error {
 	if folder != "" && !finished {
 		discard(folder, t.files)
 	}
+	if !finished {
+		m.forgetCancelled(id, folder)
+	}
 	m.notify()
 	return nil
+}
+
+// Pause stops a queued or downloading job; its .part files stay and it reads paused with no error.
+func (m *Manager) Pause(id string) error {
+	m.mu.Lock()
+	if _, ok := m.target(id); !ok {
+		m.mu.Unlock()
+		return ErrUnknown
+	}
+	j := m.jobs[id]
+	switch {
+	case j != nil && j.state == Queued:
+		m.dequeue(id)
+		j.state, j.err, j.speed = Paused, "", 0
+		m.mu.Unlock()
+		m.notify()
+		return nil
+	case j != nil && j.state == Downloading && j.cancel != nil:
+		// The worker marks it paused once the fetch has really stopped, as for a cancel.
+		j.paused = true
+		j.cancel()
+		m.mu.Unlock()
+		return nil
+	}
+	m.mu.Unlock()
+	return ErrNotRunning
 }
 
 func (m *Manager) dequeue(id string) {
@@ -327,7 +393,7 @@ func (m *Manager) run(id string) {
 
 	m.mu.Lock()
 	j := m.jobs[id]
-	if j == nil {
+	if j == nil || j.state != Queued { // cancelled or paused between leaving the queue and now
 		m.mu.Unlock()
 		return
 	}
@@ -354,6 +420,8 @@ func (m *Manager) run(id string) {
 	switch {
 	case err == nil:
 		j.state, j.done, j.speed = Done, j.total, 0
+	case j.paused && !j.cancelled: // a cancel after the pause still deletes the files
+		j.state, j.speed, j.err = Paused, 0, ""
 	case j.cancelled:
 		delete(m.jobs, id)
 	case m.ctx.Err() != nil:
@@ -370,6 +438,7 @@ func (m *Manager) run(id string) {
 
 	if cancelled {
 		discard(folder, t.files)
+		m.forgetCancelled(id, folder)
 	}
 	if err == nil && m.cfg.OnFinish != nil {
 		m.cfg.OnFinish()
@@ -412,29 +481,15 @@ func (m *Manager) target(id string) (target, bool) {
 	return target{}, false
 }
 
-// targets lists every catalog model, then the engine if core has one.
+// targets lists every source's targets, in order, then the picks oldest first.
 func (m *Manager) targets() []target {
 	dir := m.cfg.ModelsDir()
 	var out []target
-	for _, e := range m.cfg.Entries {
-		base := "https://huggingface.co"
-		if e.BaseURL != "" {
-			base = e.BaseURL
-		}
-		t := target{
-			id:    e.ID,
-			files: e.Files,
-			url: func(f catalog.File) string {
-				return fmt.Sprintf("%s/%s/resolve/%s/%s", base, e.Repo, e.Revision, f.Name)
-			},
-		}
-		if dir != "" {
-			t.folder = filepath.Join(dir, e.ID)
-		}
-		out = append(out, t)
+	for _, src := range m.cfg.Sources {
+		out = append(out, src.targets(dir)...)
 	}
-	if m.cfg.Engine != nil {
-		out = append(out, m.cfg.Engine.target())
+	if m.cfg.Picks != nil {
+		out = append(out, m.cfg.Picks.targets(dir)...)
 	}
 	return out
 }
