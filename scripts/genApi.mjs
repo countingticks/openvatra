@@ -51,6 +51,8 @@ async function generateClient() {
       exportName: 'generatedApi',
       hooks: true,
       tag: true,
+      // Ids such as hf:owner/repo:Q4_K_M must reach core as one path segment (decision 39).
+      encodePathParams: true,
       prettierConfigFile: path.join(root, '.prettierrc.yaml'),
       filterEndpoints: (operationName) => !skipped.includes(operationName)
     })

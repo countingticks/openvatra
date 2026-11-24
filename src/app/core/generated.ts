@@ -24,7 +24,10 @@ const injectedRtkApi = api
         providesTags: ['catalog']
       }),
       removeCatalogEntry: build.mutation<RemoveCatalogEntryApiResponse, RemoveCatalogEntryApiArg>({
-        query: (queryArg) => ({ url: `/api/catalog/${queryArg.id}/remove`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/catalog/${encodeURIComponent(String(queryArg.id))}/remove`,
+          method: 'POST'
+        }),
         invalidatesTags: ['catalog']
       }),
       listChats: build.query<ListChatsApiResponse, ListChatsApiArg>({
@@ -37,23 +40,30 @@ const injectedRtkApi = api
         providesTags: ['chats']
       }),
       deleteChat: build.mutation<DeleteChatApiResponse, DeleteChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'DELETE' }),
+        query: (queryArg) => ({
+          url: `/api/chats/${encodeURIComponent(String(queryArg.id))}`,
+          method: 'DELETE'
+        }),
         invalidatesTags: ['chats']
       }),
       getChat: build.query<GetChatApiResponse, GetChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}` }),
+        query: (queryArg) => ({ url: `/api/chats/${encodeURIComponent(String(queryArg.id))}` }),
         providesTags: ['chats']
       }),
       updateChat: build.mutation<UpdateChatApiResponse, UpdateChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}`, method: 'PATCH', body: queryArg.body }),
+        query: (queryArg) => ({
+          url: `/api/chats/${encodeURIComponent(String(queryArg.id))}`,
+          method: 'PATCH',
+          body: queryArg.body
+        }),
         invalidatesTags: ['chats']
       }),
       exportChat: build.query<ExportChatApiResponse, ExportChatApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/export` }),
+        query: (queryArg) => ({ url: `/api/chats/${encodeURIComponent(String(queryArg.id))}/export` }),
         providesTags: ['chats']
       }),
       getTranscript: build.query<GetTranscriptApiResponse, GetTranscriptApiArg>({
-        query: (queryArg) => ({ url: `/api/chats/${queryArg.id}/messages` }),
+        query: (queryArg) => ({ url: `/api/chats/${encodeURIComponent(String(queryArg.id))}/messages` }),
         providesTags: ['chats']
       }),
       getConfig: build.query<GetConfigApiResponse, GetConfigApiArg>({
@@ -105,15 +115,24 @@ const injectedRtkApi = api
         invalidatesTags: ['downloads']
       }),
       cancelDownload: build.mutation<CancelDownloadApiResponse, CancelDownloadApiArg>({
-        query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}`, method: 'DELETE' }),
+        query: (queryArg) => ({
+          url: `/api/downloads/${encodeURIComponent(String(queryArg.id))}`,
+          method: 'DELETE'
+        }),
         invalidatesTags: ['downloads']
       }),
       pauseDownload: build.mutation<PauseDownloadApiResponse, PauseDownloadApiArg>({
-        query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}/pause`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/downloads/${encodeURIComponent(String(queryArg.id))}/pause`,
+          method: 'POST'
+        }),
         invalidatesTags: ['downloads']
       }),
       resumeDownload: build.mutation<ResumeDownloadApiResponse, ResumeDownloadApiArg>({
-        query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}/resume`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/downloads/${encodeURIComponent(String(queryArg.id))}/resume`,
+          method: 'POST'
+        }),
         invalidatesTags: ['downloads']
       }),
       getEngines: build.query<GetEnginesApiResponse, GetEnginesApiArg>({
@@ -140,7 +159,9 @@ const injectedRtkApi = api
         invalidatesTags: ['hardware']
       }),
       listHfFiles: build.query<ListHfFilesApiResponse, ListHfFilesApiArg>({
-        query: (queryArg) => ({ url: `/api/hf/repos/${queryArg.owner}/${queryArg.name}/files` }),
+        query: (queryArg) => ({
+          url: `/api/hf/repos/${encodeURIComponent(String(queryArg.owner))}/${encodeURIComponent(String(queryArg.name))}/files`
+        }),
         providesTags: ['hf']
       }),
       searchHf: build.query<SearchHfApiResponse, SearchHfApiArg>({
@@ -162,7 +183,7 @@ const injectedRtkApi = api
       }),
       getModelFit: build.query<GetModelFitApiResponse, GetModelFitApiArg>({
         query: (queryArg) => ({
-          url: `/api/models/${queryArg.id}/fit`,
+          url: `/api/models/${encodeURIComponent(String(queryArg.id))}/fit`,
           params: {
             context: queryArg.context,
             placement: queryArg.placement
@@ -171,15 +192,24 @@ const injectedRtkApi = api
         providesTags: ['models']
       }),
       loadModel: build.mutation<LoadModelApiResponse, LoadModelApiArg>({
-        query: (queryArg) => ({ url: `/api/models/${queryArg.id}/load`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/models/${encodeURIComponent(String(queryArg.id))}/load`,
+          method: 'POST'
+        }),
         invalidatesTags: ['models']
       }),
       removeModel: build.mutation<RemoveModelApiResponse, RemoveModelApiArg>({
-        query: (queryArg) => ({ url: `/api/models/${queryArg.id}/remove`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/models/${encodeURIComponent(String(queryArg.id))}/remove`,
+          method: 'POST'
+        }),
         invalidatesTags: ['models']
       }),
       unloadModel: build.mutation<UnloadModelApiResponse, UnloadModelApiArg>({
-        query: (queryArg) => ({ url: `/api/models/${queryArg.id}/unload`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/models/${encodeURIComponent(String(queryArg.id))}/unload`,
+          method: 'POST'
+        }),
         invalidatesTags: ['models']
       }),
       startRun: build.mutation<StartRunApiResponse, StartRunApiArg>({
@@ -187,15 +217,21 @@ const injectedRtkApi = api
         invalidatesTags: ['runs']
       }),
       getRun: build.query<GetRunApiResponse, GetRunApiArg>({
-        query: (queryArg) => ({ url: `/api/runs/${queryArg.id}` }),
+        query: (queryArg) => ({ url: `/api/runs/${encodeURIComponent(String(queryArg.id))}` }),
         providesTags: ['runs']
       }),
       resumeRun: build.mutation<ResumeRunApiResponse, ResumeRunApiArg>({
-        query: (queryArg) => ({ url: `/api/runs/${queryArg.id}/resume`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/runs/${encodeURIComponent(String(queryArg.id))}/resume`,
+          method: 'POST'
+        }),
         invalidatesTags: ['runs']
       }),
       stopRun: build.mutation<StopRunApiResponse, StopRunApiArg>({
-        query: (queryArg) => ({ url: `/api/runs/${queryArg.id}/stop`, method: 'POST' }),
+        query: (queryArg) => ({
+          url: `/api/runs/${encodeURIComponent(String(queryArg.id))}/stop`,
+          method: 'POST'
+        }),
         invalidatesTags: ['runs']
       }),
       getVersion: build.query<GetVersionApiResponse, GetVersionApiArg>({
@@ -549,9 +585,15 @@ export type DownloadsBody = {
 export type StatusBody = {
   status: string
 }
+export type HfStart = {
+  quant: string
+  /** owner/name */
+  repo: string
+}
 export type StartDownload = {
   catalogId?: string
   engine?: 'cuda'
+  hf?: HfStart | null
 }
 export type BundledEngine = {
   /** release tag of the llama.cpp build shipped with the app; null when unreadable */

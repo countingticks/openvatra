@@ -96,9 +96,25 @@ type fakeDownloads struct {
 	items     []downloads.DownloadItem
 	cancelErr error
 	cancelled []string
+	// pickFolder, when set, is pickID's folder: PickOf owns every file directly in it.
+	pickID, pickFolder string
+	forgetErr          error
+	forgotten          []string
 }
 
 func (f *fakeDownloads) Items() []downloads.DownloadItem { return f.items }
+
+func (f *fakeDownloads) PickOf(path string) (string, string, bool) {
+	if f.pickFolder != "" && strings.EqualFold(filepath.Dir(path), f.pickFolder) {
+		return f.pickID, f.pickFolder, true
+	}
+	return "", "", false
+}
+
+func (f *fakeDownloads) ForgetPick(_ context.Context, id string) error {
+	f.forgotten = append(f.forgotten, id)
+	return f.forgetErr
+}
 
 func (f *fakeDownloads) Cancel(id string) error {
 	f.cancelled = append(f.cancelled, id)
@@ -549,6 +565,69 @@ func TestRemoveModelSymlinkOutside(t *testing.T) {
 	}
 	if len(f.trash.paths) != 0 {
 		t.Errorf("trashed %v, want nothing", f.trash.paths)
+	}
+}
+
+// pick makes a Hugging Face pick's quant folder with a model and its projector, and lists the model.
+func (f *fixture) pick(t *testing.T) (model, folder string) {
+	t.Helper()
+	p := f.own(t, "hf/o/r/Q4_K_M/m-Q4_K_M.gguf", "hf/o/r/Q4_K_M/mmproj-F16.gguf")
+	folder = filepath.Dir(p[0])
+	f.dl.pickID, f.dl.pickFolder = "hf:o/r:Q4_K_M", folder
+	f.list = []models.Model{{ID: "m-Q4_K_M", Path: p[0], Parts: p[:1], MMProj: p[1]}}
+	return "m-Q4_K_M", folder
+}
+
+func TestRemoveModelOfAPickTrashesItsFolderAndForgetsIt(t *testing.T) {
+	f := newFixture(t)
+	id, folder := f.pick(t)
+	if err := f.removeModel(id); err != nil {
+		t.Fatalf("RemoveModel: %v", err)
+	}
+	if !slices.Equal(f.trash.paths, []string{folder}) {
+		t.Errorf("trashed %v, want [%s]", f.trash.paths, folder)
+	}
+	if !slices.Equal(f.dl.forgotten, []string{"hf:o/r:Q4_K_M"}) {
+		t.Errorf("forgot %v, want [hf:o/r:Q4_K_M]", f.dl.forgotten)
+	}
+	if f.router.notified != 1 {
+		t.Errorf("Notify called %d times, want 1", f.router.notified)
+	}
+}
+
+func TestRemoveModelOfAPickLinkedOutside(t *testing.T) {
+	f := newFixture(t)
+	elsewhere := t.TempDir()
+	if err := os.WriteFile(filepath.Join(elsewhere, "m-Q4_K_M.gguf"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(f.models, "hf", "o", "r"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	folder := filepath.Join(f.models, "hf", "o", "r", "Q4_K_M")
+	if err := os.Symlink(elsewhere, folder); err != nil {
+		t.Skipf("cannot create a symlink here: %v", err)
+	}
+	model := filepath.Join(folder, "m-Q4_K_M.gguf")
+	f.dl.pickID, f.dl.pickFolder = "hf:o/r:Q4_K_M", folder
+	f.list = []models.Model{{ID: "m-Q4_K_M", Path: model, Parts: []string{model}}}
+	if err := f.removeModel("m-Q4_K_M"); !errors.Is(err, ErrOutside) {
+		t.Fatalf("err = %v, want ErrOutside", err)
+	}
+	if len(f.trash.paths) != 0 || len(f.dl.forgotten) != 0 {
+		t.Errorf("trashed %v, forgot %v; want nothing", f.trash.paths, f.dl.forgotten)
+	}
+}
+
+func TestRemoveModelOfAPickSucceedsWhenForgettingFails(t *testing.T) {
+	f := newFixture(t)
+	id, _ := f.pick(t)
+	f.dl.forgetErr = errors.New("database is locked")
+	if err := f.removeModel(id); err != nil {
+		t.Fatalf("RemoveModel: %v", err)
+	}
+	if f.warnings() != 1 {
+		t.Errorf("%d warnings, want 1:\n%s", f.warnings(), f.log)
 	}
 }
 

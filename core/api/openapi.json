@@ -851,6 +851,22 @@
         ],
         "type": "object"
       },
+      "HFStart": {
+        "properties": {
+          "quant": {
+            "type": "string"
+          },
+          "repo": {
+            "description": "owner/name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "quant"
+        ],
+        "type": "object"
+      },
       "Hello": {
         "properties": {
           "head": {
@@ -2086,6 +2102,16 @@
               "cuda"
             ],
             "type": "string"
+          },
+          "hf": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HFStart"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "type": "object"
@@ -3121,10 +3147,10 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, internal."
+            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_quant_not_found, downloads_unavailable, internal."
           }
         },
-        "summary": "Queue a catalog model or the CUDA engine",
+        "summary": "Queue a catalog model, the CUDA engine or a Hugging Face quant",
         "tags": [
           "downloads"
         ],

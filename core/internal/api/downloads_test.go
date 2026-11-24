@@ -1,13 +1,17 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
+	"github.com/countingticks/openvatra/core/internal/hf"
+	"github.com/countingticks/openvatra/core/internal/store"
 )
 
 // stubDownloads records calls and answers with err.
@@ -17,6 +21,7 @@ type stubDownloads struct {
 	err     error
 	items   []downloads.DownloadItem
 	changes chan struct{}
+	pick    store.HFPick // the last StartPick's
 }
 
 func (s *stubDownloads) record(c string) error {
@@ -25,8 +30,14 @@ func (s *stubDownloads) record(c string) error {
 	s.calls = append(s.calls, c)
 	return s.err
 }
-func (s *stubDownloads) Start(id string) error  { return s.record("start " + id) }
-func (s *stubDownloads) StartEngine() error     { return s.record("start engine") }
+func (s *stubDownloads) Start(id string) error { return s.record("start " + id) }
+func (s *stubDownloads) StartEngine() error    { return s.record("start engine") }
+func (s *stubDownloads) StartPick(_ context.Context, p store.HFPick) error {
+	s.mu.Lock()
+	s.pick = p
+	s.mu.Unlock()
+	return s.record("start pick " + p.ID)
+}
 func (s *stubDownloads) Resume(id string) error { return s.record("resume " + id) }
 func (s *stubDownloads) Pause(id string) error  { return s.record("pause " + id) }
 func (s *stubDownloads) Cancel(id string) error { return s.record("cancel " + id) }
@@ -38,12 +49,89 @@ func (s *stubDownloads) Items() []downloads.DownloadItem {
 func (s *stubDownloads) Subscribe() (<-chan struct{}, func()) { return s.changes, func() {} }
 
 func callDownloads(t *testing.T, dl Downloads, method, path, body string) *httptest.ResponseRecorder {
+	return callDownloadsHF(t, dl, nil, method, path, body)
+}
+
+// callDownloadsHF is callDownloads with a Hugging Face behind the hf start.
+func callDownloadsHF(t *testing.T, dl Downloads, h HF, method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Host = "127.0.0.1:53121"
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()
-	testHandler(t, Deps{Downloads: dl}).ServeHTTP(rec, req)
+	testHandler(t, Deps{Downloads: dl, HF: h}).ServeHTTP(rec, req)
 	return rec
+}
+
+// listedRepo is o/r with one Q4_K_M group: a part in the root and a projector in a subfolder.
+func listedRepo() *stubHF {
+	return &stubHF{listing: hf.Listing{Repo: "o/r", Revision: strings.Repeat("a", 40), Groups: []hf.Group{
+		{Quant: "Q8_0", Files: []hf.GroupFile{{Name: "m-Q8_0.gguf", Path: "m-Q8_0.gguf", SizeBytes: 9, SHA256: "s8"}}},
+		{Quant: "Q4_K_M", Files: []hf.GroupFile{
+			{Name: "m-Q4_K_M.gguf", Path: "m-Q4_K_M.gguf", SizeBytes: 5, SHA256: "s4"},
+			{Name: "mmproj-F16.gguf", Path: "proj/mmproj-F16.gguf", SizeBytes: 2, SHA256: "sp"},
+		}},
+	}}}
+}
+
+func TestStartHFQueuesThePickAtTheListedRevision(t *testing.T) {
+	dl, h := &stubDownloads{}, listedRepo()
+	rec := callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("start = %d %s", rec.Code, rec.Body)
+	}
+	if h.owner != "o" || h.name != "r" {
+		t.Fatalf("listing asked for %s/%s", h.owner, h.name)
+	}
+	want := store.HFPick{ID: "hf:o/r:Q4_K_M", Repo: "o/r", Revision: strings.Repeat("a", 40), Quant: "Q4_K_M",
+		Files: []store.HFPickFile{
+			{Name: "m-Q4_K_M.gguf", Path: "m-Q4_K_M.gguf", SizeBytes: 5, SHA256: "s4"},
+			{Name: "mmproj-F16.gguf", Path: "proj/mmproj-F16.gguf", SizeBytes: 2, SHA256: "sp"},
+		}}
+	if !reflect.DeepEqual(dl.pick, want) {
+		t.Fatalf("pick = %+v, want %+v", dl.pick, want)
+	}
+}
+
+func TestStartHFErrors(t *testing.T) {
+	cases := []struct {
+		name, body   string
+		hfErr, dlErr error
+		status       int
+		code         string
+	}{
+		{"unknown quant", `{"hf":{"repo":"o/r","quant":"Q2_K"}}`, nil, nil, 404, "hf_quant_not_found"},
+		{"unreachable", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`, hf.ErrUnreachable, nil, 502, "hf_unreachable"},
+		{"no database", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`, nil, downloads.ErrNoPicks, 503, "downloads_unavailable"},
+		{"catalog and hf", `{"catalogId":"a","hf":{"repo":"o/r","quant":"Q4_K_M"}}`, nil, nil, 400, "bad_request"},
+		{"repo without a slash", `{"hf":{"repo":"r","quant":"Q4_K_M"}}`, nil, nil, 400, "bad_request"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			h := listedRepo()
+			h.err = c.hfErr
+			rec := callDownloadsHF(t, &stubDownloads{err: c.dlErr}, h, "POST", "/api/downloads", c.body)
+			if rec.Code != c.status || !strings.Contains(rec.Body.String(), `"error":"`+c.code+`"`) {
+				t.Fatalf("%d %s, want %d %s", rec.Code, rec.Body, c.status, c.code)
+			}
+		})
+	}
+}
+
+func TestDownloadRoutesTakeAnEncodedPickID(t *testing.T) {
+	dl := &stubDownloads{}
+	cases := []struct{ method, path, call string }{
+		{"DELETE", "/api/downloads/hf%3Ao%2Fr%3AQ4_K_M", "cancel hf:o/r:Q4_K_M"},
+		{"POST", "/api/downloads/hf%3Ao%2Fr%3AQ4_K_M/resume", "resume hf:o/r:Q4_K_M"},
+		{"POST", "/api/downloads/hf%3Ao%2Fr%3AQ4_K_M/pause", "pause hf:o/r:Q4_K_M"},
+	}
+	for _, c := range cases {
+		if rec := callDownloads(t, dl, c.method, c.path, ""); rec.Code != http.StatusAccepted {
+			t.Fatalf("%s %s = %d %s", c.method, c.path, rec.Code, rec.Body)
+		}
+		if got := dl.calls[len(dl.calls)-1]; got != c.call {
+			t.Fatalf("queue got %q, want %q", got, c.call)
+		}
+	}
 }
 
 func TestDownloadEndpointsCallTheQueue(t *testing.T) {
