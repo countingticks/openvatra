@@ -1,9 +1,10 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Shell } from '@app/shell/Shell'
 import { coreWrites, type FakeCoreHttp } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
 import { settingsOpened } from '@app/store/uiSlice'
+import type { Repo } from '@app/core/generated'
 import type { DownloadItem } from '@app/core/types'
 import type { CatalogEntry, CatalogView } from '@app/features/models/catalogView'
 
@@ -205,6 +206,143 @@ describe('Get more models', () => {
       'aria-selected',
       'true'
     )
+    expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
+  })
+})
+
+const repo = (patch: Partial<Repo> = {}): Repo => ({
+  id: 'unsloth/Qwen3-Coder-GGUF',
+  owner: 'unsloth',
+  name: 'Qwen3-Coder-GGUF',
+  tags: ['Code'],
+  downloads: 1_400_000,
+  likes: 230,
+  updatedAt: '2026-11-10T12:00:00Z',
+  ...patch
+})
+
+const searchRequests = (http: FakeCoreHttp): URL[] =>
+  http.requests.map((request) => new URL(request.url)).filter((url) => url.pathname === '/api/hf/search')
+
+async function search(dialog: HTMLElement, text: string): Promise<HTMLElement> {
+  const field = await within(dialog).findByRole('searchbox', { name: 'Search Hugging Face' })
+  fireEvent.change(field, { target: { value: text } })
+  return field
+}
+
+describe('Get more models: searching Hugging Face', () => {
+  it('sends nothing while typing, and the query on Enter', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer('/api/hf/search', { repos: [repo()] })
+
+    const field = await search(dialog, 'qwen coder')
+    expect(searchRequests(coreHttp)).toHaveLength(0)
+
+    fireEvent.submit(field)
+    await within(dialog).findByText('unsloth /')
+    expect(searchRequests(coreHttp).map((url) => url.searchParams.get('q'))).toEqual(['qwen coder'])
+  })
+
+  it('says where the search goes, before and after searching', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer('/api/hf/search', { repos: [repo()] })
+    const note = 'Your search goes to huggingface.co. Nothing else leaves your PC.'
+    expect(await within(dialog).findByText(note)).toBeInTheDocument()
+
+    fireEvent.submit(await search(dialog, 'qwen'))
+    await within(dialog).findByText('unsloth /')
+
+    expect(within(dialog).getByText(note)).toBeInTheDocument()
+  })
+
+  it('does not search for a single character', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+
+    fireEvent.submit(await search(dialog, ' q '))
+
+    expect(searchRequests(coreHttp)).toHaveLength(0)
+    expect(within(dialog).getByText('Suggested')).toBeInTheDocument()
+  })
+
+  it('shows each repo with its counts and age, under a header with the number of results', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-24T12:00:00Z'))
+    try {
+      const { coreHttp, dialog } = await openDialog(catalog(qwen))
+      coreHttp.answer('/api/hf/search', {
+        repos: [
+          repo(),
+          repo({ id: 'a/b', owner: 'a', name: 'b' }),
+          repo({ id: 'c/d', owner: 'c', name: 'd' })
+        ]
+      })
+
+      fireEvent.submit(await search(dialog, 'qwen'))
+
+      await within(dialog).findByText('3 results')
+      expect(within(dialog).getByText('Hugging Face · GGUF only')).toBeInTheDocument()
+      expect(within(dialog).getByText('unsloth /')).toBeInTheDocument()
+      expect(within(dialog).getByText('Qwen3-Coder-GGUF')).toBeInTheDocument()
+      expect(within(dialog).getAllByText('Code')).toHaveLength(3)
+      expect(within(dialog).getAllByLabelText('1.4M downloads')).toHaveLength(3)
+      expect(within(dialog).getAllByLabelText('230 likes')).toHaveLength(3)
+      expect(within(dialog).getAllByText('2 weeks ago')).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('says when Hugging Face could not be reached, and asks again on Enter', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer(
+      '/api/hf/search',
+      { error: 'hf_unreachable', message: 'Hugging Face did not answer.' },
+      { status: 502 }
+    )
+
+    const field = await search(dialog, 'qwen')
+    fireEvent.submit(field)
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      "Hugging Face couldn't be reached. Check your connection and press Enter to try again."
+    )
+    expect(searchRequests(coreHttp)).toHaveLength(1)
+
+    fireEvent.submit(field)
+    await waitFor(() => expect(searchRequests(coreHttp)).toHaveLength(2))
+  })
+
+  it('says when nothing matches', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer('/api/hf/search', { repos: [] })
+
+    fireEvent.submit(await search(dialog, 'zzz'))
+
+    expect(await within(dialog).findByText('No GGUF models match "zzz".')).toBeInTheDocument()
+  })
+
+  it('returns to Suggested on Escape in the field and keeps Settings open', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer('/api/hf/search', { repos: [repo()] })
+    const field = await search(dialog, 'qwen')
+    fireEvent.submit(field)
+    await within(dialog).findByText('unsloth /')
+
+    fireEvent.keyDown(field, { key: 'Escape' })
+
+    expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
+    expect(field).toHaveValue('')
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('returns to Suggested when the field is cleared', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer('/api/hf/search', { repos: [repo()] })
+    const field = await search(dialog, 'qwen')
+    fireEvent.submit(field)
+    await within(dialog).findByText('unsloth /')
+
+    fireEvent.change(field, { target: { value: '' } })
+
     expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
   })
 })
