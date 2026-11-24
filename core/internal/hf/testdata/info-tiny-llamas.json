@@ -1,0 +1,11 @@
+{
+  "id": "ggml-org/tiny-llamas",
+  "private": false,
+  "tags": [
+    "gguf",
+    "endpoints_compatible",
+    "region:us"
+  ],
+  "sha": "99dd1a73db5a37100bd4ae633f4cfce6560e1567",
+  "gated": false
+}

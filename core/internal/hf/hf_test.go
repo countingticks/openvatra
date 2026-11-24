@@ -2,7 +2,9 @@ package hf
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -12,6 +14,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/countingticks/openvatra/core/internal/hw"
 )
 
 // fakeHF plays huggingface.co on loopback: each route answers one URL path, and every request is recorded.
@@ -75,6 +79,55 @@ func serveBody(body string) http.HandlerFunc {
 
 func serveStatus(code int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) { http.Error(w, "no", code) }
+}
+
+// recordedRepo serves testdata/info-<slug>.json and tree-<slug>.json at the paths Files asks; it returns the repo id.
+func recordedRepo(t *testing.T, routes map[string]http.HandlerFunc, slug string) (owner, name string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "info-"+slug+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var info struct{ ID, SHA string }
+	if err := json.Unmarshal(data, &info); err != nil {
+		t.Fatal(err)
+	}
+	routes["/api/models/"+info.ID] = serveBody(string(data))
+	routes["/api/models/"+info.ID+"/tree/"+info.SHA] = serveFile(t, "tree-"+slug+".json")
+	owner, name, _ = strings.Cut(info.ID, "/")
+	return owner, name
+}
+
+const testSHA = "0123456789abcdef0123456789abcdef01234567"
+
+// testRepoInfo is o/m's info at testSHA; tests replace a field to try each rule.
+const testRepoInfo = `{"id":"o/m","sha":"` + testSHA + `","gated":false,"private":false,"tags":["gguf"]}`
+
+// fakeRepo serves o/m with these tree entries (see gguf).
+func fakeRepo(entries ...string) map[string]http.HandlerFunc {
+	return map[string]http.HandlerFunc{
+		"/api/models/o/m":                 serveBody(testRepoInfo),
+		"/api/models/o/m/tree/" + testSHA: serveBody("[" + strings.Join(entries, ",") + "]"),
+	}
+}
+
+// gguf is a tree entry for an LFS file with a valid sha256.
+func gguf(path string, size int64) string {
+	return fmt.Sprintf(`{"type":"file","path":%q,"size":%d,"lfs":{"oid":"%s","size":%d}}`, path, size, strings.Repeat("ab", 32), size)
+}
+
+// testPC has a 12 GiB GPU and 32 GiB of RAM.
+func testPC() hw.Report {
+	return hw.Report{GPU: &hw.GPU{Name: "GPU", TotalBytes: 12 << 30}, RAMBytes: 32 << 30}
+}
+
+// filesClient is a Client on f for Files: testPC, modelsDir dir, and 77 bytes free on every drive.
+func (f *fakeHF) filesClient(t *testing.T, dir string) *Client {
+	return f.client(t, Config{
+		Hardware:  testPC,
+		ModelsDir: func() string { return dir },
+		DiskFree:  func(string) (uint64, error) { return 77, nil },
+	})
 }
 
 func TestSearchRecordedAnswer(t *testing.T) {
