@@ -64,6 +64,7 @@ var errorTable = []mapped{
 	{downloads.ErrInstalled, http.StatusConflict, "already_installed", "that model is already installed"},
 	{downloads.ErrNoSpace, http.StatusConflict, "not_enough_space", "not enough disk space"},
 	{downloads.ErrNotResumable, http.StatusConflict, "not_paused", "only a paused or failed download can be resumed"},
+	{downloads.ErrNotRunning, http.StatusConflict, "not_running", "only a queued or running download can be paused"},
 	{provider.ErrUnknownModel, http.StatusNotFound, "model_not_found", "no model with that name in the models folder"},
 	{provider.ErrNoEmbeddingModel, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen"},
 	{store.ErrNotFound, http.StatusNotFound, "chat_not_found", "no chat with that id"},

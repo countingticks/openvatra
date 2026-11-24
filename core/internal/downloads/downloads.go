@@ -48,6 +48,7 @@ var (
 	ErrNoSpace      = errors.New("not enough disk space")
 	ErrNotResumable = errors.New("only a paused or failed download can be resumed")
 	ErrNoDownload   = errors.New("no such download")
+	ErrNotRunning   = errors.New("only a queued or running download can be paused")
 )
 
 // diskSpare mirrors the catalog's rule: 2 GB stay free after a download.
@@ -124,6 +125,7 @@ type job struct {
 	err       string
 	cancel    context.CancelFunc // stops the running fetch
 	cancelled bool               // the user asked to cancel: delete the partial files when the fetch has stopped
+	paused    bool               // the user asked to pause: keep the partial files when the fetch has stopped
 	lastAt    time.Time
 	lastBytes int64
 }
@@ -315,6 +317,32 @@ func (m *Manager) Cancel(id string) error {
 	return nil
 }
 
+// Pause stops a queued or downloading job; its .part files stay and it reads paused with no error.
+func (m *Manager) Pause(id string) error {
+	m.mu.Lock()
+	if _, ok := m.target(id); !ok {
+		m.mu.Unlock()
+		return ErrUnknown
+	}
+	j := m.jobs[id]
+	switch {
+	case j != nil && j.state == Queued:
+		m.dequeue(id)
+		j.state, j.err, j.speed = Paused, "", 0
+		m.mu.Unlock()
+		m.notify()
+		return nil
+	case j != nil && j.state == Downloading && j.cancel != nil:
+		// The worker marks it paused once the fetch has really stopped, as for a cancel.
+		j.paused = true
+		j.cancel()
+		m.mu.Unlock()
+		return nil
+	}
+	m.mu.Unlock()
+	return ErrNotRunning
+}
+
 func (m *Manager) dequeue(id string) {
 	for i, q := range m.queue {
 		if q == id {
@@ -359,7 +387,7 @@ func (m *Manager) run(id string) {
 
 	m.mu.Lock()
 	j := m.jobs[id]
-	if j == nil {
+	if j == nil || j.state != Queued { // cancelled or paused between leaving the queue and now
 		m.mu.Unlock()
 		return
 	}
@@ -386,6 +414,8 @@ func (m *Manager) run(id string) {
 	switch {
 	case err == nil:
 		j.state, j.done, j.speed = Done, j.total, 0
+	case j.paused && !j.cancelled: // a cancel after the pause still deletes the files
+		j.state, j.speed, j.err = Paused, 0, ""
 	case j.cancelled:
 		delete(m.jobs, id)
 	case m.ctx.Err() != nil:

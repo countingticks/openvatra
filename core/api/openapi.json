@@ -3173,6 +3173,48 @@
         "x-scope": "ui"
       }
     },
+    "/api/downloads/{id}/pause": {
+      "post": {
+        "operationId": "pauseDownload",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusBody"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: unknown_model, not_running, internal."
+          }
+        },
+        "summary": "Pause a download",
+        "tags": [
+          "downloads"
+        ],
+        "x-scope": "ui"
+      }
+    },
     "/api/downloads/{id}/resume": {
       "post": {
         "operationId": "resumeDownload",

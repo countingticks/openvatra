@@ -108,6 +108,10 @@ const injectedRtkApi = api
         query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}`, method: 'DELETE' }),
         invalidatesTags: ['downloads']
       }),
+      pauseDownload: build.mutation<PauseDownloadApiResponse, PauseDownloadApiArg>({
+        query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}/pause`, method: 'POST' }),
+        invalidatesTags: ['downloads']
+      }),
       resumeDownload: build.mutation<ResumeDownloadApiResponse, ResumeDownloadApiArg>({
         query: (queryArg) => ({ url: `/api/downloads/${queryArg.id}/resume`, method: 'POST' }),
         invalidatesTags: ['downloads']
@@ -299,6 +303,10 @@ export type StartDownloadApiArg = {
 }
 export type CancelDownloadApiResponse = /** status 202 Accepted */ StatusBody
 export type CancelDownloadApiArg = {
+  id: string
+}
+export type PauseDownloadApiResponse = /** status 202 Accepted */ StatusBody
+export type PauseDownloadApiArg = {
   id: string
 }
 export type ResumeDownloadApiResponse = /** status 202 Accepted */ StatusBody
@@ -963,6 +971,7 @@ export const {
   useListDownloadsQuery,
   useStartDownloadMutation,
   useCancelDownloadMutation,
+  usePauseDownloadMutation,
   useResumeDownloadMutation,
   useGetEnginesQuery,
   useStreamEventsQuery,

@@ -28,6 +28,7 @@ func (s *stubDownloads) record(c string) error {
 func (s *stubDownloads) Start(id string) error  { return s.record("start " + id) }
 func (s *stubDownloads) StartEngine() error     { return s.record("start engine") }
 func (s *stubDownloads) Resume(id string) error { return s.record("resume " + id) }
+func (s *stubDownloads) Pause(id string) error  { return s.record("pause " + id) }
 func (s *stubDownloads) Cancel(id string) error { return s.record("cancel " + id) }
 func (s *stubDownloads) Items() []downloads.DownloadItem {
 	s.mu.Lock()
@@ -52,6 +53,7 @@ func TestDownloadEndpointsCallTheQueue(t *testing.T) {
 		{"POST", "/api/downloads", `{"engine":"cuda"}`, "start engine"},
 		{"DELETE", "/api/downloads/qwen", "", "cancel qwen"},
 		{"POST", "/api/downloads/qwen/resume", "", "resume qwen"},
+		{"POST", "/api/downloads/qwen/pause", "", "pause qwen"},
 	}
 	for _, c := range cases {
 		if rec := callDownloads(t, dl, c.method, c.path, c.body); rec.Code != http.StatusAccepted {
@@ -81,6 +83,17 @@ func TestDownloadErrorsMapToStatuses(t *testing.T) {
 		if rec.Code != c.status || !strings.Contains(rec.Body.String(), c.code) {
 			t.Fatalf("%v -> %d %s, want %d %s", c.err, rec.Code, rec.Body, c.status, c.code)
 		}
+	}
+}
+
+func TestPauseOfWhatIsNotRunningIsNotRunning(t *testing.T) {
+	dl := &stubDownloads{err: downloads.ErrNotRunning}
+	rec := callDownloads(t, dl, "POST", "/api/downloads/qwen/pause", "")
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"error":"not_running"`) {
+		t.Fatalf("pause -> %d %s, want 409 not_running", rec.Code, rec.Body)
+	}
+	if len(dl.calls) != 1 || dl.calls[0] != "pause qwen" {
+		t.Fatalf("calls = %v", dl.calls)
 	}
 }
 

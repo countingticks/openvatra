@@ -15,6 +15,7 @@ type Downloads interface {
 	Start(id string) error
 	StartEngine() error
 	Resume(id string) error
+	Pause(id string) error
 	Cancel(id string) error
 }
 
@@ -65,5 +66,9 @@ func downloadRoutes(dl Downloads) []Route {
 			WithStatus(http.StatusAccepted).
 			WithErrors("unknown_model", "no_download", "no_models_folder", "already_installed", "not_enough_space",
 				"not_paused", "internal"),
+		JSON(http.MethodPost, "/api/downloads/{id}/pause", UI, "pauseDownload", "Pause a download",
+			func(_ context.Context, in ModelPath) (StatusBody, error) { return accepted, dl.Pause(in.ID) }).
+			WithStatus(http.StatusAccepted).
+			WithErrors("unknown_model", "not_running", "internal"),
 	}
 }
