@@ -352,11 +352,20 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if cuda != nil { // a nil *Engine inside the interface would not read as nil
 		sources = append(sources, cuda)
 	}
+	// Hugging Face downloads are kept in the database; without a writable one they are refused (decision 30).
+	var picks *downloads.Picks
+	if chatStore != nil && chatStore.ReadOnly() == nil {
+		if picks, err = downloads.LoadPicks(ctx, chatStore, *hfBase, logger); err != nil {
+			logger.Error("could not read the Hugging Face downloads", "err", err)
+			picks = nil
+		}
+	}
 	dl := downloads.New(downloads.Config{
 		Downloader: dler,
 		Sources:    sources,
 		ModelsDir:  func() string { return resolve().ModelsDir },
 		OnFinish:   lc.Notify,
+		Picks:      picks,
 	})
 	defer dl.Close()
 	remover := removal.New(removal.Config{

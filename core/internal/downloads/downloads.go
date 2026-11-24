@@ -69,6 +69,9 @@ type Config struct {
 	OnFinish func()
 	// OnEngineReady runs once after the CUDA engine download finished in this run; nil = nothing.
 	OnEngineReady func()
+	// Picks are the Hugging Face downloads, listed after Sources; nil = no writable database: StartPick answers
+	// ErrNoPicks.
+	Picks *Picks
 }
 
 // Source yields queue targets for the models folder of the moment ("" = none set).
@@ -313,6 +316,9 @@ func (m *Manager) Cancel(id string) error {
 	if folder != "" && !finished {
 		discard(folder, t.files)
 	}
+	if !finished {
+		m.forgetCancelled(id, folder)
+	}
 	m.notify()
 	return nil
 }
@@ -432,6 +438,7 @@ func (m *Manager) run(id string) {
 
 	if cancelled {
 		discard(folder, t.files)
+		m.forgetCancelled(id, folder)
 	}
 	if err == nil && m.cfg.OnFinish != nil {
 		m.cfg.OnFinish()
@@ -474,12 +481,15 @@ func (m *Manager) target(id string) (target, bool) {
 	return target{}, false
 }
 
-// targets lists every source's targets, in order.
+// targets lists every source's targets, in order, then the picks oldest first.
 func (m *Manager) targets() []target {
 	dir := m.cfg.ModelsDir()
 	var out []target
 	for _, src := range m.cfg.Sources {
 		out = append(out, src.targets(dir)...)
+	}
+	if m.cfg.Picks != nil {
+		out = append(out, m.cfg.Picks.targets(dir)...)
 	}
 	return out
 }
