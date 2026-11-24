@@ -97,6 +97,17 @@ func TestFitFor(t *testing.T) {
 	}
 }
 
+func TestFitForBytesAtTheNinetyPercentEdge(t *testing.T) {
+	r := hw.Report{GPU: gpu(10), RAMBytes: 32 * gib}
+	edge := uint64(9 * gib) // 90 % of 10 GiB
+	if got := FitForBytes(edge, r); got != FitFits {
+		t.Fatalf("FitForBytes(90 %%) = %q, want fits", got)
+	}
+	if got := FitForBytes(edge+1, r); got != FitSlower {
+		t.Fatalf("FitForBytes(90 %% + 1 byte) = %q, want slower", got)
+	}
+}
+
 func item(id string, rank int, fit string, tags ...string) Item {
 	return Item{Entry: Entry{ID: id, Rank: rank, Tags: tags}, Fit: fit}
 }

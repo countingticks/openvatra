@@ -1,0 +1,23 @@
+{
+  "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+  "private": false,
+  "pipeline_tag": "text-generation",
+  "tags": [
+    "transformers",
+    "gguf",
+    "unsloth",
+    "qwen3",
+    "qwen",
+    "text-generation",
+    "arxiv:2505.09388",
+    "base_model:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "base_model:quantized:Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "license:apache-2.0",
+    "endpoints_compatible",
+    "region:us",
+    "imatrix",
+    "conversational"
+  ],
+  "sha": "b17cb02dd882d5b6ab62fc777ad2995f19668350",
+  "gated": false
+}

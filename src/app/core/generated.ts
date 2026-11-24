@@ -7,6 +7,7 @@ export const addTagTypes = [
   'engines',
   'events',
   'hardware',
+  'hf',
   'models',
   'runs',
   'version',
@@ -133,6 +134,19 @@ const injectedRtkApi = api
       refreshHardware: build.mutation<RefreshHardwareApiResponse, RefreshHardwareApiArg>({
         query: () => ({ url: `/api/hardware/refresh`, method: 'POST' }),
         invalidatesTags: ['hardware']
+      }),
+      listHfFiles: build.query<ListHfFilesApiResponse, ListHfFilesApiArg>({
+        query: (queryArg) => ({ url: `/api/hf/repos/${queryArg.owner}/${queryArg.name}/files` }),
+        providesTags: ['hf']
+      }),
+      searchHf: build.query<SearchHfApiResponse, SearchHfApiArg>({
+        query: (queryArg) => ({
+          url: `/api/hf/search`,
+          params: {
+            q: queryArg.q
+          }
+        }),
+        providesTags: ['hf']
       }),
       listModels: build.query<ListModelsApiResponse, ListModelsApiArg>({
         query: () => ({ url: `/api/models` }),
@@ -303,6 +317,15 @@ export type GetHardwareApiResponse = /** status 200 OK */ Report
 export type GetHardwareApiArg = void
 export type RefreshHardwareApiResponse = /** status 200 OK */ Report
 export type RefreshHardwareApiArg = void
+export type ListHfFilesApiResponse = /** status 200 OK */ Listing
+export type ListHfFilesApiArg = {
+  owner: string
+  name: string
+}
+export type SearchHfApiResponse = /** status 200 OK */ HfSearchBody
+export type SearchHfApiArg = {
+  q?: string
+}
 export type ListModelsApiResponse = /** status 200 OK */ StateBody
 export type ListModelsApiArg = void
 export type RefreshModelsApiResponse = /** status 202 Accepted */ StatusBody
@@ -868,6 +891,37 @@ export type Report = {
   gpu: Gpu | null
   ramBytes: number
 }
+export type GroupFile = {
+  name: string
+  sha256: string
+  sizeBytes: number
+}
+export type Group = {
+  files: GroupFile[]
+  fit: 'fits' | 'slower' | 'tooBig'
+  installed: boolean
+  quant: string
+  sizeBytes: number
+}
+export type Listing = {
+  diskFreeBytes: number | null
+  groups: Group[]
+  repo: string
+  revision: string
+  tags: string[]
+}
+export type Repo = {
+  downloads: number
+  id: string
+  likes: number
+  name: string
+  owner: string
+  tags: string[]
+  updatedAt: string
+}
+export type HfSearchBody = {
+  repos: Repo[]
+}
 export type RunRef = {
   chatId: string
   runId: string
@@ -913,6 +967,8 @@ export const {
   useStreamEventsQuery,
   useGetHardwareQuery,
   useRefreshHardwareMutation,
+  useListHfFilesQuery,
+  useSearchHfQuery,
   useListModelsQuery,
   useRefreshModelsMutation,
   useGetModelFitQuery,

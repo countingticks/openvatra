@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
@@ -132,6 +133,22 @@ func TestCheckerWithoutEngineIsNotCached(t *testing.T) {
 	path = `C:\engine\llama-server.exe` // main's config arrives
 	if r := c.Get(); r.GPU == nil {
 		t.Fatalf("report after config = %+v", r)
+	}
+}
+
+func TestFreeNearAsksTheNearestExistingParent(t *testing.T) {
+	root := t.TempDir()
+	var asked string
+	free := func(dir string) (uint64, error) { asked = dir; return 42, nil }
+	n, ok := FreeNear(filepath.Join(root, "not", "made", "yet"), free)
+	if !ok || n != 42 || asked != root {
+		t.Fatalf("FreeNear = %d, %v, asked %q; want 42, true, %q", n, ok, asked, root)
+	}
+	if _, ok := FreeNear(root, func(string) (uint64, error) { return 0, errors.New("unreadable") }); ok {
+		t.Fatal("an unreadable drive gave ok")
+	}
+	if _, ok := FreeNear("", free); ok {
+		t.Fatal(`FreeNear("") gave ok`)
 	}
 }
 

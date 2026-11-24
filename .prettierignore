@@ -16,6 +16,9 @@ src/app/ui/assets/
 core/internal/api/openapi/testdata/
 core/internal/run/testdata/
 
+# Hugging Face answers recorded from the live API; kept as recorded
+core/internal/hf/testdata/
+
 # Generated from the route table by `go -C core test . -run TestOpenAPI -update`
 core/api/openapi.json
 

@@ -60,6 +60,23 @@ func TestDescribeName(t *testing.T) {
 	}
 }
 
+func TestIsCode(t *testing.T) {
+	cases := map[string]bool{
+		"Qwen2.5-Coder-7B": true,
+		"Devstral-Small":   true,
+		"code-llama":       true,
+		"Qwen3-8B":         false,
+		"barcode":          false,
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := IsCode(name); got != want {
+				t.Fatalf("IsCode(%q) = %v, want %v", name, got, want)
+			}
+		})
+	}
+}
+
 func TestDescribeTags(t *testing.T) {
 	moe := engine.Shape{ExpertBytes: 10}
 	cases := []struct {

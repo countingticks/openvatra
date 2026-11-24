@@ -40,6 +40,7 @@ type Deps struct {
 	Removal   Removal // nil only in tests that do not call the route
 	Downloads Downloads
 	Engines   func() downloads.EnginesBody // the llama.cpp builds on disk; nil = an unknown bundled build only
+	HF        HF                           // nil only in tests that do not call the hf routes
 	Log       event.Log
 	// Chats and Runs are nil without a writable database: the run and chat routes then answer 503.
 	Chats  *chats.Service
@@ -95,6 +96,7 @@ func routes(d Deps, t *tokens) []Route {
 	routes = append(routes, engineRoutes(d.Engines)...)
 	routes = append(routes, configRoutes(d.Config)...)
 	routes = append(routes, runRoutes(d.Chats, d.Runs)...)
+	routes = append(routes, hfRoutes(d.HF)...)
 	return append(routes,
 		Raw(http.MethodGet, "/v1/models", UI, "openaiModels", "List the models on disk, OpenAI style",
 			modelList(d.ListModels)).

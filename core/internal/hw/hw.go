@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -183,4 +185,23 @@ func runListDevices(ctx context.Context, path string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return out, nil
+}
+
+// FreeNear is the free space on the drive of dir, asking the nearest folder above it that exists; false when dir
+// is "" or the drive is unreadable. The folder may not exist yet: it is made on the first download.
+func FreeNear(dir string, diskFree func(string) (uint64, error)) (uint64, bool) {
+	if dir == "" {
+		return 0, false
+	}
+	for d := filepath.Clean(dir); ; {
+		if _, err := os.Stat(d); err == nil {
+			n, err := diskFree(d)
+			return n, err == nil
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return 0, false
+		}
+		d = parent
+	}
 }

@@ -145,7 +145,11 @@ func localBase(raw string) bool {
 
 // FitFor labels a model that needs needsGB on the PC in r. Only the GPU with the most memory counts (hw picks it).
 func FitFor(needsGB int, r hw.Report) string {
-	need := uint64(needsGB) * gib
+	return FitForBytes(uint64(needsGB)*gib, r)
+}
+
+// FitForBytes labels a model that needs need bytes of memory, by FitFor's rules.
+func FitForBytes(need uint64, r hw.Report) string {
 	var vram uint64
 	if r.GPU != nil {
 		vram = r.GPU.TotalBytes
@@ -311,21 +315,7 @@ func missingBytes(folder string, files []File) uint64 {
 	return n
 }
 
-// free is the space left on the drive of dir. The folder may not exist yet (it is made on the first download), so
-// the nearest folder above it that does exist is asked instead.
+// free is the space left on the drive of dir (see hw.FreeNear).
 func (c *Catalog) free(dir string) (uint64, bool) {
-	if dir == "" {
-		return 0, false
-	}
-	for d := filepath.Clean(dir); ; {
-		if _, err := os.Stat(d); err == nil {
-			n, err := c.diskFree(d)
-			return n, err == nil
-		}
-		parent := filepath.Dir(d)
-		if parent == d {
-			return 0, false
-		}
-		d = parent
-	}
+	return hw.FreeNear(dir, c.diskFree)
 }

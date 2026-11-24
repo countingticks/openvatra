@@ -779,6 +779,74 @@
         ],
         "type": "object"
       },
+      "Group": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/GroupFile"
+            },
+            "type": "array"
+          },
+          "fit": {
+            "enum": [
+              "fits",
+              "slower",
+              "tooBig"
+            ],
+            "type": "string"
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "quant": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "quant",
+          "files",
+          "sizeBytes",
+          "fit",
+          "installed"
+        ],
+        "type": "object"
+      },
+      "GroupFile": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "sizeBytes",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "HFSearchBody": {
+        "properties": {
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/Repo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "repos"
+        ],
+        "type": "object"
+      },
       "Hello": {
         "properties": {
           "head": {
@@ -921,6 +989,42 @@
           "fit",
           "installed",
           "diskShortBytes"
+        ],
+        "type": "object"
+      },
+      "Listing": {
+        "properties": {
+          "diskFreeBytes": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/Group"
+            },
+            "type": "array"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "repo",
+          "revision",
+          "tags",
+          "groups",
+          "diskFreeBytes"
         ],
         "type": "object"
       },
@@ -1438,6 +1542,45 @@
           "type",
           "v",
           "data"
+        ],
+        "type": "object"
+      },
+      "Repo": {
+        "properties": {
+          "downloads": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "likes": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner",
+          "name",
+          "downloads",
+          "likes",
+          "updatedAt",
+          "tags"
         ],
         "type": "object"
       },
@@ -3228,6 +3371,99 @@
         "summary": "Measure the PC's hardware again",
         "tags": [
           "hardware"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/hf/repos/{owner}/{name}/files": {
+      "get": {
+        "operationId": "listHfFiles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "owner",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Listing"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer."
+          }
+        },
+        "summary": "A Hugging Face repo's GGUF files for this PC",
+        "tags": [
+          "hf"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/hf/search": {
+      "get": {
+        "operationId": "searchHf",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "description": "2 to 100 characters after trimming",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HFSearchBody"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, bad_request, hf_unreachable, hf_bad_answer."
+          }
+        },
+        "summary": "Search Hugging Face for GGUF models",
+        "tags": [
+          "hf"
         ],
         "x-scope": "ui"
       }
