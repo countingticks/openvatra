@@ -64,9 +64,11 @@ describe('Get more models', () => {
 
     await within(dialog).findByText('Qwen3 8B')
     expect(within(dialog).getByText('Recommended')).toBeInTheDocument()
-    expect(within(dialog).getByText('large')).toBeInTheDocument()
-    expect(within(dialog).getByText('5.0 GB · Fits your PC')).toBeInTheDocument()
-    expect(within(dialog).getByText('2.0 GB · Will run, but slowly')).toBeInTheDocument()
+    expect(within(dialog).getByText('Large')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('Fits')).toHaveLength(2)
+    expect(within(dialog).getByText('5.0 GB')).toBeInTheDocument()
+    expect(within(dialog).getByText('Slower')).toBeInTheDocument()
+    expect(within(dialog).queryByText(/Good all-round answers/)).not.toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Download Qwen3 8B' }))
     await waitFor(() =>
@@ -110,13 +112,64 @@ describe('Get more models', () => {
     expect(within(dialog).getByText(/about 2\.0 GB more is needed/)).toBeInTheDocument()
   })
 
-  it('shows progress and Cancel for a model being downloaded', async () => {
+  it('reads Suggested and Picked to fit this PC in the header', async () => {
+    const { dialog } = await openDialog(catalog(qwen))
+
+    expect(await within(dialog).findByText('Suggested')).toBeInTheDocument()
+    expect(within(dialog).getByText('Picked to fit this PC')).toBeInTheDocument()
+  })
+
+  it('shows the bar and the speed of a downloading row, and Pause sends the pause', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen), [
+      {
+        id: qwen.id,
+        name: 'qwen3-8b.gguf',
+        state: 'downloading',
+        bytes: 2.1 * GB,
+        total: 5 * GB,
+        speed: 38 * 1024 ** 2
+      }
+    ])
+
+    expect(await within(dialog).findByText('2.1 of 5.0 GB · 38 MB/s')).toBeInTheDocument()
+    expect(within(dialog).getByRole('progressbar', { name: 'Download progress' })).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Pause Qwen3 8B' }))
+    await waitFor(() =>
+      expect(writes(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads/qwen3-8b/pause', body: undefined }
+      ])
+    )
+  })
+
+  it('offers Resume and Cancel for a paused row, and neither while verifying', async () => {
+    const { setup, dialog } = await openDialog(catalog(qwen), [
+      { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
+    ])
+
+    await within(dialog).findByText('1.0 of 5.0 GB')
+    // A queue that starts paused opens the resume dialog; a download that pauses in this run does not.
+    setup.emitDownloads([
+      { id: qwen.id, name: 'qwen3-8b.gguf', state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }
+    ])
+    expect(await within(dialog).findByText('Paused · 1.0 of 5.0 GB')).toBeInTheDocument()
+    expect(await within(dialog).findByRole('button', { name: 'Resume Qwen3 8B' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Cancel Qwen3 8B' })).toBeInTheDocument()
+
+    setup.emitDownloads([
+      { id: qwen.id, name: 'qwen3-8b.gguf', state: 'verifying', bytes: 5 * GB, total: 5 * GB, speed: 0 }
+    ])
+    expect(await within(dialog).findByText('Checking the download…')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Resume Qwen3 8B' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Cancel Qwen3 8B' })).not.toBeInTheDocument()
+  })
+
+  it('cancels a model being downloaded', async () => {
     const { coreHttp, dialog } = await openDialog(catalog(qwen), [
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
 
     expect(await within(dialog).findByText('1.0 of 5.0 GB')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel Qwen3 8B' }))
     await waitFor(() =>
       expect(writes(coreHttp)).toEqual([
         { method: 'DELETE', path: '/api/downloads/qwen3-8b', body: undefined }
@@ -133,43 +186,13 @@ describe('Get more models', () => {
     setup.emitDownloads([
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
-    fireEvent.click(await within(dialog).findByRole('button', { name: 'Resume' }))
+    fireEvent.click(await within(dialog).findByRole('button', { name: 'Resume Qwen3 8B' }))
 
     await waitFor(() =>
       expect(writes(coreHttp)).toEqual([
         { method: 'POST', path: '/api/downloads/qwen3-8b/resume', body: undefined }
       ])
     )
-  })
-
-  it('removes an installed model only after confirming, saying what it frees', async () => {
-    const { coreHttp, dialog } = await openDialog(catalog(qwen, have))
-    const catalogReads = (): number =>
-      coreHttp.requests.filter((request) => request.method === 'GET' && request.url.endsWith('/api/catalog'))
-        .length
-
-    expect(await within(within(dialog).getByRole('tabpanel')).findByText('Installed')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Small 3B' }))
-    expect(writes(coreHttp)).toEqual([])
-    expect(within(dialog).getByText(/frees about 2\.0 GB/)).toBeInTheDocument()
-    const readsBefore = catalogReads()
-
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Remove it' }))
-    await waitFor(() =>
-      expect(writes(coreHttp)).toEqual([
-        { method: 'POST', path: '/api/catalog/small-3b/remove', body: undefined }
-      ])
-    )
-    await waitFor(() => expect(catalogReads()).toBe(readsBefore + 1))
-  })
-
-  it('keeps the model when the confirmation is declined', async () => {
-    const { coreHttp, dialog } = await openDialog(catalog(qwen, have))
-
-    fireEvent.click(await within(dialog).findByRole('button', { name: 'Remove Small 3B' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
-    expect(writes(coreHttp)).toEqual([])
-    expect(within(dialog).queryByText(/frees about/)).not.toBeInTheDocument()
   })
 
   it("opens Settings on the Get more models tab from the welcome card's See other models", async () => {

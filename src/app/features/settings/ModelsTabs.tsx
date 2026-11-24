@@ -1,5 +1,5 @@
 import { useId, useRef } from 'react'
-import { CatalogList, InstalledList, useModels } from '@app/features/models'
+import { GetMoreModels, InstalledList, useModels } from '@app/features/models'
 import { cn } from '@app/lib/utils'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import { modelsTabSelected, selectModelsTab, type ModelsTab } from '@app/store/uiSlice'
@@ -71,7 +71,7 @@ export function ModelsTabs(): React.JSX.Element {
         aria-labelledby={`${baseId}-${current}`}
         className="pt-4"
       >
-        {current === 'installed' ? <InstalledList /> : <CatalogList />}
+        {current === 'installed' ? <InstalledList /> : <GetMoreModels />}
       </div>
     </div>
   )

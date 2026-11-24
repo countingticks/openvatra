@@ -114,6 +114,7 @@ const defaultWrites: { method: string; path: RegExp; status: number; body?: unkn
   { method: 'POST', path: /^\/api\/downloads$/, status: 202, body: { status: 'accepted' } },
   { method: 'DELETE', path: /^\/api\/downloads\/[^/]+$/, status: 202, body: { status: 'accepted' } },
   { method: 'POST', path: /^\/api\/downloads\/[^/]+\/resume$/, status: 202, body: { status: 'accepted' } },
+  { method: 'POST', path: /^\/api\/downloads\/[^/]+\/pause$/, status: 202, body: { status: 'accepted' } },
   { method: 'POST', path: /^\/api\/catalog\/[^/]+\/remove$/, status: 204 }
 ]
 

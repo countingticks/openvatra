@@ -1,6 +1,17 @@
 // Words and the status dot for models, used by the model button and its popover.
+import { CircleCheck, Gauge, TriangleAlert, type LucideIcon } from 'lucide-react'
 import type { Choice } from '@app/core/generated'
 import type { ModelInfo } from '@app/core/types'
+
+/** The icon and colour of each fit; always shown next to its word (fitWords), so colour is never the only signal. */
+export const fitLook: Record<Exclude<Choice['fit'], 'unknown'>, { icon: LucideIcon; colour: string }> = {
+  fits: { icon: CircleCheck, colour: 'text-success' },
+  slower: { icon: Gauge, colour: 'text-warning' },
+  tooBig: { icon: TriangleAlert, colour: 'text-destructive' }
+}
+
+/** A Download button in the soft brand tint. */
+export const softButton = 'bg-soft text-soft-foreground hover:bg-soft/70'
 
 export function formatSize(bytes: number): string {
   const gigabytes = bytes / 1024 ** 3
