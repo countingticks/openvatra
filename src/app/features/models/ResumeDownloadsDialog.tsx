@@ -27,7 +27,9 @@ export function ResumeDownloadsDialog(): React.JSX.Element | null {
   }, [ready, catalog, downloads])
 
   if (offered.length === 0) return null
-  const nameOf = (id: string): string => catalog?.entries.find((entry) => entry.id === id)?.name ?? id
+  // A Hugging Face download has no catalog entry: its file name (or at worst its id) is what there is to show.
+  const nameOf = (item: DownloadItem): string =>
+    catalog?.entries.find((entry) => entry.id === item.id)?.name ?? (item.name || item.id)
 
   function resume(): void {
     for (const item of offered) {
@@ -47,7 +49,7 @@ export function ResumeDownloadsDialog(): React.JSX.Element | null {
         </DialogTitle>
         {offered.length === 1 && only ? (
           <DialogDescription>
-            {nameOf(only.id)} didn&apos;t finish downloading ({progressText(only)}). Resume now?
+            {nameOf(only)} didn&apos;t finish downloading ({progressText(only)}). Resume now?
           </DialogDescription>
         ) : (
           <>
@@ -55,7 +57,7 @@ export function ResumeDownloadsDialog(): React.JSX.Element | null {
             <ul className="flex flex-col gap-1 text-sm">
               {offered.map((item) => (
                 <li key={item.id}>
-                  {nameOf(item.id)} ({progressText(item)})
+                  {nameOf(item)} ({progressText(item)})
                 </li>
               ))}
             </ul>
