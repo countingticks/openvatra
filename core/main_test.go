@@ -810,6 +810,13 @@ func TestOriginFlag(t *testing.T) {
 	}
 }
 
+func TestHFBaseFlagMustBeLoopback(t *testing.T) {
+	err := run([]string{"--data-dir", t.TempDir(), "--hf-base", "https://example.com"}, io.Discard, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "--hf-base") {
+		t.Fatalf("err = %v, want one naming --hf-base", err)
+	}
+}
+
 // unknownNeeds knows nothing about any model.
 func unknownNeeds(engine.Spec) engine.Resources { return engine.Resources{} }
 

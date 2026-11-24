@@ -12,6 +12,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/event"
+	"github.com/countingticks/openvatra/core/internal/hf"
 	"github.com/countingticks/openvatra/core/internal/provider"
 	"github.com/countingticks/openvatra/core/internal/removal"
 	"github.com/countingticks/openvatra/core/internal/run"
@@ -74,6 +75,11 @@ var errorTable = []mapped{
 	{chats.ErrNoChatModel, http.StatusConflict, "no_chat_model", "no chat model is installed"},
 	{store.ErrReadOnly, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available"},
 	{event.ErrUnavailable, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available"},
+	{hf.ErrBadQuery, http.StatusBadRequest, "bad_request", ""},
+	{hf.ErrUnreachable, http.StatusBadGateway, "hf_unreachable", "Hugging Face couldn't be reached"},
+	{hf.ErrBadAnswer, http.StatusBadGateway, "hf_bad_answer", ""},
+	{hf.ErrRepoNotFound, http.StatusNotFound, "hf_repo_not_found", ""},
+	{hf.ErrGated, http.StatusForbidden, "hf_gated", "This model needs a Hugging Face account"},
 }
 
 // toError turns any error into the answer the client gets; an error with no mapping is 500 internal.

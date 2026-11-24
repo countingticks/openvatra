@@ -32,6 +32,7 @@ import (
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/feed"
 	"github.com/countingticks/openvatra/core/internal/fit"
+	"github.com/countingticks/openvatra/core/internal/hf"
 	"github.com/countingticks/openvatra/core/internal/host"
 	"github.com/countingticks/openvatra/core/internal/hw"
 	"github.com/countingticks/openvatra/core/internal/logs"
@@ -80,6 +81,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	port := fs.Int("port", 0, "port to listen on; 0 lets the OS pick a free one")
 	// For the end-to-end tests only: main passes it solely when unpackaged with OPENVATRA_E2E=1.
 	testCatalog := fs.String("test-catalog", "", "catalog file that replaces the built-in list and may name a local server")
+	hfBase := fs.String("hf-base", "", "a local server that plays huggingface.co (e2e tests)")
 	// Both come from Electron main. Without them core still works; it just can't offer the CUDA engine.
 	llamaManifest := fs.String("llama-manifest", "", "llama.json with the pinned llama.cpp builds")
 	enginesDir := fs.String("engines-dir", "", "folder the downloaded llama.cpp engines go into")
@@ -104,6 +106,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		if !isOrigin(o) {
 			return fmt.Errorf("--origin %q is not scheme://host[:port]", o)
 		}
+	}
+	// Checked here so a bad value stops core before it listens; the client itself is built once config is up.
+	if _, err := hf.New(hf.Config{BaseURL: *hfBase}); err != nil {
+		return fmt.Errorf("--hf-base: %w", err)
 	}
 	var modes []string
 	for name, on := range map[string]bool{"--openapi": *openapi, "--detach": *detach, "--stop": *stopFlag} {
@@ -321,6 +327,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 		dler.AllowHost = func(h string) bool { return download.HuggingFaceHost(h) || h == "127.0.0.1" || h == "localhost" }
 		logger.Warn("using a test catalog", "file", *testCatalog)
 	}
+	if *hfBase != "" {
+		// 083's downloads of a pick reach the same local server.
+		dler.AllowLocalHTTP = true
+		dler.AllowHost = func(h string) bool { return download.HuggingFaceHost(h) || h == "127.0.0.1" || h == "localhost" }
+		logger.Warn("using a local Hugging Face", "base", *hfBase)
+	}
+	hfClient, err := hf.New(hf.Config{BaseURL: *hfBase, Version: version, Hardware: hardware.Get,
+		ModelsDir: func() string { return resolve().ModelsDir }, Logger: logger})
+	if err != nil {
+		return fmt.Errorf("--hf-base: %w", err)
+	}
 	cat := catalog.New(entries, hardware.Get, func() string { return resolve().ModelsDir })
 	owner := func(p string) (models.Owner, bool) {
 		n, t, ok := cat.Owner(p)
@@ -379,7 +396,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	srv := &http.Server{
 		Handler: api.NewHandler(api.Deps{
 			Token: token, Origins: origins, Port: actualPort, Version: version, Shutdown: stop, ListModels: listModels, Choose: choose, Fit: fitAt, Resident: lc, Upstream: lc,
-			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines,
+			Config: cfg, Hardware: hardware, Catalog: cat, Removal: remover, Downloads: dl, Engines: engines, HF: hfClient,
 			Log: eventLog, Chats: chatService, Runs: engine, Sched: scheduler, Logger: logger,
 		}),
 		BaseContext: func(net.Listener) context.Context { return ctx },
