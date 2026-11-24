@@ -105,3 +105,18 @@ describe('offer to resume unfinished downloads', () => {
     expect(screen.queryByText(/didn't finish downloading/)).not.toBeInTheDocument()
   })
 })
+
+describe('offer to resume a Hugging Face download', () => {
+  it('names it by its file and resumes it by its encoded id', async () => {
+    const { coreHttp } = start([{ ...paused('hf:o/r:Q4_K_M'), name: 'r-Q4_K_M.gguf' }])
+
+    expect(await screen.findByText(/r-Q4_K_M\.gguf didn't finish downloading/)).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Resume' }))
+
+    await waitFor(() =>
+      expect(coreWrites(coreHttp)).toEqual([
+        { method: 'POST', path: '/api/downloads/hf%3Ao%2Fr%3AQ4_K_M/resume', body: undefined }
+      ])
+    )
+  })
+})

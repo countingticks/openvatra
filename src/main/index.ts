@@ -73,6 +73,9 @@ function coreArgs(): string[] {
   // Test seam: a catalog file that may name a local server. Never reachable in an installed app.
   const file = process.env['OPENVATRA_TEST_CATALOG']
   if (!app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && file) args.push('--test-catalog', file)
+  // The same for Hugging Face: a local server plays huggingface.co (the e2e search and download of a quant).
+  const hfBase = process.env['OPENVATRA_TEST_HF']
+  if (!app.isPackaged && process.env['OPENVATRA_E2E'] === '1' && hfBase) args.push('--hf-base', hfBase)
   // A file:// page sends no Origin, so only the dev server's origin needs allowing.
   const origin = devServerOrigin(appUrl)
   if (origin) args.push('--origin', origin)

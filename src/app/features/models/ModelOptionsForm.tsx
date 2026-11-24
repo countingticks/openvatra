@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
-import { CircleCheck, Gauge, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { ArgsField } from './ArgsField'
 import { ContextField } from './ContextField'
 import { PlacementSelect } from './PlacementSelect'
-import { useGetHardwareQuery, useGetModelFitQuery, type Choice, type ModelOptions } from '@app/core/generated'
-import { fitHint, fitWords } from './modelText'
+import { useGetHardwareQuery, useGetModelFitQuery, type ModelOptions } from '@app/core/generated'
+import { fitHint, fitLook, fitWords } from './modelText'
 import type { ModelInfo } from '@app/core/types'
 
 interface ModelOptionsFormProps {
@@ -40,12 +39,6 @@ interface TypedSize {
   /** The stored size when it was typed: a draft only counts while the stored size is still that one. */
   stored: ModelOptions['context']
   size: number
-}
-
-const fitLook: Record<Exclude<Choice['fit'], 'unknown'>, { icon: LucideIcon; colour: string }> = {
-  fits: { icon: CircleCheck, colour: 'text-success' },
-  slower: { icon: Gauge, colour: 'text-warning' },
-  tooBig: { icon: TriangleAlert, colour: 'text-destructive' }
 }
 
 /** What the chosen size and placement mean for this PC, asked of core as they change: a word, then the details. */
