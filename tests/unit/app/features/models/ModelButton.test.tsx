@@ -5,6 +5,7 @@ import { ModelButton } from '@app/features/models'
 import { useUpdateChatMutation } from '@app/core/generated'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
+import { selectExpandModel, selectModelsTab, selectSettingsSection } from '@app/store/uiSlice'
 import type { ModelInfo } from '@app/core/types'
 
 const qwen: ModelInfo = {
@@ -53,13 +54,18 @@ describe('model button', () => {
   })
 
   it('opens Settings on Models from "Manage models…" and closes the popover', async () => {
-    renderWithStore(<Shell />, {}, { models: [qwen] })
+    const { store } = renderWithStore(<Shell />, {}, { models: [qwen] })
+    // The chat's model is known once the list has arrived; "Manage models…" names it.
+    await waitFor(() => expect(button()).toHaveAccessibleName(/^Model: Qwen3-8B,/))
     const popover = await openPopover()
 
     fireEvent.click(within(popover).getByRole('button', { name: 'Manage models…' }))
 
     expect(await screen.findByRole('heading', { level: 2, name: 'Models' })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
+    expect(selectSettingsSection(store.getState())).toBe('models')
+    expect(selectModelsTab(store.getState())).toBe('installed')
+    expect(selectExpandModel(store.getState())).toBe(qwen.id)
   })
 
   it('closes with Esc', async () => {

@@ -38,7 +38,7 @@ export function PathRow({
           id={pathId}
           className={cn(
             'pt-1 text-xs',
-            path ? 'font-mono break-all select-text' : 'text-muted-foreground italic'
+            path ? 'font-mono break-all text-muted-foreground select-text' : 'text-muted-foreground italic'
           )}
         >
           {path ?? defaultText}

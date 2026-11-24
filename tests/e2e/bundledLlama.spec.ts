@@ -27,7 +27,7 @@ test('with no llama-server chosen, Settings → Models offers the bundled build 
   const settings = mainWindow.getByRole('dialog', { name: 'Settings' })
   await settings.getByText('Models', { exact: true }).click()
   // The engine is an advanced option.
-  await settings.getByRole('switch', { name: 'Show advanced' }).click()
+  await settings.getByRole('button', { name: 'Advanced' }).click()
 
   await expect(settings.getByText(`Bundled (${tag}, Vulkan)`)).toBeVisible()
   await expect(settings.getByRole('button', { name: 'Browse for llama-server.exe' })).toHaveText(

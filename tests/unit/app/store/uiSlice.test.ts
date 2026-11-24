@@ -12,6 +12,7 @@ import {
   settingsClosed,
   settingsOpened,
   settingsSectionSelected,
+  modelsTabSelected,
   sidebarToggled,
   tabSelected,
   uiSlice,
@@ -45,7 +46,8 @@ describe('ui slice', () => {
       tabRoutes: { chat: { tab: 'chat' }, code: { tab: 'code' }, automations: { tab: 'automations' } },
       settingsOpen: false,
       settingsSection: 'general',
-      modelsDialogOpen: false
+      modelsTab: 'installed',
+      expandModel: null
     })
   })
 
@@ -56,10 +58,22 @@ describe('ui slice', () => {
   })
 
   it('opens Settings on General unless a section is named, and switches sections', () => {
-    const onModels = reduce(initialUiState, settingsOpened('models'))
+    const onModels = reduce(initialUiState, settingsOpened({ section: 'models' }))
     expect(onModels.settingsSection).toBe('models')
     expect(reduce(onModels, settingsSectionSelected('general')).settingsSection).toBe('general')
     expect(reduce(onModels, settingsOpened()).settingsSection).toBe('general')
+  })
+
+  it('settingsOpened() resets the tab and the expanded model; a target sets all three', () => {
+    const target = reduce(initialUiState, settingsOpened({ section: 'models', tab: 'more', expand: 'x' }))
+    expect(target).toMatchObject({ settingsSection: 'models', modelsTab: 'more', expandModel: 'x' })
+
+    expect(reduce(target, settingsOpened())).toMatchObject({
+      settingsSection: 'general',
+      modelsTab: 'installed',
+      expandModel: null
+    })
+    expect(reduce(target, modelsTabSelected('installed')).modelsTab).toBe('installed')
   })
 
   it('switches to the selected tab', () => {

@@ -1,30 +1,34 @@
 import { useId, useState } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { Button } from '@app/ui/button'
-import { GpuCard } from '@app/features/models'
-import { InstalledModels } from '@app/features/models'
-import { ModelList } from '@app/features/models'
+import { EmbeddingSelect, GpuCard } from '@app/features/models'
+import { ModelsTabs } from './ModelsTabs'
 import { PathRow } from './PathRow'
 import { SegmentedControl } from '@app/ui/SegmentedControl'
 import { SettingRow } from './SettingRow'
-import { Switch } from '@app/ui/switch'
 import { useGetEnginesQuery } from '@app/core/generated'
 import { usePlatform } from '@app/platform/usePlatform'
 import { useEngineSettings } from '@app/features/models'
 import { useLlamacppSettings } from '@app/features/models'
 import { idleOptions } from '@app/features/models'
+import { cn } from '@app/lib/utils'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
-import { modelsDialogOpened, settingsClosed } from '@app/store/uiSlice'
 import type { LlamacppChange } from '@app/features/models'
 import type { PickTarget } from '@shared/ipc'
 
-/** Settings → Models: the simple view (folder, installed models, get more, unload timer) and, behind *Show advanced*, the engine, embedding model and per-model options. */
+/** A failed action has nothing useful to show here; log it (main copies page errors into main.log). */
+function run(action: () => Promise<void>): void {
+  action().catch((error) => console.error('Models service action failed', error))
+}
+
+/** Settings → Models: folder, unload timer, the GPU, the models themselves, and behind Advanced the engine and service. */
 export function ModelsSection(): React.JSX.Element {
   const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
   const { value: llamacpp, update } = useLlamacppSettings()
   const { value: engine, update: updateEngine } = useEngineSettings()
   const dispatch = useAppDispatch()
-  const { files } = usePlatform()
+  const { files, core } = usePlatform()
   const idleId = useId()
   const advancedId = useId()
   const [problem, setProblem] = useState<string>()
@@ -86,53 +90,63 @@ export function ModelsSection(): React.JSX.Element {
         <GpuCard />
       </div>
 
-      <div className="pt-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            // One dialog at a time: the Models dialog replaces Settings instead of stacking on it.
-            dispatch(settingsClosed())
-            dispatch(modelsDialogOpened())
-          }}
-        >
-          Get more models…
-        </Button>
+      <div className="pt-5">
+        <ModelsTabs />
       </div>
 
-      <InstalledModels />
-
-      <SettingRow
-        label="Show advanced"
-        hint="More options for people who know their way around."
-        controlId={advancedId}
-      >
-        <Switch
-          id={advancedId}
-          checked={showAdvanced}
-          onCheckedChange={(checked) => dispatch(settingsChanged({ showAdvancedModels: checked }))}
-        />
-      </SettingRow>
-
-      {showAdvanced && (
-        <>
-          <PathRow
-            label="llama-server.exe"
-            hint="The program that runs the models. The bundled one works on any GPU; use your own for CUDA."
-            path={engine.path}
-            defaultText={bundledText}
-            browseText="Use my own…"
-            onBrowse={files && (() => void pick('llamaServer'))}
-          >
-            {engine.path && (
-              <Button variant="outline" size="sm" onClick={() => fail(updateEngine({ path: null }))}>
-                Use bundled
-              </Button>
+      <div className="pt-5">
+        <button
+          type="button"
+          aria-expanded={showAdvanced}
+          aria-controls={advancedId}
+          onClick={() => dispatch(settingsChanged({ showAdvancedModels: !showAdvanced }))}
+          className="flex items-center gap-1.5 rounded-sm text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Advanced
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              'size-4 text-muted-foreground transition-transform in-data-[motion=reduce]:transition-none',
+              showAdvanced && 'rotate-180'
             )}
-          </PathRow>
-          <ModelList />
-        </>
-      )}
+          />
+        </button>
+        {showAdvanced && (
+          <div id={advancedId} className="flex flex-col">
+            <PathRow
+              label="llama-server.exe"
+              hint={`${bundledText}. Use your own build to try a newer llama.cpp.`}
+              path={engine.path}
+              defaultText="Using the bundled build"
+              browseText="Use my own…"
+              onBrowse={files && (() => void pick('llamaServer'))}
+            >
+              {engine.path && (
+                <Button variant="outline" size="sm" onClick={() => fail(updateEngine({ path: null }))}>
+                  Use bundled
+                </Button>
+              )}
+            </PathRow>
+            <EmbeddingSelect />
+            {(core.openLog || core.restart) && (
+              <SettingRow label="Models service" hint="Its log, and a fresh start if it misbehaves.">
+                <div className="flex gap-2">
+                  {core.openLog && (
+                    <Button variant="outline" size="sm" onClick={() => run(async () => core.openLog?.())}>
+                      Open log
+                    </Button>
+                  )}
+                  {core.restart && (
+                    <Button variant="outline" size="sm" onClick={() => run(async () => core.restart?.())}>
+                      Restart
+                    </Button>
+                  )}
+                </div>
+              </SettingRow>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

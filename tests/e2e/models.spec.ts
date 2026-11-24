@@ -99,8 +99,6 @@ test('a custom context size is passed to llama-server', async () => {
   await mainWindow.getByRole('button', { name: 'Settings', exact: true }).click()
   const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
   await dialog.getByRole('button', { name: 'Models' }).click()
-  const advanced = dialog.getByRole('switch', { name: 'Show advanced' })
-  if ((await advanced.getAttribute('aria-checked')) !== 'true') await advanced.click()
   await dialog.getByRole('button', { name: 'Options for tiny' }).click()
 
   // The header-only file has no known shape, so the size is the user's number, with the whole model on the GPU.
@@ -125,6 +123,17 @@ test('a custom context size is passed to llama-server', async () => {
       return line ?? ''
     })
     .toMatch(/-c 4096\b.*--fit off|--fit off.*-c 4096\b/)
+})
+
+test('Manage models… opens Settings on Models with the chat model expanded', async () => {
+  await mainWindow.getByRole('button', { name: /^Model:/ }).click()
+  await mainWindow.getByRole('button', { name: 'Manage models…' }).click()
+
+  const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
+  await expect(dialog.getByRole('heading', { name: 'Models' })).toBeVisible()
+  await expect(dialog.getByRole('group', { name: 'Options for tiny' })).toBeVisible()
+  await mainWindow.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
 })
 
 test('the chosen model is selected in the picker, and quitting leaves no core.exe behind', async () => {

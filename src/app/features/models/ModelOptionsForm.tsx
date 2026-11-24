@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { CircleCheck, Gauge, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { ArgsField } from './ArgsField'
 import { ContextField } from './ContextField'
 import { PlacementSelect } from './PlacementSelect'
-import { useGetHardwareQuery, useGetModelFitQuery, type ModelOptions } from '@app/core/generated'
-import { fitHint } from './modelText'
+import { useGetHardwareQuery, useGetModelFitQuery, type Choice, type ModelOptions } from '@app/core/generated'
+import { fitHint, fitWords } from './modelText'
 import type { ModelInfo } from '@app/core/types'
 
 interface ModelOptionsFormProps {
@@ -14,6 +15,8 @@ interface ModelOptionsFormProps {
   expanded: boolean
   /** The model's new options, or undefined when nothing is set. */
   onChange: (next: ModelOptions | undefined) => void
+  /** The buttons under the fields. */
+  footer?: React.ReactNode
 }
 
 /** What Custom starts from when core has no choice for the model (its shape is unknown). */
@@ -39,8 +42,14 @@ interface TypedSize {
   size: number
 }
 
-/** The sentence under Placement: what the chosen size and placement mean for this PC, asked of core as they change. */
-function FitHint({
+const fitLook: Record<Exclude<Choice['fit'], 'unknown'>, { icon: LucideIcon; colour: string }> = {
+  fits: { icon: CircleCheck, colour: 'text-success' },
+  slower: { icon: Gauge, colour: 'text-warning' },
+  tooBig: { icon: TriangleAlert, colour: 'text-destructive' }
+}
+
+/** What the chosen size and placement mean for this PC, asked of core as they change: a word, then the details. */
+function FitLine({
   modelId,
   context,
   placement,
@@ -60,11 +69,22 @@ function FitHint({
     { skip: !expanded }
   )
   const hardware = useGetHardwareQuery()
-  const text = fit.currentData ? fitHint(fit.currentData, hardware.data?.gpu?.totalBytes ?? null) : ''
+  const choice = fit.currentData
+  const text = choice ? fitHint(choice, hardware.data?.gpu?.totalBytes ?? null) : ''
+  // fitHint starts with the size ("32K tokens · "); the context control already says it.
+  const detail = text.includes(' · ') ? text.slice(text.indexOf(' · ') + 3) : text
+  const words = choice ? fitWords(choice.fit) : null
+  const look = choice && choice.fit !== 'unknown' ? fitLook[choice.fit] : null
 
   return (
-    <p aria-live="polite" className="min-h-4 text-xs text-muted-foreground">
-      {text}
+    <p aria-live="polite" className="col-span-2 flex min-h-4 items-center gap-1.5 text-xs">
+      {words && look && (
+        <span className={`flex shrink-0 items-center gap-1 font-medium ${look.colour}`}>
+          <look.icon aria-hidden className="size-3.5" />
+          {words}
+        </span>
+      )}
+      <span className="text-muted-foreground">{detail}</span>
     </p>
   )
 }
@@ -75,7 +95,8 @@ export function ModelOptionsForm({
   model,
   options,
   expanded,
-  onChange
+  onChange,
+  footer
 }: ModelOptionsFormProps): React.JSX.Element {
   const stored = options?.context
   const [typed, setTyped] = useState<TypedSize>()
@@ -91,12 +112,14 @@ export function ModelOptionsForm({
     <div
       id={id}
       role="group"
-      aria-label={`Options for ${model.id}`}
-      className="mt-2.5 flex flex-col gap-3 rounded-md bg-sidebar p-3"
+      aria-label={`Options for ${model.name}`}
+      className="mt-2 flex flex-col gap-3.5 rounded-lg bg-card p-3.5"
     >
       {model.kind === 'chat' && (
-        <>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
           <ContextField
+            // Closing the options forgets that the user was in Custom: a stored 32k reads as 32k when reopened.
+            key={String(expanded)}
             value={options?.context}
             auto={model.context?.context ?? fallbackContext}
             onCommit={(context) => onChange(withFields(options, { context }))}
@@ -107,16 +130,17 @@ export function ModelOptionsForm({
             moe={model.moe}
             onChange={(placement) => onChange(withFields(options, { placement }))}
           />
-          <FitHint modelId={model.id} context={asked} placement={options?.placement} expanded={expanded} />
-        </>
+          <FitLine modelId={model.id} context={asked} placement={options?.placement} expanded={expanded} />
+        </div>
       )}
       <ArgsField
-        label="Arguments"
+        label="Extra arguments"
         value={options?.args ?? ''}
-        placeholder="--jinja --temp 0.7"
+        placeholder="--temp 0.7 --jinja"
         hint="llama-server arguments, e.g. --temp 0.7"
         onCommit={(text) => onChange(withFields(options, { args: text || undefined }))}
       />
+      {footer}
     </div>
   )
 }

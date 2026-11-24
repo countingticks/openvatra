@@ -1,13 +1,17 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import { Shell } from '@app/shell/Shell'
-import { coreWrites } from '../../../fakeCoreHttp'
+import { coreWrites, type FakeCoreHttp } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
 import { settingsOpened } from '@app/store/uiSlice'
 import type { DownloadItem } from '@app/core/types'
 import type { CatalogEntry, CatalogView } from '@app/features/models/catalogView'
 
 const GB = 1024 ** 3
+
+/** The writes that change something; the GPU card's refresh of the hardware numbers is not about the catalog. */
+const writes = (http: FakeCoreHttp): ReturnType<typeof coreWrites> =>
+  coreWrites(http).filter((write) => write.path !== '/api/hardware/refresh')
 const ready = { status: 'ready', port: 1234, version: '1', connection: exampleConnection } as const
 
 const entry = (patch: Partial<CatalogEntry>): CatalogEntry => ({
@@ -41,17 +45,20 @@ const catalog = (...entries: CatalogEntry[]): CatalogView => ({
   recommended: qwen.id
 })
 
+/** Settings on Models, with its Get more models tab open; `dialog` is the Settings dialog. */
 async function openDialog(
   view: CatalogView,
   downloads: DownloadItem[] = []
 ): Promise<ReturnType<typeof renderWithStore> & { dialog: HTMLElement }> {
   const rendered = renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog: view, downloads } })
-  fireEvent.click(await screen.findByRole('button', { name: 'See other models' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Get more models' })
+  act(() => {
+    rendered.store.dispatch(settingsOpened({ section: 'models', tab: 'more' }))
+  })
+  const dialog = await screen.findByRole('dialog', { name: 'Settings' })
   return { ...rendered, dialog }
 }
 
-describe('Models dialog', () => {
+describe('Get more models', () => {
   it('lists each model with tags, size, fit and the Recommended mark, and downloads one', async () => {
     const { coreHttp, dialog } = await openDialog(catalog(qwen, huge, full, have))
 
@@ -63,7 +70,7 @@ describe('Models dialog', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Download Qwen3 8B' }))
     await waitFor(() =>
-      expect(coreWrites(coreHttp)).toEqual([
+      expect(writes(coreHttp)).toEqual([
         { method: 'POST', path: '/api/downloads', body: { catalogId: 'qwen3-8b' } }
       ])
     )
@@ -85,12 +92,12 @@ describe('Models dialog', () => {
     const { coreHttp, dialog } = await openDialog(catalog(qwen, huge))
 
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Download Big 70B' }))
-    expect(coreWrites(coreHttp)).toEqual([])
+    expect(writes(coreHttp)).toEqual([])
     expect(within(dialog).getByText(/too big for your PC/)).toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Download anyway' }))
     await waitFor(() =>
-      expect(coreWrites(coreHttp)).toEqual([
+      expect(writes(coreHttp)).toEqual([
         { method: 'POST', path: '/api/downloads', body: { catalogId: 'big-70b' } }
       ])
     )
@@ -111,7 +118,7 @@ describe('Models dialog', () => {
     expect(await within(dialog).findByText('1.0 of 5.0 GB')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     await waitFor(() =>
-      expect(coreWrites(coreHttp)).toEqual([
+      expect(writes(coreHttp)).toEqual([
         { method: 'DELETE', path: '/api/downloads/qwen3-8b', body: undefined }
       ])
     )
@@ -127,7 +134,7 @@ describe('Models dialog', () => {
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Resume' }))
 
     await waitFor(() =>
-      expect(coreWrites(coreHttp)).toEqual([
+      expect(writes(coreHttp)).toEqual([
         { method: 'POST', path: '/api/downloads/qwen3-8b/resume', body: undefined }
       ])
     )
@@ -139,15 +146,15 @@ describe('Models dialog', () => {
       coreHttp.requests.filter((request) => request.method === 'GET' && request.url.endsWith('/api/catalog'))
         .length
 
-    expect(await within(dialog).findByText('Installed')).toBeInTheDocument()
+    expect(await within(within(dialog).getByRole('tabpanel')).findByText('Installed')).toBeInTheDocument()
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove Small 3B' }))
-    expect(coreWrites(coreHttp)).toEqual([])
+    expect(writes(coreHttp)).toEqual([])
     expect(within(dialog).getByText(/frees about 2\.0 GB/)).toBeInTheDocument()
     const readsBefore = catalogReads()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Remove it' }))
     await waitFor(() =>
-      expect(coreWrites(coreHttp)).toEqual([
+      expect(writes(coreHttp)).toEqual([
         { method: 'POST', path: '/api/catalog/small-3b/remove', body: undefined }
       ])
     )
@@ -159,38 +166,20 @@ describe('Models dialog', () => {
 
     fireEvent.click(await within(dialog).findByRole('button', { name: 'Remove Small 3B' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Keep it' }))
-    expect(coreWrites(coreHttp)).toEqual([])
+    expect(writes(coreHttp)).toEqual([])
     expect(within(dialog).queryByText(/frees about/)).not.toBeInTheDocument()
   })
 
-  it('opens from Settings → Models', async () => {
-    const { store } = renderWithStore(
-      <Shell />,
-      {},
-      {
-        coreState: ready,
-        setup: { catalog: catalog(qwen) },
-        models: [
-          {
-            id: 'm',
-            state: 'stopped',
-            busy: false,
-            sizeBytes: GB,
-            kind: 'chat',
-            context: null,
-            moe: false,
-            name: 'm',
-            quant: null,
-            tags: [],
-            memory: null
-          }
-        ]
-      }
+  it("opens Settings on the Get more models tab from the welcome card's See other models", async () => {
+    renderWithStore(<Shell />, {}, { coreState: ready, setup: { catalog: catalog(qwen) } })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'See other models' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Settings' })
+    expect(within(dialog).getByRole('tab', { name: 'Get more models' })).toHaveAttribute(
+      'aria-selected',
+      'true'
     )
-    act(() => {
-      store.dispatch(settingsOpened('models'))
-    })
-    fireEvent.click(await screen.findByRole('button', { name: 'Get more models…' }))
-    expect(await screen.findByRole('dialog', { name: 'Get more models' })).toBeInTheDocument()
+    expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
   })
 })

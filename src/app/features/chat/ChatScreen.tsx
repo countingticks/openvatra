@@ -9,13 +9,7 @@ import {
 import { ModelButton, WelcomeCard } from '@app/features/models'
 import { answerState, Transcript, useLiveAnswer, useRunView, type RunView } from '@app/features/runs'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
-import {
-  modelsDialogOpened,
-  routeReplaced,
-  selectRoute,
-  selectSidebarOpen,
-  settingsOpened
-} from '@app/store/uiSlice'
+import { routeReplaced, selectRoute, selectSidebarOpen, settingsOpened } from '@app/store/uiSlice'
 import { Button } from '@app/ui/button'
 import { Ember } from '@app/ui/Ember'
 import { OverlayScroll } from '@app/ui/OverlayScroll'
@@ -47,7 +41,7 @@ export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX
     <div className="relative h-full overflow-hidden">
       <PixelBackdrop />
       <div className="relative flex h-full items-center justify-center p-8">
-        <WelcomeCard onSeeOtherModels={() => dispatch(modelsDialogOpened())} />
+        <WelcomeCard onSeeOtherModels={() => dispatch(settingsOpened({ section: 'models', tab: 'more' }))} />
       </div>
     </div>
   )
@@ -170,7 +164,7 @@ function ChatView(): React.JSX.Element {
                 model={model ?? ''}
                 modelLoading={loading}
                 onContinue={resume}
-                onOpenModelSettings={() => dispatch(settingsOpened('models'))}
+                onOpenModelSettings={() => dispatch(settingsOpened({ section: 'models' }))}
                 onRegenerate={regenerate}
                 onEdit={edit}
               />
