@@ -389,7 +389,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 	var scheduler sched.Scheduler // an untyped nil without a database, never a nil *sched.FIFO inside the interface
 	if chatStore != nil && chatStore.ReadOnly() == nil {
 		fifo := sched.NewFIFO(func(st sched.State) { eventLog.Publish("system", schedState(st)) })
-		engine = runengine.New(runengine.Config{Log: eventLog, Views: chatStore, Chat: lc, Model: lc.Model, Sched: fifo,
+		engine = runengine.New(runengine.Config{Log: eventLog, Views: chatStore, Chat: lc, Sched: fifo,
+			Model:    runModelFunc(lc.Model, func() ([]models.Model, error) { return models.Discover(resolve().ModelsDir) }),
 			Profiles: profile.Builtin(), Counter: lc, Logger: logger})
 		chatService = chats.New(chats.Config{Store: chatStore, Engine: engine, Config: cfg, Models: lc.Models,
 			Logger: logger})
@@ -589,17 +590,73 @@ func planFunc(resolve func() llamacpp.Resolved, hardware func() hw.Report, needs
 		if err != nil {
 			return engine.Spec{}, err
 		}
+		return planModel(c, found, id, embedding, hardware(), needs, logger)
+	}
+}
+
+// planModel is planFunc's answer over the models already found (as fitModel is fitFunc's). A model that refusal
+// turns down gets no spec, so the provider starts nothing and keeps what is loaded.
+func planModel(c llamacpp.Resolved, found []models.Model, id string, embedding bool, r hw.Report, needs needsFor,
+	logger *slog.Logger,
+) (engine.Spec, error) {
+	for _, m := range found {
+		if m.ID != id {
+			continue
+		}
+		if err := refusal(m, embedding); err != nil {
+			logger.Warn("model refused", "model", id, "reason", err.Error())
+			return engine.Spec{}, err
+		}
+		var choice *fit.Choice
+		if !embedding {
+			choice = chosen(c, m, r, needs)
+		}
+		return specFor(c, m, embedding, choice), nil
+	}
+	logger.Warn("unknown model requested", "model", id)
+	return engine.Spec{}, provider.ErrUnknownModel
+}
+
+// refusal is nil when m may start as asked, else a *provider.RefusedError.
+func refusal(m models.Model, embedding bool) error {
+	reason := ""
+	switch {
+	case m.Kind == models.KindUnreadable:
+		reason = m.Error
+		if reason == "" {
+			reason = "This file can't be read"
+		}
+	case m.Kind == models.KindEmbedding && !embedding:
+		reason = "This file is not a chat model"
+	case m.Kind == models.KindChat && embedding:
+		reason = "This file is not an embedding model"
+	default:
+		return nil
+	}
+	return &provider.RefusedError{Model: m.ID, Reason: reason}
+}
+
+// runModelFunc is lookup, except that a model lookup reports as provider.ErrUnknownModel but list holds as
+// unreadable answers refusal's error: the provider lists only the models it can run, so a chat on a broken file
+// would otherwise say the model is gone.
+func runModelFunc(lookup func(context.Context, string) (provider.Model, error),
+	list func() ([]models.Model, error),
+) func(context.Context, string) (provider.Model, error) {
+	return func(ctx context.Context, id string) (provider.Model, error) {
+		pm, err := lookup(ctx, id)
+		if !errors.Is(err, provider.ErrUnknownModel) {
+			return pm, err
+		}
+		found, listErr := list()
+		if listErr != nil {
+			return pm, err
+		}
 		for _, m := range found {
-			if m.ID == id {
-				var choice *fit.Choice
-				if !embedding {
-					choice = chosen(c, m, hardware(), needs)
-				}
-				return specFor(c, m, embedding, choice), nil
+			if m.ID == id && m.Kind == models.KindUnreadable {
+				return provider.Model{}, refusal(m, false)
 			}
 		}
-		logger.Warn("unknown model requested", "model", id)
-		return engine.Spec{}, provider.ErrUnknownModel
+		return pm, err
 	}
 }
 

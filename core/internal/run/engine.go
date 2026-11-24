@@ -398,8 +398,9 @@ func (e *Engine) ContextUse(ctx context.Context, chatID string) (ContextUse, err
 	}
 	window := defaultContextSize
 	model, err := e.c.Model(ctx, chat.Model)
+	var refused *provider.RefusedError
 	switch {
-	case errors.Is(err, provider.ErrUnknownModel):
+	case errors.Is(err, provider.ErrUnknownModel), errors.As(err, &refused):
 	case err != nil:
 		return ContextUse{}, err
 	default:
@@ -939,7 +940,10 @@ func (e *Engine) writeEnd(st State, fin event.RunFinished, partial *partialAnswe
 
 func failure(err error) *event.RunError {
 	var load *provider.LoadError
+	var refused *provider.RefusedError
 	switch {
+	case errors.As(err, &refused):
+		return &event.RunError{Code: "model_load_failed", Message: refused.Reason}
 	case errors.Is(err, provider.ErrUnknownModel):
 		return &event.RunError{Code: "model_not_found", Message: "This model is no longer in the models folder."}
 	case errors.As(err, &load):
