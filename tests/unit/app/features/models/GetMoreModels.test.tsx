@@ -409,7 +409,7 @@ describe('Get more models: searching Hugging Face', () => {
 
       fireEvent.submit(await search(dialog, 'qwen'))
 
-      await within(dialog).findByText('3 results')
+      await within(dialog).findByText('Results 1–3')
       expect(within(dialog).getByText('Hugging Face · GGUF only')).toBeInTheDocument()
       expect(within(dialog).getByText('unsloth /')).toBeInTheDocument()
       expect(within(dialog).getByText('Qwen3-Coder-GGUF')).toBeInTheDocument()
@@ -474,5 +474,130 @@ describe('Get more models: searching Hugging Face', () => {
     fireEvent.change(field, { target: { value: '' } })
 
     expect(await within(dialog).findByText('Qwen3 8B')).toBeInTheDocument()
+  })
+})
+
+describe('Get more models: pages of results', () => {
+  /** Ten repos o/r<page*10 + i> a page; the third page (2) is the last. */
+  function pages(http: FakeCoreHttp): void {
+    http.respond('GET', '/api/hf/search', (call) => {
+      const page = Number(new URL(call.url).searchParams.get('page') ?? '0')
+      const repos = Array.from({ length: 10 }, (_, i) => {
+        const n = page * 10 + i + 1
+        return repo({ id: `o/r${n}`, owner: 'o', name: `r${n}` })
+      })
+      return { body: { repos, page, hasMore: page < 2 } }
+    })
+  }
+  const pageParams = (http: FakeCoreHttp): (string | null)[] =>
+    searchRequests(http).map((url) => url.searchParams.get('page'))
+  const next = (dialog: HTMLElement): HTMLElement => within(dialog).getByRole('button', { name: 'Next ›' })
+  const previous = (dialog: HTMLElement): HTMLElement =>
+    within(dialog).getByRole('button', { name: '‹ Previous' })
+
+  async function firstPage(): Promise<ReturnType<typeof openDialog> extends Promise<infer T> ? T : never> {
+    const opened = await openDialog(catalog(qwen))
+    pages(opened.coreHttp)
+    fireEvent.submit(await search(opened.dialog, 'qwen'))
+    await within(opened.dialog).findByText('Results 1–10')
+    return opened
+  }
+
+  it('reads Results 1–10 on the first page, with Previous disabled and Next enabled', async () => {
+    const { dialog } = await firstPage()
+
+    expect(previous(dialog)).toBeDisabled()
+    expect(within(dialog).getByText('Page 1')).toBeInTheDocument()
+    expect(next(dialog)).toBeEnabled()
+  })
+
+  it('asks page 1 on Next, shows Results 11–20 and moves focus to its heading', async () => {
+    const { coreHttp, dialog } = await firstPage()
+
+    fireEvent.click(next(dialog))
+
+    const heading = await within(dialog).findByRole('heading', { name: 'Results 11–20' })
+    expect(within(dialog).getByText('Page 2')).toBeInTheDocument()
+    expect(within(dialog).getByText('r11')).toBeInTheDocument()
+    expect(pageParams(coreHttp)).toEqual(['0', '1'])
+    await waitFor(() => expect(heading).toHaveFocus())
+  })
+
+  it('disables Next on the last page', async () => {
+    const { dialog } = await firstPage()
+
+    fireEvent.click(next(dialog))
+    await within(dialog).findByText('Results 11–20')
+    fireEvent.click(next(dialog))
+    await within(dialog).findByText('Results 21–30')
+
+    expect(next(dialog)).toBeDisabled()
+  })
+
+  it('goes back with Previous without asking again', async () => {
+    const { coreHttp, dialog } = await firstPage()
+    fireEvent.click(next(dialog))
+    await within(dialog).findByText('Results 11–20')
+
+    fireEvent.click(previous(dialog))
+
+    expect(await within(dialog).findByText('Results 1–10')).toBeInTheDocument()
+    expect(pageParams(coreHttp)).toEqual(['0', '1'])
+  })
+
+  it('closes a repo opened on a page after Next and Previous', async () => {
+    const { dialog } = await firstPage()
+    fireEvent.click(next(dialog))
+    await within(dialog).findByText('Results 11–20')
+    const files = within(dialog).getByRole('button', { name: 'Files in o/r11' })
+    fireEvent.click(files)
+    expect(files).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(previous(dialog))
+    await within(dialog).findByText('Results 1–10')
+    fireEvent.click(next(dialog))
+    await within(dialog).findByText('Results 11–20')
+
+    expect(within(dialog).getByRole('button', { name: 'Files in o/r11' })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+  })
+
+  it('shows no page navigation for a single page', async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer('/api/hf/search', { repos: [repo()], page: 0, hasMore: false })
+
+    fireEvent.submit(await search(dialog, 'qwen'))
+    await within(dialog).findByText('Results 1–1')
+
+    expect(within(dialog).queryByRole('navigation', { name: 'Result pages' })).not.toBeInTheDocument()
+  })
+
+  it('starts a new query on page 0', async () => {
+    const { coreHttp, dialog } = await firstPage()
+    fireEvent.click(next(dialog))
+    await within(dialog).findByText('Results 11–20')
+
+    fireEvent.submit(await search(dialog, 'llama'))
+    await within(dialog).findByText('Results 1–10')
+
+    const last = searchRequests(coreHttp).at(-1)
+    expect([last?.searchParams.get('q'), last?.searchParams.get('page')]).toEqual(['llama', '0'])
+  })
+
+  it("shows core's wait when Hugging Face is rate limited", async () => {
+    const { coreHttp, dialog } = await openDialog(catalog(qwen))
+    coreHttp.answer(
+      '/api/hf/search',
+      { error: 'hf_rate_limited', message: 'Hugging Face is busy. Try again in 12 seconds.' },
+      { status: 429 }
+    )
+
+    fireEvent.submit(await search(dialog, 'qwen'))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Hugging Face is busy. Try again in 12 seconds.'
+    )
   })
 })

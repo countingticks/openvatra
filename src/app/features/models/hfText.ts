@@ -42,3 +42,9 @@ export function downloadPercent(item: DownloadItem): number {
   if (item.total <= 0) return 0
   return Math.min(100, Math.max(0, Math.round((item.bytes / item.total) * 100)))
 }
+
+/** "Results 11–20" for page 1 with 10 repos; "Results 1–3" for page 0 with 3 (en dash). count ≥ 1. */
+export function resultRange(page: number, count: number): string {
+  const first = page * 10 + 1
+  return `Results ${first}–${first + count - 1}`
+}
