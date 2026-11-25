@@ -148,7 +148,7 @@ describe('ChatScreen', () => {
   })
 
   it('a send with a quote posts it', async () => {
-    const { coreHttp } = show({ storage: { 'chat.quote:new': 'q' } })
+    const { coreHttp } = show({ storage: { 'chat.quotes:new': JSON.stringify(['q']) } })
     await screen.findByRole('button', { name: /^Model: tiny,/ })
 
     await type('Explain')

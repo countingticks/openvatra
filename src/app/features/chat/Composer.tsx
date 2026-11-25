@@ -6,7 +6,20 @@ import { composerReducer, sendErrorMessage, type ComposerEvent, type ComposerSta
 
 const draftKey = (chatId: string | undefined): string => `chat.draft:${chatId || 'new'}`
 
-const quoteKey = (chatId: string | undefined): string => `chat.quote:${chatId || 'new'}`
+export const maxQuotes = 5
+
+const quotesKey = (chatId: string | undefined): string => `chat.quotes:${chatId || 'new'}`
+
+/** A stored value that is not a list of strings reads as no quotes. */
+function parseQuotes(raw: string | null): string[] {
+  if (raw === null) return []
+  try {
+    const list: unknown = JSON.parse(raw)
+    return Array.isArray(list) && list.every((q) => typeof q === 'string') ? list : []
+  } catch {
+    return []
+  }
+}
 
 const hasText = (text: string): boolean => /\S/.test(text)
 
@@ -19,10 +32,12 @@ interface KeyedState {
 }
 
 export interface ComposerHandle {
-  /** Replaces chatId's draft text and quote with these, discarding what was there (decision 25). */
-  fill(chatId: string, text: string, quote?: string): void
-  /** Sets chatId's draft quote, replacing any earlier one, and focuses the box with the cursor at the end. */
+  /** Replaces chatId's draft text and quotes with these, discarding what was there (decision 25). */
+  fill(chatId: string, text: string, quotes?: string[]): void
+  /** Adds a quote to chatId's draft below the others (not when equal to one there, nor past maxQuotes) and focuses the box at the end. */
   quote(chatId: string | undefined, text: string): void
+  /** How many quotes chatId's draft holds now. */
+  quoteCount(chatId: string | undefined): number
 }
 
 interface ComposerProps {
@@ -30,7 +45,7 @@ interface ComposerProps {
   chatId: string | undefined
   /** The chat's active run is queued or running: the button stops it, and Enter queues the message. */
   answering: boolean
-  onSend(text: string, requestId: string, quote: string | null): Promise<void>
+  onSend(text: string, requestId: string, quotes: string[]): Promise<void>
   onStop(): void
   /** The row under the box: the model button and the context meter. */
   footer: React.ReactNode
@@ -48,7 +63,7 @@ export function Composer({
   const { storage } = usePlatform()
   const key = draftKey(chatId)
   const [text, setText] = useState(() => storage.get(key) ?? '')
-  const [quote, setQuote] = useState<string | null>(() => storage.get(quoteKey(chatId)) ?? null)
+  const [quotes, setQuotes] = useState(() => parseQuotes(storage.get(quotesKey(chatId))))
   const [shownKey, setShownKey] = useState(key)
   // The send cycle belongs to the chat it started in: another chat starts idle.
   const [machine, setMachine] = useState<KeyedState>({ key, state: idle })
@@ -70,7 +85,7 @@ export function Composer({
   if (shownKey !== key) {
     setShownKey(key)
     setText(storage.get(key) ?? '')
-    setQuote(storage.get(quoteKey(chatId)) ?? null)
+    setQuotes(parseQuotes(storage.get(quotesKey(chatId))))
   }
   const shown = machine.key === key ? machine.state : idle
 
@@ -99,53 +114,52 @@ export function Composer({
     el.setSelectionRange(el.value.length, el.value.length)
   }, [focusEnd])
 
-  function changeQuote(forChatId: string | undefined, next: string | null): void {
-    setQuote(next)
-    storage.set(quoteKey(forChatId), next)
+  /** Stored lists are written at once, so storage always holds what the shown chat's chips show. */
+  const storedQuotes = (forChatId: string | undefined): string[] =>
+    parseQuotes(storage.get(quotesKey(forChatId)))
+
+  function changeQuotes(forChatId: string | undefined, next: string[]): void {
+    storage.set(quotesKey(forChatId), next.length === 0 ? null : JSON.stringify(next))
+    if (draftKey(forChatId) === shownNow.current) setQuotes(next)
   }
 
   useImperativeHandle(ref, () => ({
-    fill(forChatId, filled, filledQuote) {
+    fill(forChatId, filled, filledQuotes) {
       const forKey = draftKey(forChatId)
       if (forKey !== shownNow.current) {
         storage.set(forKey, filled)
-        storage.set(quoteKey(forChatId), filledQuote ?? null)
+        changeQuotes(forChatId, filledQuotes ?? [])
         return
       }
       change(filled)
-      changeQuote(forChatId, filledQuote ?? null)
+      changeQuotes(forChatId, filledQuotes ?? [])
       setFocusEnd((n) => n + 1)
     },
     quote(forChatId, quoted) {
-      if (draftKey(forChatId) !== shownNow.current) {
-        storage.set(quoteKey(forChatId), quoted)
-        return
-      }
-      changeQuote(forChatId, quoted)
-      setFocusEnd((n) => n + 1)
-    }
+      const held = storedQuotes(forChatId)
+      if (held.length < maxQuotes && !held.includes(quoted)) changeQuotes(forChatId, [...held, quoted])
+      if (draftKey(forChatId) === shownNow.current) setFocusEnd((n) => n + 1)
+    },
+    quoteCount: (forChatId) => storedQuotes(forChatId).length
   }))
 
   async function send(): Promise<void> {
     const sentKey = key
-    const sentQuoteKey = quoteKey(chatId)
+    const sentChatId = chatId
     if (!hasText(text) || status(sentKey).status === 'sending') return
     const sending = fire(sentKey, { type: 'send', requestId: crypto.randomUUID() })
     if (sending.status !== 'sending') return
     try {
-      await onSend(text, sending.requestId, quote)
+      await onSend(text, sending.requestId, quotes)
     } catch (error) {
       fire(sentKey, { type: 'failed', message: sendErrorMessage(error) })
       return
     }
     fire(sentKey, { type: 'sent' })
     storage.set(sentKey, null)
-    storage.set(sentQuoteKey, null)
     // A new chat has its id by now and shows that chat's (empty) draft; elsewhere the sent text goes.
-    if (shownNow.current === sentKey) {
-      setText('')
-      setQuote(null)
-    }
+    if (shownNow.current === sentKey) setText('')
+    changeQuotes(sentChatId, [])
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>): void {
@@ -163,14 +177,22 @@ export function Composer({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-1.5 rounded-[18px] border bg-popover p-2 shadow-[0_1px_2px_rgba(24,24,27,0.06)]">
-        {quote !== null && (
-          <QuoteChip
-            text={quote}
-            onRemove={() => {
-              changeQuote(chatId, null)
-              field.current?.focus()
-            }}
-          />
+        {quotes.length > 0 && (
+          <div className="flex max-h-[132px] flex-col gap-1 overflow-y-auto">
+            {quotes.map((quote, index) => (
+              <QuoteChip
+                key={index}
+                text={quote}
+                onRemove={() => {
+                  changeQuotes(
+                    chatId,
+                    quotes.filter((_, at) => at !== index)
+                  )
+                  field.current?.focus()
+                }}
+              />
+            ))}
+          </div>
         )}
         <div className="flex items-end gap-1.5">
           <label htmlFor="chat-message" className="sr-only">
