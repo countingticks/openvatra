@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactElement, type ReactNode } from 'react'
+import { useRef, type ComponentProps, type ReactElement, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
-import { Button } from '@app/ui/button'
+import { CopyButton } from '@app/ui/CopyButton'
 
 // Only http(s) leaves the app (main enforces the same); anything else is shown as plain text.
 const isWebUrl = (url: string | undefined): url is string => !!url && /^https?:\/\//i.test(url)
@@ -15,29 +15,12 @@ function languageOf(children: ReactNode): string {
 
 function CodeBlock({ children }: ComponentProps<'pre'>): React.JSX.Element {
   const pre = useRef<HTMLPreElement>(null)
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (!copied) return
-    const timer = setTimeout(() => setCopied(false), 1500)
-    return () => clearTimeout(timer)
-  }, [copied])
-
-  const copy = (): void => {
-    // Read the text from the DOM: the highlighted code is many nested spans, the DOM already joins them.
-    navigator.clipboard
-      .writeText(pre.current?.textContent ?? '')
-      .then(() => setCopied(true))
-      .catch((error: unknown) => console.error('Could not copy the code', error))
-  }
-
   return (
     <div className="my-3 overflow-hidden rounded-lg border bg-muted/50">
       <div className="flex items-center justify-between border-b px-3 py-1 font-sans text-xs text-muted-foreground">
         <span>{languageOf(children)}</span>
-        <Button variant="ghost" size="xs" aria-label="Copy code" onClick={copy}>
-          {copied ? 'Copied' : 'Copy'}
-        </Button>
+        {/* Read the text from the DOM: the highlighted code is many nested spans, the DOM already joins them. */}
+        <CopyButton text={() => pre.current?.textContent ?? ''} label="Copy code" />
       </div>
       <pre ref={pre} className="overflow-x-auto p-3 font-mono text-[13px] leading-relaxed">
         {children}

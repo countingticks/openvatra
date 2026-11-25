@@ -2,7 +2,8 @@ import { RotateCw } from 'lucide-react'
 import type { MessagePart, MessageStats } from '@app/core/generated'
 import { Button } from '@app/ui/button'
 import { answerCopyText, speedText, statsLine } from './answerText'
-import { CopyButton, MessageActions } from './MessageActions'
+import { CopyButton } from '@app/ui/CopyButton'
+import { MessageActions } from './MessageActions'
 
 /** Copy, Regenerate and the speed under a finished answer; shown on hover or focus, always in the accessibility tree. */
 export function AnswerActions({

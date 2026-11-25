@@ -7,7 +7,8 @@ import { AnswerBlock } from './AnswerBlock'
 import { thoughtLabel } from './answerText'
 import { LastInputEditor } from './LastInputEditor'
 import { LiveEntry } from './LiveEntry'
-import { CopyButton, MessageActions } from './MessageActions'
+import { CopyButton } from '@app/ui/CopyButton'
+import { MessageActions } from './MessageActions'
 import type { RunView, TranscriptEntry } from './runView'
 
 // Failures the model settings can fix (decision 20).
