@@ -98,6 +98,7 @@ interface Options {
   /** Opens this chat (its transcript and chat entry answer as given); omitted: a new chat. */
   open?: { transcript?: Transcript; chat?: ChatBody }
   models?: ModelInfo[]
+  storage?: Record<string, string>
 }
 
 function show(options: Options = {}): ReturnType<typeof renderWithStore> & {
@@ -105,7 +106,8 @@ function show(options: Options = {}): ReturnType<typeof renderWithStore> & {
 } {
   const saved = options.open ? { lastRoute: 'chat/c1' } : {}
   const rendered = renderWithStore(<ChatScreen showWelcome={false} />, saved, {
-    models: options.models ?? [model('tiny')]
+    models: options.models ?? [model('tiny')],
+    storage: options.storage
   })
   const { coreHttp } = rendered
   coreHttp.answer('/api/chats/c1', options.open?.chat ?? chatBody())
@@ -143,6 +145,20 @@ describe('ChatScreen', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('a send with a quote posts it', async () => {
+    const { coreHttp } = show({ storage: { 'chat.quote:new': 'q' } })
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
+
+    await type('Explain')
+    enter()
+
+    await waitFor(() =>
+      expect(runPosts(coreHttp)).toEqual([
+        { requestId: expect.any(String), text: 'Explain', model: 'tiny', quote: 'q' }
+      ])
+    )
   })
 
   it('starts a new chat with the first chat model, then shows it in place', async () => {
@@ -730,6 +746,19 @@ describe('ChatScreen', () => {
       )
       await waitFor(() => expect(message()).toHaveValue('hi'))
       expect(message()).toHaveFocus()
+    })
+
+    it('Rewind of a quoted message puts its text and quote back in the box', async () => {
+      const { coreHttp } = show({ open: { transcript: done() } })
+      coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({
+        status: 200,
+        body: { seq: 4, text: 'hi', quote: 'q' }
+      }))
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))
+
+      await waitFor(() => expect(message()).toHaveValue('hi'))
+      expect(screen.getByRole('group', { name: 'Quote' })).toHaveTextContent('q')
     })
 
     it('a refused rewind is logged and leaves the box as it was', async () => {

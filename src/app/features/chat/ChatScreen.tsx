@@ -75,10 +75,15 @@ function ChatView(): React.JSX.Element {
     if (status === 'notFound') dispatch(routeReplaced({ tab: 'chat' }))
   }, [status, dispatch])
 
-  async function send(text: string, requestId: string): Promise<void> {
+  async function send(text: string, requestId: string, quote: string | null): Promise<void> {
     const ref = await startRun({
       // A new chat names the model it shows, so what is shown is what answers.
-      startRun: { requestId, text, ...(chatId ? { chatId } : model ? { model } : {}) }
+      startRun: {
+        requestId,
+        text,
+        ...(chatId ? { chatId } : model ? { model } : {}),
+        ...(quote ? { quote } : {})
+      }
     }).unwrap()
     if (chatId === undefined) dispatch(routeReplaced({ tab: 'chat', chatId: ref.chatId }))
   }
@@ -119,7 +124,7 @@ function ChatView(): React.JSX.Element {
     if (chatId === undefined) return
     try {
       const result = await rewindChat({ id: chatId, body: { runId } }).unwrap()
-      composer.current?.fill(chatId, result.text)
+      composer.current?.fill(chatId, result.text, result.quote)
     } catch (error) {
       console.error('Could not rewind the chat', error)
     }
