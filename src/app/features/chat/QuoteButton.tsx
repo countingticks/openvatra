@@ -101,7 +101,8 @@ export function QuoteButton({
             top: placed.top,
             transform: placed.below ? 'translateX(-50%)' : 'translate(-50%, -100%)'
           }}
-          className="pointer-events-auto absolute bg-popover shadow-sm dark:bg-popover"
+          // Opaque on hover, as the model and context buttons are: outline's dark hover is see-through.
+          className="pointer-events-auto absolute bg-popover shadow-sm hover:bg-accent dark:bg-popover dark:hover:bg-accent"
         >
           Reply
         </Button>
