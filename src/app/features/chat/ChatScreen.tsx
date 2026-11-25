@@ -144,7 +144,7 @@ function ChatView(): React.JSX.Element {
       <PixelBackdrop />
       <QuoteButton
         container={scroller}
-        onQuote={(text) => composer.current?.quote(chatId, { text })}
+        onQuote={(quote) => composer.current?.quote(chatId, quote)}
         full={() => (composer.current?.quoteCount(chatId) ?? 0) >= maxQuotes}
       />
       <div className="relative flex h-full flex-col">
