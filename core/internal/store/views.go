@@ -531,14 +531,25 @@ func applyInput(tx *sql.Tx, runID string, e event.Event) error {
 		p.RequestID, runID, p.ChatID); err != nil {
 		return err
 	}
-	body := p.Text
-	if len(p.Quotes) > 0 {
-		body = strings.Join(p.Quotes, "\n\n") + "\n\n" + p.Text
+	var found []string // the search row: each quote then its reply, then the text; blanks skipped
+	title := p.Text
+	for _, q := range p.Quotes {
+		found = append(found, q.Text, q.Reply)
+		if strings.TrimSpace(title) == "" {
+			title = q.Reply // the first non-empty reply, when the text is blank
+		}
 	}
-	if err := indexMessage(tx, e.Seq, p.ChatID, body); err != nil {
+	found = append(found, p.Text)
+	var rows []string
+	for _, f := range found {
+		if strings.TrimSpace(f) != "" {
+			rows = append(rows, f)
+		}
+	}
+	if err := indexMessage(tx, e.Seq, p.ChatID, strings.Join(rows, "\n\n")); err != nil {
 		return err
 	}
-	res, err := tx.Exec(`UPDATE chats SET title = ? WHERE id = ? AND title = ''`, CutTitle(p.Text), p.ChatID)
+	res, err := tx.Exec(`UPDATE chats SET title = ? WHERE id = ? AND title = ''`, CutTitle(title), p.ChatID)
 	if err != nil {
 		return err
 	}

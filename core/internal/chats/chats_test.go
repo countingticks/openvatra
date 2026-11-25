@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -358,9 +359,10 @@ func TestABadQuoteIsCheckedBeforeAnythingIsWritten(t *testing.T) {
 	f.setModels([]provider.Model{installed[0], {ID: "m3", Kind: provider.ModelChat, Context: 8192}})
 	before := f.chatModelEvents(first.ChatID)
 
-	for name, quotes := range map[string][]string{
-		"a blank quote": {"ok", "  \n "},
-		"6 quotes":      {"1", "2", "3", "4", "5", "6"},
+	for name, quotes := range map[string][]event.Quote{
+		"a blank quote":          {{Text: "ok"}, {Text: "  \n "}},
+		"6 quotes":               {{Text: "1"}, {Text: "2"}, {Text: "3"}, {Text: "4"}, {Text: "5"}, {Text: "6"}},
+		"a reply of 4,001 runes": {{Text: "ok", Reply: strings.Repeat("a", 4_001)}},
 	} {
 		_, err := f.svc.Send(bg, SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again", Quotes: quotes})
 		if !errors.Is(err, run.ErrBadInput) {

@@ -19,6 +19,14 @@ func reasoned(seq int64, text, reasoning string) Message {
 }
 
 func quoted(seq int64, text string, quotes ...string) Message {
+	qs := make([]event.Quote, len(quotes))
+	for i, q := range quotes {
+		qs[i] = event.Quote{Text: q}
+	}
+	return quotedWith(seq, text, qs...)
+}
+
+func quotedWith(seq int64, text string, quotes ...event.Quote) Message {
 	return Message{Seq: seq, Role: "user", Parts: event.InputParts(text, quotes)}
 }
 
@@ -114,6 +122,20 @@ func TestAssembleSend(t *testing.T) {
 	t.Run("two quotes are sent as two blockquotes, a blank line apart, then the text", func(t *testing.T) {
 		p := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "why?", "a", "b")}}, w)
 		if got := sentTexts(p)[1]; got != "user:> a\n\n> b\n\nwhy?" {
+			t.Fatalf("sent = %q", got)
+		}
+	})
+
+	t.Run("a reply is sent under its quote, then the text", func(t *testing.T) {
+		m := quotedWith(1, "why?", event.Quote{Text: "a", Reply: "r1"}, event.Quote{Text: "b"})
+		if got := sentTexts(Assemble(Input{Fixed: "S", Messages: []Message{m}}, w))[1]; got != "user:> a\n\nr1\n\n> b\n\nwhy?" {
+			t.Fatalf("sent = %q", got)
+		}
+	})
+
+	t.Run("a message of only a replied quote sends no trailing text", func(t *testing.T) {
+		m := quotedWith(1, "", event.Quote{Text: "a", Reply: "r1"})
+		if got := sentTexts(Assemble(Input{Fixed: "S", Messages: []Message{m}}, w))[1]; got != "user:> a\n\nr1" {
 			t.Fatalf("sent = %q", got)
 		}
 	})

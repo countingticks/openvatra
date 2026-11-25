@@ -16,13 +16,13 @@ import (
 )
 
 type StartRun struct {
-	RequestID   string   `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
-	ChatID      string   `json:"chatId,omitempty" doc:"omit to start a new chat"`
-	Model       string   `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
-	Text        string   `json:"text,omitempty"`
-	Replace     string   `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
-	ReplaceFrom string   `json:"replaceFrom,omitempty" doc:"a run id: retract that run and every later one, then send text as a new run"`
-	Quotes      []string `json:"quotes,omitempty" doc:"texts the user quoted, at most 5, each 1 to 4,000 characters once trimmed; need text"`
+	RequestID   string        `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
+	ChatID      string        `json:"chatId,omitempty" doc:"omit to start a new chat"`
+	Model       string        `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
+	Text        string        `json:"text,omitempty"`
+	Replace     string        `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
+	ReplaceFrom string        `json:"replaceFrom,omitempty" doc:"a run id: retract that run and every later one, then send text as a new run"`
+	Quotes      []event.Quote `json:"quotes,omitempty" doc:"what the user quoted, at most 5, each with an optional reply; text may be blank when a quote has a reply"`
 }
 
 type RewindChat struct {
@@ -31,9 +31,9 @@ type RewindChat struct {
 }
 
 type Rewound struct {
-	Seq    int64    `json:"seq" doc:"the last turn.retracted's seq"`
-	Text   string   `json:"text" doc:"the run's first input, for the message box"`
-	Quotes []string `json:"quotes,omitempty" doc:"the first input's quotes, for the message box"`
+	Seq    int64         `json:"seq" doc:"the last turn.retracted's seq"`
+	Text   string        `json:"text" doc:"the run's first input, for the message box"`
+	Quotes []event.Quote `json:"quotes,omitempty" doc:"the first input's quotes, each with its reply, for the message box"`
 }
 
 type RunRef struct {
@@ -100,7 +100,7 @@ type TranscriptItem struct {
 	RunID   string              `json:"runId"`
 	Time    int64               `json:"time" doc:"Unix ms when the message was written"`
 	Text    string              `json:"text,omitempty" doc:"input and summary"`
-	Quotes  []string            `json:"quotes,omitempty" doc:"input: the texts it quoted"`
+	Quotes  []event.Quote       `json:"quotes,omitempty" doc:"input: its quotes, each with an optional reply"`
 	Parts   []event.MessagePart `json:"parts,omitempty" doc:"answer"`
 	Stats   *event.MessageStats `json:"stats,omitempty" doc:"answer"`
 	Partial bool                `json:"partial,omitempty" doc:"the answer was cut off by a stop or a failure"`

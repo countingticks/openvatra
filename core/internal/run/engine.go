@@ -48,8 +48,9 @@ type Spec struct {
 	Model   string // required for a new chat, ignored otherwise
 	Profile string // "" = "chat"
 	Text    string
-	// Quotes are texts the user quoted, sent above Text; nil = none. Needs Text.
-	Quotes    []string
+	// Quotes are what the user quoted, each with an optional reply, sent above Text; nil = none. Text may be blank
+	// only when a quote has a reply.
+	Quotes    []event.Quote
 	RequestID string
 	// Replace true: retract the chat's last turn and send its inputs again; Text, when set, replaces the last of them.
 	Replace bool
@@ -74,6 +75,7 @@ var (
 const (
 	maxInputRunes      = 200_000
 	maxQuoteRunes      = 4_000
+	maxReplyRunes      = 4_000
 	maxQuotes          = 5
 	defaultContextSize = 16_384
 	readPage           = 1000
@@ -140,23 +142,27 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	if s.Profile == "" {
 		s.Profile = defaultProfile
 	}
-	bad := strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes
-	if s.Replace {
-		// The text is optional: without it the last turn's inputs are sent again as they were.
-		bad = (s.Text != "" && bad) || s.ChatID == ""
-	}
-	if s.ReplaceFrom != "" {
-		bad = strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes || s.ChatID == "" || s.Replace
-	}
+	quotesBad, replied := len(s.Quotes) > maxQuotes, false
 	if len(s.Quotes) > 0 {
-		bad = bad || len(s.Quotes) > maxQuotes || strings.TrimSpace(s.Text) == ""
-		trimmed := make([]string, len(s.Quotes))
+		trimmed := make([]event.Quote, len(s.Quotes))
 		for i, q := range s.Quotes {
-			trimmed[i] = strings.TrimSpace(q)
-			n := utf8.RuneCountInString(trimmed[i])
-			bad = bad || n < 1 || n > maxQuoteRunes
+			trimmed[i] = event.Quote{Text: strings.TrimSpace(q.Text), Reply: strings.TrimSpace(q.Reply)}
+			n := utf8.RuneCountInString(trimmed[i].Text)
+			quotesBad = quotesBad || n < 1 || n > maxQuoteRunes || utf8.RuneCountInString(trimmed[i].Reply) > maxReplyRunes
+			replied = replied || trimmed[i].Reply != ""
 		}
 		s.Quotes = trimmed
+	}
+	// The text may be blank only when a quote has a reply.
+	blank := strings.TrimSpace(s.Text) == ""
+	bad := (blank && !replied) || utf8.RuneCountInString(s.Text) > maxInputRunes || quotesBad
+	if s.Replace {
+		// The text is optional: without it the last turn's inputs are sent again as they were, with no quotes.
+		bad = (s.Text != "" && (blank || utf8.RuneCountInString(s.Text) > maxInputRunes)) || s.ChatID == "" ||
+			(s.Text == "" && len(s.Quotes) > 0) || quotesBad
+	}
+	if s.ReplaceFrom != "" {
+		bad = bad || s.ChatID == "" || s.Replace
 	}
 	if s.RequestID == "" || bad || (s.ChatID == "" && s.Model == "") {
 		return Ref{}, ErrBadInput
@@ -277,7 +283,7 @@ func (e *Engine) replaceFromLocked(ctx context.Context, s Spec) (Ref, error) {
 type Rewound struct {
 	Seq    int64
 	Text   string
-	Quotes []string // nil = none
+	Quotes []event.Quote // nil = none
 }
 
 // Rewind retracts runID and every later run of the chat that still has a message.
@@ -301,7 +307,7 @@ func (e *Engine) Rewind(ctx context.Context, chatID, runID string) (Rewound, err
 
 type userInput struct {
 	Text   string
-	Quotes []string
+	Quotes []event.Quote
 }
 
 // retraction is what retractFrom appended: Seq is the last turn.retracted's seq, Inputs the first retracted
@@ -856,6 +862,11 @@ func (e *Engine) askTitle(w *worker, lease sched.Lease, st State) (string, error
 				return "", fmt.Errorf("message %d: %w", m.Seq, err)
 			}
 			first = textOf(parts)
+			for _, q := range event.QuotesOf(parts) {
+				if first == "" {
+					first = q.Reply // a message of only replied quotes is titled from its first reply
+				}
+			}
 			break
 		}
 	}

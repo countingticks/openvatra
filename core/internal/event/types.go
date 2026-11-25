@@ -1,6 +1,9 @@
 package event
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // ConfigChanged says a config section was written; Rev is the section's new revision.
 type ConfigChanged struct {
@@ -76,10 +79,10 @@ func (RunQueued) EventType() Type { return Type{Name: "run.queued", V: 1, Class:
 
 // InputReceived is the user's text for a run; RequestID makes a repeated send write nothing.
 type InputReceived struct {
-	ChatID    string   `json:"chatId"`
-	Text      string   `json:"text"`
-	Quotes    []string `json:"quotes,omitempty"` // the texts the user quoted, trimmed, in order; nil = none
-	RequestID string   `json:"requestId"`
+	ChatID    string  `json:"chatId"`
+	Text      string  `json:"text"`
+	Quotes    []Quote `json:"quotes,omitempty"` // what the user quoted, in order; nil = none
+	RequestID string  `json:"requestId"`
 }
 
 func (InputReceived) EventType() Type { return Type{Name: "input.received", V: 1, Class: Durable} }
@@ -146,27 +149,53 @@ type MessagePartial struct {
 
 func (MessagePartial) EventType() Type { return Type{Name: "message.partial", V: 1, Class: Ephemeral} }
 
+// Quote is text the user quoted and their optional reply to it, both trimmed.
+type Quote struct {
+	Text  string `json:"text" doc:"the quoted text, 1 to 4,000 characters once trimmed"`
+	Reply string `json:"reply,omitempty" doc:"the user's reply to it, at most 4,000 characters once trimmed"` // "" = none
+}
+
+// UnmarshalJSON also accepts a bare JSON string (the first shape, still in dev event logs) as Quote{Text: s}.
+func (q *Quote) UnmarshalJSON(b []byte) error {
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		*q = Quote{Text: s}
+		return nil
+	}
+	type plain Quote
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*q = Quote(p)
+	return nil
+}
+
 // MessagePart is one part of a stored message.
 type MessagePart struct {
-	Kind string `json:"kind" enum:"text,reasoning,quote"`
-	Text string `json:"text"`
+	Kind  string `json:"kind" enum:"text,reasoning,quote"`
+	Text  string `json:"text"`
+	Reply string `json:"reply,omitempty" doc:"a quote part's reply"`
 }
 
-// InputParts is a user message's parts: one quote part per quote, in order, then the text.
-func InputParts(text string, quotes []string) []MessagePart {
+// InputParts is a user message's parts: one quote part per quote, in order, then the text unless it is blank.
+func InputParts(text string, quotes []Quote) []MessagePart {
 	parts := make([]MessagePart, 0, len(quotes)+1)
 	for _, q := range quotes {
-		parts = append(parts, MessagePart{Kind: "quote", Text: q})
+		parts = append(parts, MessagePart{Kind: "quote", Text: q.Text, Reply: q.Reply})
 	}
-	return append(parts, MessagePart{Kind: "text", Text: text})
+	if strings.TrimSpace(text) != "" {
+		parts = append(parts, MessagePart{Kind: "text", Text: text})
+	}
+	return parts
 }
 
-// QuotesOf is the texts of parts' quote parts, in order; nil when there are none.
-func QuotesOf(parts []MessagePart) []string {
-	var quotes []string
+// QuotesOf is parts' quote parts as quotes, in order; nil when there are none.
+func QuotesOf(parts []MessagePart) []Quote {
+	var quotes []Quote
 	for _, p := range parts {
 		if p.Kind == "quote" {
-			quotes = append(quotes, p.Text)
+			quotes = append(quotes, Quote{Text: p.Text, Reply: p.Reply})
 		}
 	}
 	return quotes
