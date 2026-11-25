@@ -132,3 +132,31 @@ test('Copy puts the answer on the clipboard, and deleting the open chat opens a 
   await expect(chats.getByRole('button', { name: `Actions for ${title}` })).toHaveCount(0)
   await expect(mainWindow.getByRole('textbox', { name: 'Message' })).toBeFocused()
 })
+
+test('Rewind removes the second turn and puts its text in the message box in place of the draft', async () => {
+  const box = mainWindow.getByRole('textbox', { name: 'Message' })
+  const conversation = mainWindow.getByRole('log', { name: 'Conversation' })
+  const copies = conversation.getByRole('button', { name: 'Copy answer' })
+
+  await box.fill('First')
+  await box.press('Enter')
+  await expect(copies).toHaveCount(1, { timeout: 20_000 })
+  // An input sent while the first run still finishes (its title step) queues into it: wait until the run is over.
+  await expect(conversation.getByRole('button', { name: 'Rewind message' })).not.toHaveAttribute(
+    'aria-disabled',
+    'true',
+    { timeout: 20_000 }
+  )
+  await box.fill('Second')
+  await box.press('Enter')
+  await expect(copies).toHaveCount(2, { timeout: 20_000 })
+
+  await box.fill('half typed')
+  await conversation.getByRole('button', { name: 'Rewind message' }).nth(1).click()
+
+  await expect(conversation.getByText('Second', { exact: true })).toHaveCount(0)
+  await expect(copies).toHaveCount(1)
+  await expect(conversation.getByText('First', { exact: true })).toBeVisible()
+  await expect(box).toHaveValue('Second')
+  await expect(box).toBeFocused()
+})

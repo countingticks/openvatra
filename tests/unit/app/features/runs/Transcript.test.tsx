@@ -45,18 +45,18 @@ function transcript(items: TranscriptItem[], runs: RunSnapshot[] = [run()], acti
   }
 }
 
-const input = (seq: number, text: string): TranscriptItem => ({
+const input = (seq: number, text: string, runId = 'r1'): TranscriptItem => ({
   kind: 'input',
   seq,
-  runId: 'r1',
+  runId,
   time: 0,
   text
 })
 
-const answer = (seq: number, overrides: Partial<TranscriptItem> = {}): TranscriptItem => ({
+const answer = (seq: number, overrides: Partial<TranscriptItem> = {}, runId = 'r1'): TranscriptItem => ({
   kind: 'answer',
   seq,
-  runId: 'r1',
+  runId,
   time: 0,
   parts: [{ kind: 'text', text: 'An answer' }],
   stats: stats(),
@@ -71,19 +71,26 @@ interface Shown extends ReturnType<typeof renderWithStore> {
   onContinue: Mock<(runId: string) => void>
   onOpenModelSettings: Mock<() => void>
   onRegenerate: Mock<() => void>
-  onEdit: Mock<(text: string) => Promise<void>>
+  onEdit: Mock<(runId: string, text: string) => Promise<void>>
+  onRewind: Mock<(runId: string) => Promise<void>>
   /** Dispatches a core event and lets the next animation frame render it. */
   push(event: Event): void
 }
 
 function show(
   wire: Wire,
-  options: { modelLoading?: boolean; onEdit?: Mock<(text: string) => Promise<void>> } = {}
+  options: {
+    modelLoading?: boolean
+    onEdit?: Mock<(runId: string, text: string) => Promise<void>>
+    onRewind?: Mock<(runId: string) => Promise<void>>
+  } = {}
 ): Shown {
   const onContinue = vi.fn<(runId: string) => void>()
   const onOpenModelSettings = vi.fn<() => void>()
   const onRegenerate = vi.fn<() => void>()
-  const onEdit = options.onEdit ?? vi.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined)
+  const onEdit =
+    options.onEdit ?? vi.fn<(runId: string, text: string) => Promise<void>>().mockResolvedValue(undefined)
+  const onRewind = options.onRewind ?? vi.fn<(runId: string) => Promise<void>>().mockResolvedValue(undefined)
   const rendered = renderWithStore(
     <Transcript
       view={runView(wire)}
@@ -93,6 +100,7 @@ function show(
       onOpenModelSettings={onOpenModelSettings}
       onRegenerate={onRegenerate}
       onEdit={onEdit}
+      onRewind={onRewind}
     />
   )
   const push = (event: Event): void => {
@@ -101,7 +109,7 @@ function show(
     })
     act(() => vi.advanceTimersToNextFrame())
   }
-  return { ...rendered, onContinue, onOpenModelSettings, onRegenerate, onEdit, push }
+  return { ...rendered, onContinue, onOpenModelSettings, onRegenerate, onEdit, onRewind, push }
 }
 
 describe('Transcript', () => {
@@ -236,14 +244,20 @@ describe('Transcript', () => {
     expect(within(row).getAllByText('38 tok/s')).toHaveLength(1)
   })
 
-  it('gives the last idle input Edit and Copy, and an earlier input Copy only', () => {
-    show(transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)]))
+  it('gives each input that starts a run Edit, and an input queued into a run Copy only', () => {
+    show(
+      transcript(
+        [input(1, 'A'), answer(2), input(3, 'B'), answer(4), input(5, 'C', 'r2'), answer(6, {}, 'r2')],
+        [run(), run({ id: 'r2' })]
+      )
+    )
     const rows = screen
       .getAllByRole('button', { name: 'Copy message' })
       .map((button) => button.parentElement as HTMLElement)
-    expect(rows).toHaveLength(2)
-    expect(within(rows[0]).queryByRole('button', { name: 'Edit message' })).toBeNull()
-    expect(within(rows[1]).getByRole('button', { name: 'Edit message' })).toBeInTheDocument()
+    expect(rows).toHaveLength(3)
+    expect(within(rows[0]).getByRole('button', { name: 'Edit message' })).toBeInTheDocument()
+    expect(within(rows[1]).queryByRole('button', { name: 'Edit message' })).toBeNull()
+    expect(within(rows[2]).getByRole('button', { name: 'Edit message' })).toBeInTheDocument()
   })
 
   it("shows each input's and answer's age, and the full date as its title", () => {
@@ -366,7 +380,11 @@ describe('Transcript', () => {
     const running = run({ state: 'running' })
     show(transcript([...two, input(5, 'C')], [running], running))
     expect(screen.queryByRole('button', { name: 'Regenerate answer' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull()
+    const edit = screen.getByRole('button', { name: 'Edit message' })
+    expect(edit).toHaveAttribute('aria-disabled', 'true')
+    expect(edit).toHaveAttribute('title', 'Stop the answer first')
+    fireEvent.click(edit)
+    expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull()
   })
 
   it('offers Retry, not Regenerate, for a failed last turn', () => {
@@ -383,13 +401,11 @@ describe('Transcript', () => {
   })
 
   describe('editing the last message', () => {
-    const two = (): Wire => transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)])
+    const two = (): Wire => transcript([input(1, 'B'), answer(2)])
     const editor = (): HTMLElement => screen.getByRole('textbox', { name: 'Edit message' })
 
-    it('offers Edit on the last input only, and Esc restores the bubble', () => {
+    it('Esc restores the bubble', () => {
       show(two())
-      expect(screen.getAllByRole('button', { name: 'Edit message' })).toHaveLength(1)
-
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       expect(editor()).toHaveValue('B')
       expect(editor()).toHaveFocus()
@@ -412,12 +428,14 @@ describe('Transcript', () => {
       expect(shown.onEdit).not.toHaveBeenCalled()
       fireEvent.keyDown(editor(), { key: 'Enter' })
 
-      expect(shown.onEdit).toHaveBeenCalledWith('B2')
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'B2')
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
 
     it('stays open with its text when sending fails', async () => {
-      const onEdit = vi.fn<(text: string) => Promise<void>>().mockRejectedValue(new Error('no'))
+      const onEdit = vi
+        .fn<(runId: string, text: string) => Promise<void>>()
+        .mockRejectedValue(new Error('no'))
       show(two(), { onEdit })
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       fireEvent.change(editor(), { target: { value: 'B2' } })
@@ -426,6 +444,104 @@ describe('Transcript', () => {
 
       await waitFor(() => expect(editor()).not.toBeDisabled())
       expect(editor()).toHaveValue('B2')
+    })
+  })
+
+  describe('editing any message that starts a run', () => {
+    const twoRuns = (): Wire =>
+      transcript(
+        [input(1, 'A'), answer(2), input(3, 'C', 'r2'), answer(4, {}, 'r2')],
+        [run(), run({ id: 'r2' })]
+      )
+    const editor = (): HTMLElement => screen.getByRole('textbox', { name: 'Edit message' })
+
+    it('editing an earlier message says how many messages go, and sends with its run', async () => {
+      const shown = show(twoRuns())
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit message' })[0])
+      expect(screen.getByText('Sending removes the 3 messages after it.')).toBeInTheDocument()
+
+      fireEvent.change(editor(), { target: { value: 'A2' } })
+      fireEvent.keyDown(editor(), { key: 'Enter' })
+
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'A2')
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
+    })
+
+    it("the last message's editor says the one answer after it goes, and an unanswered one says nothing", () => {
+      const answered = show(transcript([input(1, 'A'), answer(2)]))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
+      expect(screen.getByText('Sending removes the message after it.')).toBeInTheDocument()
+      answered.unmount()
+
+      show(
+        transcript(
+          [input(1, 'A')],
+          [run({ state: 'failed', error: { code: 'backend_failed', message: 'It stopped.' } })]
+        )
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
+      expect(screen.queryByText(/Sending removes/)).toBeNull()
+    })
+
+    it('one editor at a time', () => {
+      show(twoRuns())
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit message' })[0])
+      fireEvent.click(screen.getAllByRole('button', { name: 'Edit message' })[0])
+
+      expect(screen.getAllByRole('textbox', { name: 'Edit message' })).toHaveLength(1)
+      expect(editor()).toHaveValue('C')
+    })
+  })
+
+  describe('rewinding', () => {
+    const twoRuns = (): Wire =>
+      transcript(
+        [input(1, 'A'), answer(2), input(3, 'C', 'r2'), answer(4, {}, 'r2')],
+        [run(), run({ id: 'r2' })]
+      )
+    const rewinds = (): HTMLElement[] => screen.getAllByRole('button', { name: 'Rewind message' })
+
+    it('rewinds on the click, with no confirm', async () => {
+      const shown = show(twoRuns())
+
+      fireEvent.click(rewinds()[1])
+
+      expect(shown.onRewind).toHaveBeenCalledWith('r2')
+      expect(screen.queryByRole('dialog')).toBeNull()
+      await waitFor(() => expect(rewinds()[1]).not.toBeDisabled())
+    })
+
+    it('is disabled while its rewind is pending', async () => {
+      let finish = (): void => undefined
+      const onRewind = vi.fn<(runId: string) => Promise<void>>(
+        () => new Promise<void>((resolve) => (finish = resolve))
+      )
+      show(twoRuns(), { onRewind })
+
+      fireEvent.click(rewinds()[0])
+      expect(rewinds()[0]).toBeDisabled()
+      fireEvent.click(rewinds()[0])
+      expect(onRewind).toHaveBeenCalledTimes(1)
+
+      finish()
+      await waitFor(() => expect(rewinds()[0]).not.toBeDisabled())
+    })
+
+    it('waits while the chat answers', () => {
+      const running = run({ state: 'running' })
+      const shown = show(transcript([input(1, 'A'), input(2, 'B')], [running], running))
+
+      const rewind = screen.getByRole('button', { name: 'Rewind message' })
+      expect(rewind).toHaveAttribute('aria-disabled', 'true')
+      expect(rewind).toHaveAttribute('title', 'Stop the answer first')
+      fireEvent.click(rewind)
+      expect(shown.onRewind).not.toHaveBeenCalled()
+    })
+
+    it('an input queued into a run has no Rewind', () => {
+      show(transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)]))
+
+      expect(rewinds()).toHaveLength(1)
     })
   })
 })

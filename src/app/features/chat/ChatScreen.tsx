@@ -3,6 +3,7 @@ import { ArrowDown } from 'lucide-react'
 import {
   useGetChatQuery,
   useResumeRunMutation,
+  useRewindChatMutation,
   useStartRunMutation,
   useStopRunMutation
 } from '@app/core/generated'
@@ -14,7 +15,7 @@ import { Button } from '@app/ui/button'
 import { Ember } from '@app/ui/Ember'
 import { OverlayScroll } from '@app/ui/OverlayScroll'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
-import { Composer } from './Composer'
+import { Composer, type ComposerHandle } from './Composer'
 import { ContextPopover } from './ContextPopover'
 import { withLive } from './contextRows'
 import { useAnnouncer } from './useAnnouncer'
@@ -65,6 +66,8 @@ function ChatView(): React.JSX.Element {
   const [startRun] = useStartRunMutation()
   const [stopRun] = useStopRunMutation()
   const [resumeRun] = useResumeRunMutation()
+  const [rewindChat] = useRewindChatMutation()
+  const composer = useRef<ComposerHandle>(null)
   const { showLatest, jumpToLatest } = useFollowEnd(scroller, chatId)
 
   // A saved route to a chat that is gone (deleted elsewhere): open a new chat in its place.
@@ -94,13 +97,25 @@ function ChatView(): React.JSX.Element {
       .catch((error: unknown) => console.error('Could not regenerate the answer', error))
   }
 
-  async function edit(text: string): Promise<void> {
+  async function edit(runId: string, text: string): Promise<void> {
     if (chatId === undefined) return
     try {
-      await startRun({ startRun: { requestId: crypto.randomUUID(), chatId, text, replace: 'last' } }).unwrap()
+      await startRun({
+        startRun: { requestId: crypto.randomUUID(), chatId, text, replaceFrom: runId }
+      }).unwrap()
     } catch (error) {
       console.error('Could not send the edited message', error)
       throw error
+    }
+  }
+
+  async function rewind(runId: string): Promise<void> {
+    if (chatId === undefined) return
+    try {
+      const result = await rewindChat({ id: chatId, body: { runId } }).unwrap()
+      composer.current?.fill(chatId, result.text)
+    } catch (error) {
+      console.error('Could not rewind the chat', error)
     }
   }
 
@@ -161,6 +176,7 @@ function ChatView(): React.JSX.Element {
                 onOpenModelSettings={() => dispatch(settingsOpened({ section: 'models' }))}
                 onRegenerate={regenerate}
                 onEdit={edit}
+                onRewind={rewind}
               />
             )}
           </div>
@@ -172,6 +188,7 @@ function ChatView(): React.JSX.Element {
               <Ember state={answerState(activeRun, live, hasLiveEntry)} scale={2} />
             </div>
             <Composer
+              ref={composer}
               chatId={chatId}
               answering={answering}
               onSend={send}

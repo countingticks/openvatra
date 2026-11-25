@@ -8,6 +8,8 @@ import {
   chatIdOf,
   emptyTranscript,
   estimateTokens,
+  firstInputs,
+  messagesAfter,
   runIdOf,
   runView,
   waitingLine,
@@ -190,6 +192,60 @@ describe('runView', () => {
 
     expect(view.activeRun).not.toBeNull()
     expect(shown(view.entries)).toEqual(['input Ho', 'answer Lifetimes are scopes.'])
+  })
+})
+
+describe('firstInputs and messagesAfter', () => {
+  const context = {
+    used: 0,
+    size: 0,
+    parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 }
+  }
+  const text = [{ kind: 'text' as const, text: 'a' }]
+
+  it('the first input of each run is first; an input queued into a run is not', () => {
+    const view = runView({
+      seq: 3,
+      items: [
+        { kind: 'input', seq: 1, runId: 'r1', time: 0, text: 'A' },
+        { kind: 'input', seq: 2, runId: 'r1', time: 0, text: 'B' },
+        { kind: 'input', seq: 3, runId: 'r2', time: 0, text: 'C' }
+      ],
+      runs: [run({ id: 'r1', state: 'done' }), run({ id: 'r2', state: 'done' })],
+      activeRun: null,
+      context
+    })
+
+    expect(firstInputs(view.entries)).toEqual(new Set(['seq:1', 'seq:3']))
+  })
+
+  it('messages after an input count inputs and answers only', () => {
+    const failed = run({ id: 'r2', state: 'failed', error: { code: 'boom', message: 'x' } })
+    const view = runView({
+      seq: 5,
+      items: [
+        { kind: 'input', seq: 1, runId: 'r1', time: 0, text: 'A' },
+        { kind: 'answer', seq: 2, runId: 'r1', time: 0, parts: text },
+        { kind: 'summary', seq: 3, runId: 'r2', time: 0, text: 's' },
+        { kind: 'input', seq: 4, runId: 'r2', time: 0, text: 'C' },
+        { kind: 'answer', seq: 5, runId: 'r2', time: 0, parts: text, partial: true, failed: true }
+      ],
+      runs: [run({ id: 'r1', state: 'done' }), failed],
+      activeRun: null,
+      context
+    })
+
+    expect(view.entries.map((entry) => entry.kind)).toEqual([
+      'input',
+      'answer',
+      'summary',
+      'input',
+      'answer',
+      'notice'
+    ])
+    expect(messagesAfter(view.entries, 'seq:1')).toBe(3)
+    expect(messagesAfter(view.entries, 'seq:4')).toBe(1)
+    expect(messagesAfter(view.entries, 'seq:99')).toBe(0)
   })
 })
 

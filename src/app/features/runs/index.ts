@@ -4,6 +4,8 @@ export {
   chatIdOf,
   emptyTranscript,
   estimateTokens,
+  firstInputs,
+  messagesAfter,
   runIdOf,
   runView,
   waitingLine,

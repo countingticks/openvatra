@@ -5,12 +5,13 @@ import { Button } from '@app/ui/button'
 import { AnswerActions } from './AnswerActions'
 import { AnswerBlock } from './AnswerBlock'
 import { thoughtLabel } from './answerText'
-import { LastInputEditor } from './LastInputEditor'
+import { InputEditor } from './InputEditor'
 import { LiveEntry } from './LiveEntry'
 import { CopyButton } from '@app/ui/CopyButton'
 import { MessageActions } from './MessageActions'
 import { MessageTime } from './MessageTime'
-import type { RunView, TranscriptEntry } from './runView'
+import { RewindButton } from './RewindButton'
+import { firstInputs, messagesAfter, type RunView, type TranscriptEntry } from './runView'
 
 // Failures the model settings can fix (decision 20).
 const settingsFixes = new Set(['model_not_found', 'model_load_failed', 'context_too_small'])
@@ -24,8 +25,13 @@ interface TranscriptProps {
   onOpenModelSettings(): void
   /** Answers the last turn again (also what Retry does). */
   onRegenerate(): void
-  /** Sends the last message again with this text; rejects when it could not be sent. */
-  onEdit(text: string): Promise<void>
+  /**
+   * Sends this run's first message again with this text, removing that run and every later one; rejects when
+   * it could not be sent.
+   */
+  onEdit(runId: string, text: string): Promise<void>
+  /** Removes this run and every later one and puts its first message in the box; resolves when that is done or failed. */
+  onRewind(runId: string): Promise<void>
 }
 
 const joined = (entry: Extract<TranscriptEntry, { kind: 'answer' }>, kind: 'text' | 'reasoning'): string =>
@@ -42,25 +48,24 @@ export function Transcript({
   onContinue,
   onOpenModelSettings,
   onRegenerate,
-  onEdit
+  onEdit,
+  onRewind
 }: TranscriptProps): React.JSX.Element {
-  const [editing, setEditing] = useState(false)
-  // Only the last turn can be redone, and not while a run is at work.
+  const [editing, setEditing] = useState<string | null>(null)
+  // Only the last turn can be regenerated, and nothing is redone while a run is at work.
   const last = view.entries.at(-1)
   const idle = view.activeRun === null
-  const lastInput =
-    idle && last
-      ? view.entries.findLast((entry) => entry.kind === 'input' && entry.runId === last.runId)
-      : undefined
+  const starters = firstInputs(view.entries)
   const render = (entry: TranscriptEntry): React.JSX.Element | null => {
     switch (entry.kind) {
       case 'input':
-        if (editing && entry === lastInput) {
+        if (editing === entry.key) {
           return (
-            <LastInputEditor
+            <InputEditor
               text={entry.text}
-              onSend={(text) => onEdit(text).then(() => setEditing(false))}
-              onCancel={() => setEditing(false)}
+              after={messagesAfter(view.entries, entry.key)}
+              onSend={(text) => onEdit(entry.runId, text).then(() => setEditing(null))}
+              onCancel={() => setEditing(null)}
             />
           )
         }
@@ -77,15 +82,22 @@ export function Transcript({
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}
             <MessageActions>
               <CopyButton text={entry.text} label="Copy message" />
-              {entry === lastInput && !entry.queued && (
+              {starters.has(entry.key) && (
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   aria-label="Edit message"
-                  onClick={() => setEditing(true)}
+                  aria-disabled={!idle || undefined}
+                  title={idle ? undefined : 'Stop the answer first'}
+                  onClick={() => {
+                    if (idle) setEditing(entry.key)
+                  }}
                 >
                   <Pencil aria-hidden className="size-3.5" />
                 </Button>
+              )}
+              {starters.has(entry.key) && (
+                <RewindButton blocked={!idle} onRewind={() => onRewind(entry.runId)} />
               )}
               <MessageTime time={entry.time} />
             </MessageActions>
