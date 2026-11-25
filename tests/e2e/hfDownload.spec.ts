@@ -36,6 +36,10 @@ const repoHit = (id: string, file: string): Record<string, unknown> => ({
   pipeline_tag: 'text-generation',
   siblings: [{ rfilename: file }]
 })
+/** Thirteen more repos, so a search has 15 hits: a second page of five. */
+const extraHits = Array.from({ length: 13 }, (_, i) =>
+  repoHit(`test/extra-${String(i + 1).padStart(2, '0')}-GGUF`, 'extra-Q4_K_M.gguf')
+)
 const treeEntry = (path: string, file: Buffer): Record<string, unknown> => ({
   type: 'file',
   size: file.length,
@@ -58,7 +62,7 @@ test.beforeAll(async () => {
       response.end(JSON.stringify(body))
     }
     if (url.pathname === '/api/models') {
-      json([repoHit('test/tiny-GGUF', fileName), repoHit('test/draft-GGUF', draftName)])
+      json([repoHit('test/tiny-GGUF', fileName), repoHit('test/draft-GGUF', draftName), ...extraHits])
     } else if (url.pathname === '/api/models/test/tiny-GGUF') {
       json({ id: 'test/tiny-GGUF', private: false, tags: ['gguf'], sha, gated: false })
     } else if (url.pathname === `/api/models/test/tiny-GGUF/tree/${sha}`) {
@@ -98,7 +102,7 @@ test.afterAll(async () => {
   await rm(workDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
 })
 
-test('search → expand → Download → the model is in Installed, and nothing left before Enter', async () => {
+test('search → expand → Download → the model is in Installed', async () => {
   await mainWindow.keyboard.press('Control+,')
   const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
   await dialog.getByRole('navigation', { name: 'Settings sections' }).getByText('Models').click()
@@ -106,9 +110,7 @@ test('search → expand → Download → the model is in Installed, and nothing 
 
   const field = dialog.getByRole('searchbox', { name: 'Search Hugging Face' })
   await field.fill('tiny')
-  // Typing alone must send nothing (the unit tests cover it over time; here: nothing before Enter).
   await expect(field).toHaveValue('tiny')
-  expect(requests).toHaveLength(0)
 
   await field.press('Enter')
   await dialog.getByRole('button', { name: 'Files in test/tiny-GGUF' }).click()
@@ -144,4 +146,28 @@ test('Download of a draft-only file says why and downloads nothing', async () =>
   ])
   await expect(access(join(modelsDir, 'hf', 'test', 'draft-GGUF'))).rejects.toThrow()
   await expect(dialog.getByRole('button', { name: 'Download test/draft-GGUF BF16' })).toBeVisible()
+})
+
+test('typing searches once after the pause, and Next pages without asking Hugging Face again', async () => {
+  const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
+  if (!(await dialog.isVisible())) {
+    await mainWindow.keyboard.press('Control+,')
+    await dialog.getByRole('navigation', { name: 'Settings sections' }).getByText('Models').click()
+  }
+  await dialog.getByRole('tab', { name: 'Get more models' }).click()
+
+  const searches = (): number => requests.filter((path) => path === '/api/models').length
+  const field = dialog.getByRole('searchbox', { name: 'Search Hugging Face' })
+  await field.fill('')
+  const before = searches()
+  await field.pressSequentially('paged', { delay: 50 })
+
+  await expect(dialog.getByRole('heading', { name: 'Results 1–10' })).toBeVisible()
+  expect(searches()).toBe(before + 1)
+
+  await dialog.getByRole('button', { name: 'Next ›' }).click()
+  await expect(dialog.getByRole('heading', { name: 'Results 11–15' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Files in test/extra-13-GGUF' })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Next ›' })).toBeDisabled()
+  expect(searches()).toBe(before + 1)
 })

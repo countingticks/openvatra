@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { ChevronRight, Download, Heart } from 'lucide-react'
 import { HfFileGroups } from './HfFileGroups'
-import { compactCount, updatedAgo } from './hfText'
+import { compactCount, quantsLabel, updatedAgo } from './hfText'
 import type { Repo } from '@app/core/generated'
 
 interface HfRepoRowProps {
@@ -33,6 +33,7 @@ export function HfRepoRow({ repo }: HfRepoRowProps): React.JSX.Element {
           </span>
         ))}
         <span className="flex-1" />
+        <span className="shrink-0 text-xs text-muted-foreground">{quantsLabel(repo.quants)}</span>
         <span
           aria-label={`${compactCount(repo.downloads)} downloads`}
           className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"

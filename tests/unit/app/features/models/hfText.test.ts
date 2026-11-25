@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { DownloadItem } from '@app/core/types'
-import { compactCount, downloadPercent, speedProgress, updatedAgo } from '@app/features/models/hfText'
+import {
+  compactCount,
+  downloadPercent,
+  quantsLabel,
+  resultRange,
+  speedProgress,
+  updatedAgo
+} from '@app/features/models/hfText'
 
 const item = (overrides: Partial<DownloadItem> = {}): DownloadItem => ({
   id: 'a',
@@ -58,5 +65,25 @@ describe('downloadPercent', () => {
   })
   it('is a whole percent', () => {
     expect(downloadPercent(item({ bytes: 38, total: 100 }))).toBe(38)
+  })
+})
+
+describe('resultRange', () => {
+  it.each([
+    [0, 10, 'Results 1–10'],
+    [1, 10, 'Results 11–20'],
+    [1, 4, 'Results 11–14'],
+    [0, 1, 'Results 1–1']
+  ])('page %i with %i repos reads %s', (page, count, text) => {
+    expect(resultRange(page, count)).toBe(text)
+  })
+})
+
+describe('quantsLabel', () => {
+  it.each([
+    [1, '1 quant'],
+    [3, '3 quants']
+  ])('%i reads %s', (n, text) => {
+    expect(quantsLabel(n)).toBe(text)
   })
 })
