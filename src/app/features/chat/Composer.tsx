@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { ArrowUp, Square } from 'lucide-react'
 import { usePlatform } from '@app/platform/usePlatform'
 import { composerReducer, sendErrorMessage, type ComposerEvent, type ComposerState } from './composerMachine'
@@ -15,7 +15,13 @@ interface KeyedState {
   state: ComposerState
 }
 
+export interface ComposerHandle {
+  /** Puts text in chatId's draft, above what is there (decision 25). */
+  fill(chatId: string, text: string): void
+}
+
 interface ComposerProps {
+  ref?: React.Ref<ComposerHandle>
   chatId: string | undefined
   /** The chat's active run is queued or running: the button stops it, and Enter queues the message. */
   answering: boolean
@@ -26,7 +32,14 @@ interface ComposerProps {
 }
 
 /** The message box: a growing textarea with Send (or Stop while answering), its draft kept per chat. */
-export function Composer({ chatId, answering, onSend, onStop, footer }: ComposerProps): React.JSX.Element {
+export function Composer({
+  ref,
+  chatId,
+  answering,
+  onSend,
+  onStop,
+  footer
+}: ComposerProps): React.JSX.Element {
   const { storage } = usePlatform()
   const key = draftKey(chatId)
   const [text, setText] = useState(() => storage.get(key) ?? '')
@@ -69,6 +82,28 @@ export function Composer({ chatId, answering, onSend, onStop, footer }: Composer
     storage.set(key, next === '' ? null : next)
     fire(key, { type: 'edited' })
   }
+
+  // Bumped by fill: focus the box with the cursor at the end, after the render that shows the new text.
+  const [focusEnd, setFocusEnd] = useState(0)
+  useEffect(() => {
+    const el = field.current
+    if (focusEnd === 0 || !el) return
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [focusEnd])
+
+  useImperativeHandle(ref, () => ({
+    fill(forChatId, filled) {
+      const forKey = draftKey(forChatId)
+      const merge = (draft: string): string => (hasText(draft) ? `${filled}\n\n${draft}` : filled)
+      if (forKey !== shownNow.current) {
+        storage.set(forKey, merge(storage.get(forKey) ?? ''))
+        return
+      }
+      change(merge(storage.get(forKey) ?? ''))
+      setFocusEnd((n) => n + 1)
+    }
+  }))
 
   async function send(): Promise<void> {
     const sentKey = key

@@ -10,6 +10,7 @@ import { LiveEntry } from './LiveEntry'
 import { CopyButton } from '@app/ui/CopyButton'
 import { MessageActions } from './MessageActions'
 import { MessageTime } from './MessageTime'
+import { RewindButton } from './RewindButton'
 import { firstInputs, messagesAfter, type RunView, type TranscriptEntry } from './runView'
 
 // Failures the model settings can fix (decision 20).
@@ -29,6 +30,8 @@ interface TranscriptProps {
    * it could not be sent.
    */
   onEdit(runId: string, text: string): Promise<void>
+  /** Removes this run and every later one and puts its first message in the box; rejects with an Error whose message is shown. */
+  onRewind(runId: string): Promise<void>
 }
 
 const joined = (entry: Extract<TranscriptEntry, { kind: 'answer' }>, kind: 'text' | 'reasoning'): string =>
@@ -45,7 +48,8 @@ export function Transcript({
   onContinue,
   onOpenModelSettings,
   onRegenerate,
-  onEdit
+  onEdit,
+  onRewind
 }: TranscriptProps): React.JSX.Element {
   const [editing, setEditing] = useState<string | null>(null)
   // Only the last turn can be regenerated, and nothing is redone while a run is at work.
@@ -91,6 +95,13 @@ export function Transcript({
                 >
                   <Pencil aria-hidden className="size-3.5" />
                 </Button>
+              )}
+              {starters.has(entry.key) && (
+                <RewindButton
+                  after={messagesAfter(view.entries, entry.key)}
+                  blocked={!idle}
+                  onRewind={() => onRewind(entry.runId)}
+                />
               )}
               <MessageTime time={entry.time} />
             </MessageActions>

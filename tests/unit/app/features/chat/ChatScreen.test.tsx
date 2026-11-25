@@ -690,6 +690,39 @@ describe('ChatScreen', () => {
       )
     })
 
+    it('Rewind posts the run and puts its text in the message box', async () => {
+      const { coreHttp } = show({ open: { transcript: done() } })
+      coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({ status: 200, body: { seq: 4, text: 'hi' } }))
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
+
+      await waitFor(() =>
+        expect(coreWrites(coreHttp)).toContainEqual({
+          method: 'POST',
+          path: '/api/chats/c1/rewind',
+          body: { runId: 'r1' }
+        })
+      )
+      await waitFor(() => expect(message()).toHaveValue('hi'))
+      expect(message()).toHaveFocus()
+    })
+
+    it("a refused rewind shows core's message", async () => {
+      const { coreHttp } = show({ open: { transcript: done() } })
+      coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({
+        status: 409,
+        body: { error: 'chat_busy', message: 'the chat is answering; stop it first' }
+      }))
+      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('the chat is answering; stop it first')
+      expect(message()).toHaveValue('')
+    })
+
     it('swaps the old turn for the new one as the events arrive', async () => {
       const { push } = show({ open: { transcript: done() } })
       expect(await within(conversation()).findByText('old answer')).toBeInTheDocument()

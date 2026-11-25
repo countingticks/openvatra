@@ -72,19 +72,25 @@ interface Shown extends ReturnType<typeof renderWithStore> {
   onOpenModelSettings: Mock<() => void>
   onRegenerate: Mock<() => void>
   onEdit: Mock<(runId: string, text: string) => Promise<void>>
+  onRewind: Mock<(runId: string) => Promise<void>>
   /** Dispatches a core event and lets the next animation frame render it. */
   push(event: Event): void
 }
 
 function show(
   wire: Wire,
-  options: { modelLoading?: boolean; onEdit?: Mock<(runId: string, text: string) => Promise<void>> } = {}
+  options: {
+    modelLoading?: boolean
+    onEdit?: Mock<(runId: string, text: string) => Promise<void>>
+    onRewind?: Mock<(runId: string) => Promise<void>>
+  } = {}
 ): Shown {
   const onContinue = vi.fn<(runId: string) => void>()
   const onOpenModelSettings = vi.fn<() => void>()
   const onRegenerate = vi.fn<() => void>()
   const onEdit =
     options.onEdit ?? vi.fn<(runId: string, text: string) => Promise<void>>().mockResolvedValue(undefined)
+  const onRewind = options.onRewind ?? vi.fn<(runId: string) => Promise<void>>().mockResolvedValue(undefined)
   const rendered = renderWithStore(
     <Transcript
       view={runView(wire)}
@@ -94,6 +100,7 @@ function show(
       onOpenModelSettings={onOpenModelSettings}
       onRegenerate={onRegenerate}
       onEdit={onEdit}
+      onRewind={onRewind}
     />
   )
   const push = (event: Event): void => {
@@ -102,7 +109,7 @@ function show(
     })
     act(() => vi.advanceTimersToNextFrame())
   }
-  return { ...rendered, onContinue, onOpenModelSettings, onRegenerate, onEdit, push }
+  return { ...rendered, onContinue, onOpenModelSettings, onRegenerate, onEdit, onRewind, push }
 }
 
 describe('Transcript', () => {
@@ -483,6 +490,96 @@ describe('Transcript', () => {
 
       expect(screen.getAllByRole('textbox', { name: 'Edit message' })).toHaveLength(1)
       expect(editor()).toHaveValue('C')
+    })
+  })
+
+  describe('rewinding', () => {
+    const twoRuns = (): Wire =>
+      transcript(
+        [input(1, 'A'), answer(2), input(3, 'C', 'r2'), answer(4, {}, 'r2')],
+        [run(), run({ id: 'r2' })]
+      )
+    const rewinds = (): HTMLElement[] => screen.getAllByRole('button', { name: 'Rewind message' })
+    const confirm = (): HTMLElement => screen.getByRole('button', { name: 'Rewind' })
+
+    it('asks first and counts what goes', async () => {
+      show(twoRuns())
+
+      fireEvent.click(rewinds()[0])
+      expect(
+        await screen.findByText(
+          'Remove this message and the 3 after it? Its text goes back in the message box.'
+        )
+      ).toBeInTheDocument()
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+      fireEvent.click(rewinds()[1])
+      expect(
+        await screen.findByText(
+          'Remove this message and the one after it? Its text goes back in the message box.'
+        )
+      ).toBeInTheDocument()
+    })
+
+    it('says a message with nothing after it goes alone', async () => {
+      show(
+        transcript(
+          [input(1, 'A')],
+          [run({ state: 'failed', error: { code: 'backend_failed', message: 'It stopped.' } })]
+        )
+      )
+
+      fireEvent.click(rewinds()[0])
+
+      expect(
+        await screen.findByText('Remove this message? Its text goes back in the message box.')
+      ).toBeInTheDocument()
+    })
+
+    it('calls back with the run and closes; Cancel calls nothing', async () => {
+      const shown = show(twoRuns())
+
+      fireEvent.click(rewinds()[1])
+      fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+      expect(shown.onRewind).not.toHaveBeenCalled()
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+      fireEvent.click(rewinds()[1])
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
+      expect(shown.onRewind).toHaveBeenCalledWith('r2')
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    })
+
+    it('a refused rewind keeps the popover open with the reason', async () => {
+      const onRewind = vi
+        .fn<(runId: string) => Promise<void>>()
+        .mockRejectedValue(new Error('the chat is answering; stop it first'))
+      show(twoRuns(), { onRewind })
+
+      fireEvent.click(rewinds()[0])
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
+
+      expect(await screen.findByRole('alert')).toHaveTextContent('the chat is answering; stop it first')
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(confirm()).not.toBeDisabled()
+    })
+
+    it('waits while the chat answers', () => {
+      const running = run({ state: 'running' })
+      show(transcript([input(1, 'A'), input(2, 'B')], [running], running))
+
+      const rewind = screen.getByRole('button', { name: 'Rewind message' })
+      expect(rewind).toHaveAttribute('aria-disabled', 'true')
+      expect(rewind).toHaveAttribute('title', 'Stop the answer first')
+      fireEvent.click(rewind)
+      expect(screen.queryByRole('dialog')).toBeNull()
+    })
+
+    it('an input queued into a run has no Rewind', () => {
+      show(transcript([input(1, 'A'), answer(2), input(3, 'B'), answer(4)]))
+
+      expect(rewinds()).toHaveLength(1)
     })
   })
 })
