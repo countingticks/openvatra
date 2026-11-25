@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { HfResults } from './HfResults'
 import { SuggestedRow } from './SuggestedRow'
@@ -7,10 +7,12 @@ import { formatSize } from './modelText'
 
 const minQuery = 2
 const maxQuery = 100
+const debounceMs = 400
 
 /**
- * The models we suggest, and a search of Hugging Face that runs only when Enter is pressed. Its own component so
- * the catalog is read only while its tab is open; the search and the open results are local and reset with it.
+ * The models we suggest, and a search of Hugging Face that runs 400 ms after the last key, or at once on Enter.
+ * Its own component so the catalog is read only while its tab is open; the search and the open results are local
+ * and reset with it.
  */
 export function GetMoreModels(): React.JSX.Element {
   const { catalog, downloads } = useSetup()
@@ -19,15 +21,30 @@ export function GetMoreModels(): React.JSX.Element {
   // Enter again remounts the results: a failed search is asked again, an answered one comes from the cache.
   const [attempt, setAttempt] = useState(0)
 
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+
+  function stopTimer(): void {
+    clearTimeout(timer.current)
+    timer.current = undefined
+  }
+  useEffect(() => stopTimer, [])
+
   function change(next: string): void {
     setText(next)
-    if (next.trim() === '') setQuery('')
+    stopTimer()
+    const trimmed = next.trim()
+    if (trimmed === '') {
+      setQuery('')
+    } else if (trimmed.length >= minQuery && trimmed.length <= maxQuery) {
+      timer.current = setTimeout(() => setQuery(trimmed), debounceMs)
+    }
   }
 
   function submit(event: React.FormEvent): void {
     event.preventDefault()
     const trimmed = text.trim()
     if (trimmed.length < minQuery || trimmed.length > maxQuery) return
+    stopTimer()
     setQuery(trimmed)
     setAttempt((count) => count + 1)
   }
@@ -57,6 +74,7 @@ export function GetMoreModels(): React.JSX.Element {
               // Settings would close on Escape; here it only closes the results.
               event.stopPropagation()
               event.preventDefault()
+              stopTimer()
               setText('')
               setQuery('')
             }}
@@ -69,7 +87,7 @@ export function GetMoreModels(): React.JSX.Element {
       </form>
 
       {query !== '' ? (
-        <HfResults key={attempt} query={query} />
+        <HfResults key={`${attempt}:${query}`} query={query} />
       ) : !catalog ? (
         <p role="status">Loading the list…</p>
       ) : (

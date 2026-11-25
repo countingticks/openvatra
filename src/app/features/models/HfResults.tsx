@@ -5,18 +5,21 @@ interface HfResultsProps {
   query: string
 }
 
-/** What Hugging Face found for a submitted query. It only exists while a query is submitted, so typing sends nothing. */
+/**
+ * What Hugging Face found for the settled query. It only exists once the pause after typing (or Enter) has set a
+ * query. It reads currentData, so the answer to an earlier query never shows under the new one.
+ */
 export function HfResults({ query }: HfResultsProps): React.JSX.Element {
-  const { data, isFetching, isError } = useSearchHfQuery({ q: query })
+  const { currentData: data, isError } = useSearchHfQuery({ q: query })
 
-  if (isFetching) return <Header left="Searching…" />
-  if (isError || !data) {
+  if (isError) {
     return (
       <p role="alert" className="text-sm text-destructive">
         Hugging Face couldn&apos;t be reached. Check your connection and press Enter to try again.
       </p>
     )
   }
+  if (!data) return <Header left="Searching…" />
   const count = data.repos.length
   return (
     <div className="flex flex-col gap-3">

@@ -7,7 +7,8 @@ export const coreApi = generatedApi.enhanceEndpoints({
     listModels: { keepUnusedDataFor: Infinity },
     listDownloads: { keepUnusedDataFor: Infinity },
     // Hugging Face answers are asked for by the user and never refetched by the event stream's invalidateAll.
-    searchHf: { providesTags: [] },
+    // Ten minutes, so paging back and forth within a search costs Hugging Face nothing.
+    searchHf: { providesTags: [], keepUnusedDataFor: 600 },
     listHfFiles: { providesTags: [] },
     // A removed model can be a catalog entry's file: the catalog's "installed" flag changes with it.
     removeModel: { invalidatesTags: ['models', 'catalog'] },

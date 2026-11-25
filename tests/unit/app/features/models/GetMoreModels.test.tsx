@@ -243,16 +243,143 @@ async function search(dialog: HTMLElement, text: string): Promise<HTMLElement> {
 }
 
 describe('Get more models: searching Hugging Face', () => {
-  it('sends nothing while typing, and the query on Enter', async () => {
-    const { coreHttp, dialog } = await openDialog(catalog(qwen))
-    coreHttp.answer('/api/hf/search', { repos: [repo()] })
+  const asked = (http: FakeCoreHttp): (string | null)[] =>
+    searchRequests(http).map((url) => url.searchParams.get('q'))
+  const wait = async (ms: number): Promise<void> => {
+    await act(() => vi.advanceTimersByTimeAsync(ms))
+  }
+  /** Types into the field; synchronous, as findBy would wait on the faked timers. */
+  function type(dialog: HTMLElement, text: string): HTMLElement {
+    const field = within(dialog).getByRole('searchbox', { name: 'Search Hugging Face' })
+    fireEvent.change(field, { target: { value: text } })
+    return field
+  }
+  /** The dialog with the field found, and timers faked from here on; each case ends with vi.useRealTimers(). */
+  async function typing(): Promise<Awaited<ReturnType<typeof openDialog>>> {
+    const opened = await openDialog(catalog(qwen))
+    await within(opened.dialog).findByRole('searchbox', { name: 'Search Hugging Face' })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    return opened
+  }
 
-    const field = await search(dialog, 'qwen coder')
-    expect(searchRequests(coreHttp)).toHaveLength(0)
+  it('sends nothing at 399 ms after the last key, and the query at 400 ms', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      coreHttp.answer('/api/hf/search', { repos: [repo()] })
 
-    fireEvent.submit(field)
+      type(dialog, 'qwen coder')
+      await wait(399)
+      expect(searchRequests(coreHttp)).toHaveLength(0)
+      await wait(1)
+      expect(asked(coreHttp)).toEqual(['qwen coder'])
+    } finally {
+      vi.useRealTimers()
+    }
     await within(dialog).findByText('unsloth /')
-    expect(searchRequests(coreHttp).map((url) => url.searchParams.get('q'))).toEqual(['qwen coder'])
+  })
+
+  it('sends one request for keys typed 100 ms apart', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      coreHttp.answer('/api/hf/search', { repos: [repo()] })
+
+      for (const text of ['q', 'qw', 'qwe', 'qwen']) {
+        type(dialog, text)
+        await wait(100)
+      }
+      await wait(400)
+      expect(asked(coreHttp)).toEqual(['qwen'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('searches at once on Enter, and the pending timer then sends nothing more', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      coreHttp.answer('/api/hf/search', { repos: [repo()] })
+
+      fireEvent.submit(type(dialog, 'qwen'))
+      await wait(0)
+      expect(asked(coreHttp)).toEqual(['qwen'])
+      await wait(1000)
+      expect(asked(coreHttp)).toEqual(['qwen'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends nothing for a single character', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      fireEvent.submit(type(dialog, ' q '))
+      await wait(1000)
+
+      expect(searchRequests(coreHttp)).toHaveLength(0)
+      expect(within(dialog).getByText('Suggested')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends nothing when the field is cleared before the pause, and shows Suggested', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      const field = type(dialog, 'qwen')
+      await wait(200)
+      fireEvent.change(field, { target: { value: '' } })
+      await wait(1000)
+
+      expect(searchRequests(coreHttp)).toHaveLength(0)
+      expect(within(dialog).getByText('Suggested')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('sends nothing when Escape comes before the pause', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      coreHttp.answer('/api/hf/search', { repos: [repo()] })
+      const field = type(dialog, 'qwen')
+      await wait(400)
+      expect(asked(coreHttp)).toEqual(['qwen'])
+
+      type(dialog, 'llama')
+      await wait(200)
+      fireEvent.keyDown(field, { key: 'Escape' })
+      await wait(1000)
+
+      expect(asked(coreHttp)).toEqual(['qwen'])
+      expect(field).toHaveValue('')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows Searching… and not the old repos for a new query until its answer is read', async () => {
+    const { coreHttp, dialog } = await typing()
+    try {
+      coreHttp.answer('/api/hf/search', { repos: [repo()] })
+      type(dialog, 'qwen')
+      await wait(400)
+    } finally {
+      vi.useRealTimers()
+    }
+    await within(dialog).findByText('unsloth /')
+
+    coreHttp.answer('/api/hf/search', {
+      repos: [repo({ id: 'meta/Llama-GGUF', owner: 'meta', name: 'Llama-GGUF' })]
+    })
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      type(dialog, 'llama')
+      await wait(400)
+      expect(within(dialog).getByText('Searching…')).toBeInTheDocument()
+      expect(within(dialog).queryByText('unsloth /')).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('says where the search goes, before and after searching', async () => {
@@ -265,15 +392,6 @@ describe('Get more models: searching Hugging Face', () => {
     await within(dialog).findByText('unsloth /')
 
     expect(within(dialog).getByText(note)).toBeInTheDocument()
-  })
-
-  it('does not search for a single character', async () => {
-    const { coreHttp, dialog } = await openDialog(catalog(qwen))
-
-    fireEvent.submit(await search(dialog, ' q '))
-
-    expect(searchRequests(coreHttp)).toHaveLength(0)
-    expect(within(dialog).getByText('Suggested')).toBeInTheDocument()
   })
 
   it('shows each repo with its counts and age, under a header with the number of results', async () => {
