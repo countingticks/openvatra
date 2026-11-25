@@ -15,7 +15,7 @@ import { Button } from '@app/ui/button'
 import { Ember } from '@app/ui/Ember'
 import { OverlayScroll } from '@app/ui/OverlayScroll'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
-import { Composer, type ComposerHandle } from './Composer'
+import { Composer, maxQuotes, type ComposerHandle } from './Composer'
 import { QuoteButton } from './QuoteButton'
 import { ContextPopover } from './ContextPopover'
 import { withLive } from './contextRows'
@@ -76,14 +76,14 @@ function ChatView(): React.JSX.Element {
     if (status === 'notFound') dispatch(routeReplaced({ tab: 'chat' }))
   }, [status, dispatch])
 
-  async function send(text: string, requestId: string, quote: string | null): Promise<void> {
+  async function send(text: string, requestId: string, quotes: string[]): Promise<void> {
     const ref = await startRun({
       // A new chat names the model it shows, so what is shown is what answers.
       startRun: {
         requestId,
         text,
         ...(chatId ? { chatId } : model ? { model } : {}),
-        ...(quote ? { quotes: [quote] } : {})
+        ...(quotes.length > 0 ? { quotes } : {})
       }
     }).unwrap()
     if (chatId === undefined) dispatch(routeReplaced({ tab: 'chat', chatId: ref.chatId }))
@@ -103,7 +103,7 @@ function ChatView(): React.JSX.Element {
       .catch((error: unknown) => console.error('Could not regenerate the answer', error))
   }
 
-  async function edit(runId: string, text: string, quote: string | null): Promise<void> {
+  async function edit(runId: string, text: string, quotes: string[]): Promise<void> {
     if (chatId === undefined) return
     try {
       await startRun({
@@ -112,7 +112,7 @@ function ChatView(): React.JSX.Element {
           chatId,
           text,
           replaceFrom: runId,
-          ...(quote ? { quotes: [quote] } : {})
+          ...(quotes.length > 0 ? { quotes } : {})
         }
       }).unwrap()
     } catch (error) {
@@ -125,7 +125,7 @@ function ChatView(): React.JSX.Element {
     if (chatId === undefined) return
     try {
       const result = await rewindChat({ id: chatId, body: { runId } }).unwrap()
-      composer.current?.fill(chatId, result.text, result.quotes?.[0])
+      composer.current?.fill(chatId, result.text, result.quotes)
     } catch (error) {
       console.error('Could not rewind the chat', error)
     }
@@ -141,7 +141,11 @@ function ChatView(): React.JSX.Element {
   return (
     <div className="relative h-full overflow-hidden">
       <PixelBackdrop />
-      <QuoteButton container={scroller} onQuote={(text) => composer.current?.quote(chatId, text)} />
+      <QuoteButton
+        container={scroller}
+        onQuote={(text) => composer.current?.quote(chatId, text)}
+        full={() => (composer.current?.quoteCount(chatId) ?? 0) >= maxQuotes}
+      />
       <div className="relative flex h-full flex-col">
         {/* A div, not <header>: the title bar is the window's one banner landmark, and it keeps the drag region. */}
         <div

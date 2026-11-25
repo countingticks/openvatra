@@ -148,7 +148,7 @@ describe('ChatScreen', () => {
   })
 
   it('a send with a quote posts it', async () => {
-    const { coreHttp } = show({ storage: { 'chat.quote:new': 'q' } })
+    const { coreHttp } = show({ storage: { 'chat.quotes:new': JSON.stringify(['q']) } })
     await screen.findByRole('button', { name: /^Model: tiny,/ })
 
     await type('Explain')
@@ -834,15 +834,15 @@ describe('ChatScreen', () => {
         runs: [run()]
       })
 
-    it("selecting an answer's words shows Quote, and clicking it puts the chip in the box", async () => {
+    it("selecting an answer's words shows Reply, and clicking it puts the chip in the box", async () => {
       show({ open: { transcript: answered('Some answer words') } })
       const words = await screen.findByText('Some answer words')
 
       select(textOf(words), 5, 11)
-      fireEvent.click(await screen.findByRole('button', { name: 'Quote' }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Reply' }))
 
       expect(screen.getByRole('group', { name: 'Quote' })).toHaveTextContent('answer')
-      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull()
       expect(message()).toHaveFocus()
     })
 
@@ -859,7 +859,7 @@ describe('ChatScreen', () => {
       })
       fireEvent.click(await screen.findByRole('button', { name: /Thought/ }))
       select(textOf(screen.getByText('pondering deeply')), 0, 9)
-      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull()
 
       await push(
         event('run.queued', 3, { chatId: 'c1', profile: 'chat', model: 'tiny' }),
@@ -869,35 +869,70 @@ describe('ChatScreen', () => {
       )
       const live = await screen.findByText('Streaming words')
       select(textOf(live), 0, 9)
-      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull()
     })
 
-    it('Escape and a scroll of the conversation hide Quote', async () => {
+    it('Escape and a scroll of the conversation hide Reply', async () => {
       show({ open: { transcript: answered('Some answer words') } })
       const words = await screen.findByText('Some answer words')
 
       select(textOf(words), 0, 4)
-      expect(await screen.findByRole('button', { name: 'Quote' })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'Reply' })).toBeInTheDocument()
       fireEvent.keyDown(document, { key: 'Escape' })
-      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull()
 
       select(textOf(words), 0, 4)
-      expect(await screen.findByRole('button', { name: 'Quote' })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'Reply' })).toBeInTheDocument()
       fireEvent.scroll(conversation())
-      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Reply' })).toBeNull()
     })
 
-    it('a selection over 4,000 characters shows Quote as aria-disabled with its title', async () => {
+    it('a selection over 4,000 characters shows Reply as aria-disabled with its title', async () => {
       show({ open: { transcript: answered('x'.repeat(4001)) } })
       const words = await screen.findByText('x'.repeat(4001))
 
       select(textOf(words), 0, 4001)
-      const quote = await screen.findByRole('button', { name: 'Quote' })
+      const quote = await screen.findByRole('button', { name: 'Reply' })
       expect(quote).toHaveAttribute('aria-disabled', 'true')
       expect(quote).toHaveAttribute('title', 'Select at most 4,000 characters to quote')
       fireEvent.click(quote)
 
       expect(screen.queryByRole('group', { name: 'Quote' })).toBeNull()
+    })
+
+    it("Reply is centred over the selection's width", async () => {
+      show({ open: { transcript: answered('Some answer words') } })
+      const words = await screen.findByText('Some answer words')
+      // jsdom's zero-sized scroller would clamp the button to its edge: give it room.
+      const area = { ...rect, top: 0, bottom: 800, left: 0, right: 1000, width: 1000, height: 800 }
+      conversation().getBoundingClientRect = () => area as DOMRect
+      const wide = { ...rect, left: 200, right: 300, width: 100 }
+      Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+        value: () => wide,
+        configurable: true
+      })
+
+      select(textOf(words), 0, 4)
+      const reply = await screen.findByRole('button', { name: 'Reply' })
+      const layerLeft = (reply.parentElement as HTMLElement).getBoundingClientRect().left
+
+      expect(reply.style.left).toBe(`${(wide.left + wide.right) / 2 - layerLeft}px`)
+    })
+
+    it('with five quotes in the box Reply is aria-disabled with its title', async () => {
+      show({
+        open: { transcript: answered('Some answer words') },
+        storage: { 'chat.quotes:c1': JSON.stringify(['1', '2', '3', '4', '5']) }
+      })
+      const words = await screen.findByText('Some answer words')
+
+      select(textOf(words), 0, 4)
+      const reply = await screen.findByRole('button', { name: 'Reply' })
+      expect(reply).toHaveAttribute('aria-disabled', 'true')
+      expect(reply).toHaveAttribute('title', 'At most 5 quotes per message')
+      fireEvent.click(reply)
+
+      expect(screen.getAllByRole('group', { name: 'Quote' })).toHaveLength(5)
     })
   })
 })
