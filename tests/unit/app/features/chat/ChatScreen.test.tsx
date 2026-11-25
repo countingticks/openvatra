@@ -852,7 +852,26 @@ describe('ChatScreen', () => {
       expect(screen.queryByRole('group', { name: 'Quote' })).toBeNull()
     })
 
-    it('Enter adds the quote with its reply as a card with With reply', async () => {
+    it('the reply card shows the quoted text', async () => {
+      await openCard()
+
+      expect(within(screen.getByRole('dialog', { name: 'Reply to quote' })).getByText('answer')).toBeVisible()
+    })
+
+    it('Add quote shows only once a reply is typed, and adds it', async () => {
+      await openCard()
+      expect(screen.queryByRole('button', { name: 'Add quote (Enter)' })).toBeNull()
+
+      fireEvent.change(replyBox(), { target: { value: 'Explain this' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Add quote (Enter)' }))
+
+      expect(
+        within(screen.getByRole('group', { name: 'Quote' })).getByTitle(/Explain this/)
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('dialog', { name: 'Reply to quote' })).toBeNull()
+    })
+
+    it('Enter adds the quote with its reply as a card', async () => {
       await openCard()
 
       fireEvent.change(replyBox(), { target: { value: '  Explain this ' } })
@@ -860,7 +879,7 @@ describe('ChatScreen', () => {
 
       const card = screen.getByRole('group', { name: 'Quote' })
       expect(card).toHaveTextContent('answer')
-      expect(card).toHaveTextContent('With reply')
+      expect(within(card).getByTitle(/Explain this/)).toBeInTheDocument()
       expect(screen.queryByRole('dialog', { name: 'Reply to quote' })).toBeNull()
       expect(message()).toHaveFocus()
     })

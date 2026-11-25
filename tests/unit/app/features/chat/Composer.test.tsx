@@ -143,14 +143,15 @@ describe('Composer quote', () => {
     expect(screen.queryByText('With reply')).toBeNull()
   })
 
-  it('a replied quote shows With reply, an unreplied one does not', () => {
+  it('a card shows no With reply badge', () => {
     const { handle } = show()
 
     act(() => handle.current?.quote('c1', { text: 'one', reply: 'why' }))
     act(() => handle.current?.quote('c1', { text: 'two' }))
 
-    expect(screen.getAllByText('With reply')).toHaveLength(1)
-    expect(within(cards()[0]!).getByText('With reply')).toBeInTheDocument()
+    expect(cards()).toHaveLength(2)
+    expect(screen.queryByText('With reply')).toBeNull()
+    expect(within(cards()[0]!).getByTitle(/why/)).toBeInTheDocument()
   })
 
   it('a replied quote with an empty box shows Send and sends', async () => {

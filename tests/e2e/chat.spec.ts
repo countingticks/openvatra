@@ -173,7 +173,7 @@ test('Quote with a reply puts a card in the box, and sends it on its own', async
   await mainWindow.getByRole('textbox', { name: 'Reply to this quote' }).press('Enter')
 
   const card = mainWindow.getByRole('group', { name: 'Quote' })
-  await expect(card).toContainText('With reply')
+  await expect(card.locator('[title*="Explain this"]')).toHaveCount(1)
   await box.press('Enter')
 
   await expect(conversation.getByRole('button', { name: answer })).toBeVisible()

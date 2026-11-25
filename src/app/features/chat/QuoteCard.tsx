@@ -17,11 +17,6 @@ export function QuoteCard({ quote, onRemove }: { quote: Quote; onRemove(): void 
       >
         {`“${quote.text}”`}
       </span>
-      {quote.reply && (
-        <span className="shrink-0 rounded-md bg-background px-1.5 text-xs text-muted-foreground">
-          With reply
-        </span>
-      )}
       <Button variant="ghost" size="icon-sm" aria-label="Remove quote" onClick={onRemove}>
         <X aria-hidden className="size-3.5" />
       </Button>

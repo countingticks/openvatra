@@ -9,7 +9,7 @@ const gap = 8
 const buttonHalfWidth = 32
 const buttonHeight = 28
 const cardHalfWidth = 160
-const cardHeight = 96
+const cardHeight = 132
 
 interface Spot {
   left: number
@@ -120,6 +120,7 @@ export function QuoteButton({
       )}
       {placed !== null && replying && (
         <QuoteReply
+          text={placed.text}
           left={placed.card.left}
           top={placed.card.top}
           below={placed.card.below}
