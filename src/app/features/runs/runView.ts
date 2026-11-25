@@ -318,3 +318,22 @@ export function waitingLine({
   if (modelLoading) return `Loading ${model}…`
   return null
 }
+
+/** The keys of the input entries that are the first input of their run. */
+export function firstInputs(entries: TranscriptEntry[]): Set<string> {
+  const runs = new Set<string>()
+  const keys = new Set<string>()
+  for (const entry of entries) {
+    if (entry.kind !== 'input' || runs.has(entry.runId)) continue
+    runs.add(entry.runId)
+    keys.add(entry.key)
+  }
+  return keys
+}
+
+/** How many input and answer entries come after the entry with this key; 0 when the key is not there. */
+export function messagesAfter(entries: TranscriptEntry[], key: string): number {
+  const at = entries.findIndex((entry) => entry.key === key)
+  if (at < 0) return 0
+  return entries.slice(at + 1).filter((entry) => entry.kind === 'input' || entry.kind === 'answer').length
+}
