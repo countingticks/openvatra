@@ -4,6 +4,7 @@ import { coreEvent } from '@app/core/events'
 import type {
   Event,
   MessageStats,
+  Quote,
   RunSnapshot,
   Transcript as Wire,
   TranscriptItem
@@ -71,7 +72,7 @@ interface Shown extends ReturnType<typeof renderWithStore> {
   onContinue: Mock<(runId: string) => void>
   onOpenModelSettings: Mock<() => void>
   onRegenerate: Mock<() => void>
-  onEdit: Mock<(runId: string, text: string, quotes: string[]) => Promise<void>>
+  onEdit: Mock<(runId: string, text: string, quotes: Quote[]) => Promise<void>>
   onRewind: Mock<(runId: string) => Promise<void>>
   /** Dispatches a core event and lets the next animation frame render it. */
   push(event: Event): void
@@ -81,7 +82,7 @@ function show(
   wire: Wire,
   options: {
     modelLoading?: boolean
-    onEdit?: Mock<(runId: string, text: string, quotes: string[]) => Promise<void>>
+    onEdit?: Mock<(runId: string, text: string, quotes: Quote[]) => Promise<void>>
     onRewind?: Mock<(runId: string) => Promise<void>>
   } = {}
 ): Shown {
@@ -90,7 +91,7 @@ function show(
   const onRegenerate = vi.fn<() => void>()
   const onEdit =
     options.onEdit ??
-    vi.fn<(runId: string, text: string, quotes: string[]) => Promise<void>>().mockResolvedValue(undefined)
+    vi.fn<(runId: string, text: string, quotes: Quote[]) => Promise<void>>().mockResolvedValue(undefined)
   const onRewind = options.onRewind ?? vi.fn<(runId: string) => Promise<void>>().mockResolvedValue(undefined)
   const rendered = renderWithStore(
     <Transcript
@@ -414,6 +415,36 @@ describe('Transcript', () => {
       expect(screen.getByText('Explain')).toBeInTheDocument()
     })
 
+    it('a reply shows under its quote, and a blank text shows no text element', () => {
+      show(transcript([{ ...input(1, ' '), quotes: [{ text: 'q', reply: 'my reply' }] }, answer(2)]))
+      const reply = screen.getByText('my reply')
+      expect(reply).not.toHaveAttribute('data-quote')
+      // The bubble holds the quote and the reply, and no text element.
+      expect(reply.closest('.bg-bubble')?.querySelector('[data-quote]')).toBeNull()
+    })
+
+    it('Copy message of a blank text copies the replies', () => {
+      show(
+        transcript([
+          {
+            ...input(1, ''),
+            quotes: [{ text: 'a', reply: 'one' }, { text: 'b' }, { text: 'c', reply: 'two' }]
+          },
+          answer(2)
+        ])
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Copy message' }))
+      expect(writeText).toHaveBeenCalledWith('one\n\ntwo')
+    })
+
+    it('Edit sends a blank text with a replied quote', async () => {
+      const shown = show(transcript([{ ...input(1, ''), quotes: [{ text: 'q', reply: 'why' }] }, answer(2)]))
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', '', [{ text: 'q', reply: 'why' }])
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
+    })
+
     it('Copy message copies the text without the quote', () => {
       show(quoted())
       fireEvent.click(screen.getByRole('button', { name: 'Copy message' }))
@@ -425,7 +456,7 @@ describe('Transcript', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       expect(screen.getByRole('button', { name: 'Remove quote' })).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', ['line one\nline two'])
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', [{ text: 'line one\nline two' }])
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
 
@@ -454,7 +485,7 @@ describe('Transcript', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       fireEvent.click(screen.getAllByRole('button', { name: 'Remove quote' })[0]!)
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', ['second'])
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', [{ text: 'second' }])
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
   })
@@ -493,7 +524,7 @@ describe('Transcript', () => {
 
     it('stays open with its text when sending fails', async () => {
       const onEdit = vi
-        .fn<(runId: string, text: string, quotes: string[]) => Promise<void>>()
+        .fn<(runId: string, text: string, quotes: Quote[]) => Promise<void>>()
         .mockRejectedValue(new Error('no'))
       show(two(), { onEdit })
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))

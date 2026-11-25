@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import type { Quote } from '@app/core/generated'
 import { Button } from '@app/ui/button'
 import { QuoteBlock } from './QuoteBlock'
 
@@ -12,10 +13,10 @@ export function InputEditor({
   onCancel
 }: {
   text: string
-  quotes: string[]
+  quotes: Quote[]
   /** Messages that sending removes (messagesAfter); 0 shows no hint. */
   after: number
-  onSend(text: string, quotes: string[]): Promise<void>
+  onSend(text: string, quotes: Quote[]): Promise<void>
   onCancel(): void
 }): React.JSX.Element {
   const [value, setValue] = useState(text)
@@ -30,8 +31,10 @@ export function InputEditor({
     el.setSelectionRange(el.value.length, el.value.length)
   }, [])
 
+  const sendable = value.trim() !== '' || kept.some((quote) => quote.reply)
+
   function send(): void {
-    if (pending || value.trim() === '') return
+    if (pending || !sendable) return
     setPending(true)
     // On failure the editor stays open with its text; the caller has logged the error.
     onSend(value, kept).catch(() => setPending(false))
@@ -42,7 +45,10 @@ export function InputEditor({
       {kept.map((quote, index) => (
         <div key={index} className="flex w-full items-start gap-1">
           <div className="min-w-0 flex-1 [&_button]:line-clamp-2 [&_button]:mb-0">
-            <QuoteBlock text={quote} />
+            <QuoteBlock text={quote.text} />
+            {quote.reply && (
+              <p className="mb-0 text-sm whitespace-pre-wrap text-muted-foreground">{quote.reply}</p>
+            )}
           </div>
           <Button
             variant="ghost"

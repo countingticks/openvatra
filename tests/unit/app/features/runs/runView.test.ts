@@ -289,10 +289,10 @@ describe('applyRunEvent', () => {
     }
     expect(
       quote({ ...emptyTranscript, items: [{ ...item, quotes: [{ text: 'q' }, { text: 'r' }] }] })
-    ).toEqual(['q', 'r'])
+    ).toEqual([{ text: 'q' }, { text: 'r' }])
     expect(quote({ ...emptyTranscript, items: [item] })).toEqual([])
     expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: [{ text: 'q2' }] })]))).toEqual([
-      'q2'
+      { text: 'q2' }
     ])
     expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]))).toEqual([])
   })
@@ -305,7 +305,7 @@ describe('applyRunEvent', () => {
     const quoted = fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: [{ text: long }] })]).context
       .used
     expect(plain).toBe(estimateTokens('B'))
-    expect(quoted).toBe(estimateTokens(quotedInput('B', [long])))
+    expect(quoted).toBe(estimateTokens(quotedInput('B', [{ text: long }])))
     expect(quoted).toBeGreaterThan(plain)
   })
 
@@ -502,12 +502,20 @@ describe('answerState and waitingLine', () => {
 
 describe('quotedInput', () => {
   it('writes each line as a blockquote, an empty line as >, then the text', () => {
-    expect(quotedInput('Explain', ['one\n\ntwo\r\nthree'])).toBe('> one\n>\n> two\n> three\n\nExplain')
+    expect(quotedInput('Explain', [{ text: 'one\n\ntwo\r\nthree' }])).toBe(
+      '> one\n>\n> two\n> three\n\nExplain'
+    )
     expect(quotedInput('Explain', undefined)).toBe('Explain')
     expect(quotedInput('Explain', [])).toBe('Explain')
   })
 
   it('writes two quotes a blank line apart, then the text', () => {
-    expect(quotedInput('Explain', ['a\nb', 'c'])).toBe('> a\n> b\n\n> c\n\nExplain')
+    expect(quotedInput('Explain', [{ text: 'a\nb' }, { text: 'c' }])).toBe('> a\n> b\n\n> c\n\nExplain')
+  })
+
+  it('writes a reply under its quote, and no text when blank', () => {
+    const quotes = [{ text: 'a', reply: 'r1' }, { text: 'b' }]
+    expect(quotedInput('why?', quotes)).toBe('> a\n\nr1\n\n> b\n\nwhy?')
+    expect(quotedInput('  ', quotes)).toBe('> a\n\nr1\n\n> b')
   })
 })
