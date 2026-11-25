@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,6 +37,17 @@ type fixture struct {
 	eng    *run.Engine
 	svc    *Service
 	events <-chan event.Event
+
+	mu        sync.Mutex
+	list      []provider.Model
+	modelsErr error
+}
+
+// setModels replaces the installed models the service sees from now on.
+func (f *fixture) setModels(list []provider.Model) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.list = list
 }
 
 // newFixture is a service over a real store, its config and an engine answering with turns, with list installed.
@@ -51,7 +63,12 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 	cfg := config.New(st, discard)
 	config.Register[Settings, struct{}](cfg, ID, DefaultSettings(), nil)
 	model := providertest.NewScripted(turns...)
-	models := func(context.Context) ([]provider.Model, error) { return list, nil }
+	f := &fixture{t: t, store: st, cfg: cfg, events: events, list: list}
+	models := func(context.Context) ([]provider.Model, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.list, f.modelsErr
+	}
 	eng := run.New(run.Config{
 		Log: st.Log(), Views: st, Chat: model, Sched: sched.NewFIFO(nil), Profiles: noTitles(),
 		Model: func(_ context.Context, id string) (provider.Model, error) {
@@ -63,8 +80,9 @@ func newFixture(t *testing.T, list []provider.Model, turns ...providertest.Turn)
 		cancel()
 		st.Close()
 	})
-	svc := New(Config{Store: st, Engine: eng, Config: cfg, Models: models})
-	return &fixture{t: t, store: st, cfg: cfg, model: model, eng: eng, svc: svc, events: events}
+	f.model, f.eng = model, eng
+	f.svc = New(Config{Store: st, Engine: eng, Config: cfg, Models: models})
+	return f
 }
 
 var answer = providertest.Turn{Text: []string{"hi"}}
@@ -274,6 +292,169 @@ func TestReplaceNeedsAChatAndAppendsANewModelBeforeTheRun(t *testing.T) {
 	if row, _, err := f.store.Run(bg, second.RunID); err != nil || row.Model != "m2" {
 		t.Errorf("run = %+v, %v; want model m2", row, err)
 	}
+}
+
+// chatModelEvents is the payloads of the chat.model events after the one that created the chat, in log order.
+func (f *fixture) chatModelEvents(chatID string) []string {
+	f.t.Helper()
+	events, err := f.store.Log().Read(bg, 0, event.Filter{}, 200)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	var out []string
+	for _, e := range events {
+		if e.Type == "chat.model" && e.Stream == "chat:"+chatID {
+			out = append(out, string(e.Data))
+		}
+	}
+	return out[1:]
+}
+
+func (f *fixture) runModel(runID string) string {
+	f.t.Helper()
+	row, _, err := f.store.Run(bg, runID)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return row.Model
+}
+
+// firstOnM1 sends a first turn on m1 and waits for it to finish.
+func (f *fixture) firstOnM1() run.Ref {
+	f.t.Helper()
+	first := f.send(SendInput{RequestID: "r1", Model: "m1", Text: "hello"})
+	f.waitFor("run.finished", "run:"+first.RunID)
+	return first
+}
+
+func TestRemovedModelFallsBackOnTheNextSend(t *testing.T) {
+	m3 := provider.Model{ID: "m3", Kind: provider.ModelChat, Context: 8192}
+	e1 := installed[0]
+	m2 := installed[2]
+
+	t.Run("a removed model switches to lastModel when installed", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.setModels([]provider.Model{e1, m3, m2})
+		f.setLastModel("m2")
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again"})
+
+		if got, want := f.chatModelEvents(first.ChatID), []string{`{"model":"m2"}`}; !slices.Equal(got, want) {
+			t.Fatalf("chat.model events %v, want %v", got, want)
+		}
+		if got := f.runModel(second.RunID); got != "m2" {
+			t.Errorf("run model = %q, want m2", got)
+		}
+		events, _ := f.store.Log().Read(bg, 0, event.Filter{}, 200)
+		var modelSeq, queuedSeq int64
+		for _, e := range events {
+			switch {
+			case e.Type == "chat.model" && e.Stream == "chat:"+first.ChatID:
+				modelSeq = e.Seq
+			case e.Type == "run.queued" && e.Stream == "run:"+second.RunID:
+				queuedSeq = e.Seq
+			}
+		}
+		if modelSeq == 0 || modelSeq > queuedSeq {
+			t.Errorf("chat.model at %d, run.queued at %d: want the model first", modelSeq, queuedSeq)
+		}
+	})
+
+	t.Run("a removed model switches to the first chat model when lastModel is gone too", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.setModels([]provider.Model{e1, m3, m2})
+		f.setLastModel("gone")
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again"})
+
+		if got, want := f.chatModelEvents(first.ChatID), []string{`{"model":"m3"}`}; !slices.Equal(got, want) {
+			t.Fatalf("chat.model events %v, want %v", got, want)
+		}
+		if got := f.runModel(second.RunID); got != "m3" {
+			t.Errorf("run model = %q, want m3", got)
+		}
+		if last := f.lastModel(); last == nil || *last != "gone" {
+			t.Errorf("lastModel = %v, want it untouched", last)
+		}
+	})
+
+	t.Run("replace on a chat whose model is gone switches too", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.setModels([]provider.Model{e1, m3, m2})
+		f.setLastModel("m2")
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Replace: true})
+
+		if got, want := f.chatModelEvents(first.ChatID), []string{`{"model":"m2"}`}; !slices.Equal(got, want) {
+			t.Fatalf("chat.model events %v, want %v", got, want)
+		}
+		if got := f.runModel(second.RunID); got != "m2" {
+			t.Errorf("run model = %q, want m2", got)
+		}
+	})
+
+	t.Run("with no chat model installed nothing is appended", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.setModels([]provider.Model{e1})
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again"})
+
+		if got := f.chatModelEvents(first.ChatID); len(got) != 0 {
+			t.Errorf("chat.model events %v, want none", got)
+		}
+		if got := f.runModel(second.RunID); got != "m1" {
+			t.Errorf("run model = %q, want m1", got)
+		}
+	})
+
+	t.Run("a chat whose model is installed is not touched", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.setLastModel("m2")
+
+		f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again"})
+
+		if got := f.chatModelEvents(first.ChatID); len(got) != 0 {
+			t.Errorf("chat.model events %v, want none", got)
+		}
+	})
+
+	t.Run("an input to an active run appends no chat.model", func(t *testing.T) {
+		f := newFixture(t, installed, providertest.Turn{Hang: true})
+		first := f.send(SendInput{RequestID: "r1", Model: "m1", Text: "hello"})
+		f.waitFor("run.started", "run:"+first.RunID)
+		f.setModels([]provider.Model{e1, m2})
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "more"})
+
+		if second.RunID != first.RunID {
+			t.Errorf("run = %q, want the active run %q", second.RunID, first.RunID)
+		}
+		if got := f.chatModelEvents(first.ChatID); len(got) != 0 {
+			t.Errorf("chat.model events %v, want none", got)
+		}
+	})
+
+	t.Run("a failing model list sends with the chat's model", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.mu.Lock()
+		f.modelsErr = errors.New("providers down")
+		f.mu.Unlock()
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again"})
+
+		if got := f.chatModelEvents(first.ChatID); len(got) != 0 {
+			t.Errorf("chat.model events %v, want none", got)
+		}
+		if got := f.runModel(second.RunID); got != "m1" {
+			t.Errorf("run model = %q, want m1", got)
+		}
+	})
 }
 
 func TestExportPutsAQueuedInputAfterTheAnswerItWasSentDuring(t *testing.T) {
