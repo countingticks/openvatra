@@ -1,7 +1,8 @@
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 import { ArrowUp, Square } from 'lucide-react'
 import { usePlatform } from '@app/platform/usePlatform'
-import { QuoteChip } from './QuoteChip'
+import type { Quote } from '@app/core/generated'
+import { QuoteCard } from './QuoteCard'
 import { composerReducer, sendErrorMessage, type ComposerEvent, type ComposerState } from './composerMachine'
 
 const draftKey = (chatId: string | undefined): string => `chat.draft:${chatId || 'new'}`
@@ -10,12 +11,25 @@ export const maxQuotes = 5
 
 const quotesKey = (chatId: string | undefined): string => `chat.quotes:${chatId || 'new'}`
 
-/** A stored value that is not a list of strings reads as no quotes. */
-function parseQuotes(raw: string | null): string[] {
+/** One stored item: a quote, or a plain string (the first shape stored) read as a quote without a reply. */
+function parseQuote(item: unknown): Quote | null {
+  if (typeof item === 'string') return { text: item }
+  if (typeof item !== 'object' || item === null || !('text' in item) || typeof item.text !== 'string') {
+    return null
+  }
+  return 'reply' in item && typeof item.reply === 'string'
+    ? { text: item.text, reply: item.reply }
+    : { text: item.text }
+}
+
+/** A stored value that is not a list of quotes reads as no quotes. */
+function parseQuotes(raw: string | null): Quote[] {
   if (raw === null) return []
   try {
     const list: unknown = JSON.parse(raw)
-    return Array.isArray(list) && list.every((q) => typeof q === 'string') ? list : []
+    if (!Array.isArray(list)) return []
+    const quotes = list.map(parseQuote)
+    return quotes.every((q) => q !== null) ? quotes : []
   } catch {
     return []
   }
@@ -33,9 +47,9 @@ interface KeyedState {
 
 export interface ComposerHandle {
   /** Replaces chatId's draft text and quotes with these, discarding what was there (decision 25). */
-  fill(chatId: string, text: string, quotes?: string[]): void
-  /** Adds a quote to chatId's draft below the others (not when equal to one there, nor past maxQuotes) and focuses the box at the end. */
-  quote(chatId: string | undefined, text: string): void
+  fill(chatId: string, text: string, quotes?: Quote[]): void
+  /** Adds a quote (not when its text equals one there, nor past maxQuotes) and focuses the box at the end. */
+  quote(chatId: string | undefined, quote: Quote): void
   /** How many quotes chatId's draft holds now. */
   quoteCount(chatId: string | undefined): number
 }
@@ -45,7 +59,7 @@ interface ComposerProps {
   chatId: string | undefined
   /** The chat's active run is queued or running: the button stops it, and Enter queues the message. */
   answering: boolean
-  onSend(text: string, requestId: string, quotes: string[]): Promise<void>
+  onSend(text: string, requestId: string, quotes: Quote[]): Promise<void>
   onStop(): void
   /** The row under the box: the model button and the context meter. */
   footer: React.ReactNode
@@ -115,10 +129,10 @@ export function Composer({
   }, [focusEnd])
 
   /** Stored lists are written at once, so storage always holds what the shown chat's chips show. */
-  const storedQuotes = (forChatId: string | undefined): string[] =>
+  const storedQuotes = (forChatId: string | undefined): Quote[] =>
     parseQuotes(storage.get(quotesKey(forChatId)))
 
-  function changeQuotes(forChatId: string | undefined, next: string[]): void {
+  function changeQuotes(forChatId: string | undefined, next: Quote[]): void {
     storage.set(quotesKey(forChatId), next.length === 0 ? null : JSON.stringify(next))
     if (draftKey(forChatId) === shownNow.current) setQuotes(next)
   }
@@ -137,16 +151,21 @@ export function Composer({
     },
     quote(forChatId, quoted) {
       const held = storedQuotes(forChatId)
-      if (held.length < maxQuotes && !held.includes(quoted)) changeQuotes(forChatId, [...held, quoted])
+      if (held.length < maxQuotes && !held.some((q) => q.text === quoted.text)) {
+        changeQuotes(forChatId, [...held, quoted])
+      }
       if (draftKey(forChatId) === shownNow.current) setFocusEnd((n) => n + 1)
     },
     quoteCount: (forChatId) => storedQuotes(forChatId).length
   }))
 
+  // A replied quote is a message on its own.
+  const sendable = hasText(text) || quotes.some((quote) => quote.reply)
+
   async function send(): Promise<void> {
     const sentKey = key
     const sentChatId = chatId
-    if (!hasText(text) || status(sentKey).status === 'sending') return
+    if (!sendable || status(sentKey).status === 'sending') return
     const sending = fire(sentKey, { type: 'send', requestId: crypto.randomUUID() })
     if (sending.status !== 'sending') return
     try {
@@ -178,11 +197,11 @@ export function Composer({
     <div className="flex flex-col gap-2">
       <div className="flex flex-col gap-1.5 rounded-[18px] border bg-popover p-2 shadow-[0_1px_2px_rgba(24,24,27,0.06)]">
         {quotes.length > 0 && (
-          <div className="flex max-h-[132px] flex-col gap-1 overflow-y-auto">
+          <div className="flex max-h-[148px] flex-col gap-1 overflow-y-auto">
             {quotes.map((quote, index) => (
-              <QuoteChip
+              <QuoteCard
                 key={index}
-                text={quote}
+                quote={quote}
                 onRemove={() => {
                   changeQuotes(
                     chatId,
@@ -220,7 +239,7 @@ export function Composer({
               <Square aria-hidden className="size-4 fill-current" />
             </button>
           ) : (
-            hasText(text) && (
+            sendable && (
               <button
                 type="button"
                 aria-label="Send (Enter)"

@@ -77,14 +77,14 @@ function ChatView(): React.JSX.Element {
     if (status === 'notFound') dispatch(routeReplaced({ tab: 'chat' }))
   }, [status, dispatch])
 
-  async function send(text: string, requestId: string, quotes: string[]): Promise<void> {
+  async function send(text: string, requestId: string, quotes: Quote[]): Promise<void> {
     const ref = await startRun({
       // A new chat names the model it shows, so what is shown is what answers.
       startRun: {
         requestId,
         text,
         ...(chatId ? { chatId } : model ? { model } : {}),
-        ...(quotes.length > 0 ? { quotes: quotes.map((text) => ({ text })) } : {})
+        ...(quotes.length > 0 ? { quotes } : {})
       }
     }).unwrap()
     if (chatId === undefined) dispatch(routeReplaced({ tab: 'chat', chatId: ref.chatId }))
@@ -126,11 +126,7 @@ function ChatView(): React.JSX.Element {
     if (chatId === undefined) return
     try {
       const result = await rewindChat({ id: chatId, body: { runId } }).unwrap()
-      composer.current?.fill(
-        chatId,
-        result.text,
-        result.quotes?.map((q) => q.text)
-      )
+      composer.current?.fill(chatId, result.text, result.quotes)
     } catch (error) {
       console.error('Could not rewind the chat', error)
     }
@@ -148,7 +144,7 @@ function ChatView(): React.JSX.Element {
       <PixelBackdrop />
       <QuoteButton
         container={scroller}
-        onQuote={(text) => composer.current?.quote(chatId, text)}
+        onQuote={(text) => composer.current?.quote(chatId, { text })}
         full={() => (composer.current?.quoteCount(chatId) ?? 0) >= maxQuotes}
       />
       <div className="relative flex h-full flex-col">
