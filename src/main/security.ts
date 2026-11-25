@@ -1,6 +1,6 @@
 import { app, session, shell, type WebContents } from 'electron'
 import { allowLoopbackRequest, loopbackPatterns } from './loopbackFilter'
-import { isAppUrl, isExternalWebUrl } from './urlPolicy'
+import { allowsPermission, isAppUrl, isExternalWebUrl } from './urlPolicy'
 
 /**
  * Guards that keep every window showing only the app's own UI (AGENTS.md "Security rules").
@@ -9,8 +9,14 @@ import { isAppUrl, isExternalWebUrl } from './urlPolicy'
  */
 export function applySecurityPolicy(appUrl: string, corePort: () => number | undefined): void {
   // Camera, microphone, location, notifications...: nothing is granted unless a feature explicitly needs it.
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
-  session.defaultSession.setPermissionCheckHandler(() => false)
+  // Clipboard writes from the app's own page are the one exception (the Copy buttons).
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) =>
+    callback(allowsPermission(permission, details.requestingUrl, appUrl))
+  )
+  // The URL, not requestingOrigin: a file:// origin has no path, so isAppUrl would refuse the bundled page.
+  session.defaultSession.setPermissionCheckHandler((contents, permission, _origin, details) =>
+    allowsPermission(permission, details.requestingUrl ?? contents?.getURL(), appUrl)
+  )
 
   // The page may reach core, and no other local service. The port is read per request: a restarted core on a
   // new port needs no reload. Main's own fetch does not pass through the session, so it is not affected.

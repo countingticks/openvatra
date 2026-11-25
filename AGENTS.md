@@ -105,6 +105,8 @@ vendor/          git submodules (Open WebUI); never edit files here
 - Every window: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, strict CSP. Its
   `connect-src 'self' http://127.0.0.1:*` is narrowed to core's port by main's request filter; core checks the
   Origin header and answers CORS only for the dev server's origin.
+- The window may write to the clipboard (`clipboard-sanitized-write`, from the app's own URL only); every other
+  permission, reading the clipboard included, is denied.
 - Never load remote web pages inside the app; open external links in the default browser (http/https only).
 - Services listen on `127.0.0.1` only. `core` also requires its token on every request; never log the token.
 - `data/core.json` holds the shell token and is readable by the current user only (protected DACL); never copy
