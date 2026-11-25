@@ -96,6 +96,10 @@ func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
 			if _, err := s.c.Store.Log().Append(ctx, "chat:"+chat.ID, event.ChatModel{Model: in.Model}); err != nil {
 				return run.Ref{}, err
 			}
+		} else if in.Model == "" && chat.ActiveRun == "" {
+			if err := s.moveOffRemovedModel(ctx, chat); err != nil {
+				return run.Ref{}, err
+			}
 		}
 		return s.c.Engine.Start(ctx, spec)
 	}
@@ -124,16 +128,43 @@ func (s *Service) newChatModel(ctx context.Context, named string) (string, error
 		}
 		return named, nil
 	}
+	if model := s.defaultModel(list); model != "" {
+		return model, nil
+	}
+	return "", ErrNoChatModel
+}
+
+// defaultModel is lastModel while it is an installed chat model, else the first chat model in list; "" for none.
+func (s *Service) defaultModel(list []provider.Model) string {
 	// A lastModel that was removed since falls through: the user did not name it this time.
 	if last := config.Get[Settings](s.c.Config, ID).LastModel; last != nil && hasChatModel(list, *last) {
-		return *last, nil
+		return *last
 	}
 	for _, m := range list {
 		if m.Kind == provider.ModelChat {
-			return m.ID, nil
+			return m.ID
 		}
 	}
-	return "", ErrNoChatModel
+	return ""
+}
+
+// moveOffRemovedModel appends chat.model with the default model when the chat's own is no longer installed, so the
+// run that follows uses it. It does not remember the fallback as lastModel: the user did not pick it.
+func (s *Service) moveOffRemovedModel(ctx context.Context, chat store.ChatRow) error {
+	list, err := s.c.Models(ctx)
+	if err != nil {
+		s.log.Warn("could not list models for the chat's fallback", "chat", chat.ID, "err", err)
+		return nil
+	}
+	if hasChatModel(list, chat.Model) {
+		return nil
+	}
+	fallback := s.defaultModel(list)
+	if fallback == "" {
+		return nil
+	}
+	_, err = s.c.Store.Log().Append(ctx, "chat:"+chat.ID, event.ChatModel{Model: fallback})
+	return err
 }
 
 // checkModel is provider.ErrUnknownModel unless id is an installed chat model.

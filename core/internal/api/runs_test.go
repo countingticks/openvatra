@@ -230,6 +230,9 @@ func TestTranscriptIsInputThenAnswerWithStatsAndTheRun(t *testing.T) {
 		ans.Stats == nil || ans.Stats.AnswerTokens != 1 || !ans.Stats.Exact || ans.Partial || ans.Failed {
 		t.Errorf("second item = %+v (stats %+v), want the answer hi with exact stats", ans, ans.Stats)
 	}
+	if in.Time <= 0 || ans.Time <= 0 || in.Time > ans.Time {
+		t.Errorf("times %d, %d: want both set and the input not after the answer", in.Time, ans.Time)
+	}
 	if in.Seq >= ans.Seq {
 		t.Errorf("seqs %d, %d: want oldest first", in.Seq, ans.Seq)
 	}

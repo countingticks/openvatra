@@ -2278,12 +2278,17 @@
           "text": {
             "description": "input and summary",
             "type": "string"
+          },
+          "time": {
+            "description": "Unix ms when the message was written",
+            "type": "integer"
           }
         },
         "required": [
           "seq",
           "kind",
-          "runId"
+          "runId",
+          "time"
         ],
         "type": "object"
       },
