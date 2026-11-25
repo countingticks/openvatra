@@ -11,12 +11,13 @@ import type {
 } from '@app/core/generated'
 
 export type TranscriptEntry =
-  | { kind: 'input'; key: string; runId: string; seq: number; text: string; queued: boolean }
+  | { kind: 'input'; key: string; runId: string; seq: number; time: number; text: string; queued: boolean }
   | {
       kind: 'answer'
       key: string
       runId: string
       seq: number
+      time: number
       parts: MessagePart[]
       stats: MessageStats | null
       partial: boolean
@@ -55,6 +56,7 @@ const inputEntry = (item: TranscriptItem, queued: boolean): TranscriptEntry => (
   key: `seq:${item.seq}`,
   runId: item.runId,
   seq: item.seq,
+  time: item.time,
   text: item.text ?? '',
   queued
 })
@@ -64,6 +66,7 @@ const answerEntry = (item: TranscriptItem): TranscriptEntry => ({
   key: `seq:${item.seq}`,
   runId: item.runId,
   seq: item.seq,
+  time: item.time,
   parts: item.parts ?? [],
   stats: item.stats ?? null,
   partial: item.partial ?? false,

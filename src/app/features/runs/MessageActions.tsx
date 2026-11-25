@@ -1,6 +1,6 @@
 import { cn } from '@app/lib/utils'
 
-/** A message's icon row: invisible until the message is hovered or holds focus, but it keeps its space. */
+/** A message's icon row, always visible so nothing shifts when the pointer enters the message. */
 export function MessageActions({
   className,
   children
@@ -9,12 +9,7 @@ export function MessageActions({
   children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <div
-      className={cn(
-        'flex items-center gap-0.5 font-sans opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 in-data-[motion=reduce]:transition-none',
-        className
-      )}
-    >
+    <div className={cn('flex items-center gap-0.5 font-sans text-muted-foreground', className)}>
       {children}
     </div>
   )

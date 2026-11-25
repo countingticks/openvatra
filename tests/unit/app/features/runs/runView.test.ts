@@ -155,6 +155,24 @@ describe('runView', () => {
     ])
   })
 
+  it("input and answer entries carry the item's time", () => {
+    const transcript: Transcript = {
+      seq: 2,
+      items: [
+        { kind: 'input', seq: 1, runId: 'r1', time: 1111, text: 'A' },
+        { kind: 'answer', seq: 2, runId: 'r1', time: 2222, parts: [{ kind: 'text', text: 'a' }] }
+      ],
+      runs: [run({ state: 'done' })],
+      activeRun: null,
+      context: { used: 0, size: 0, parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 } }
+    }
+
+    expect(runView(transcript).entries).toMatchObject([
+      { kind: 'input', time: 1111 },
+      { kind: 'answer', time: 2222 }
+    ])
+  })
+
   it('regenerate: the retracted run leaves the transcript and the new run shows', () => {
     const view = runView(fold(fixture('regenerate')))
 
