@@ -403,7 +403,7 @@ describe('Transcript', () => {
 
   describe('a quoted message', () => {
     const quoted = (): Wire =>
-      transcript([{ ...input(1, 'Explain'), quote: 'line one\nline two' }, answer(2)])
+      transcript([{ ...input(1, 'Explain'), quotes: ['line one\nline two'] }, answer(2)])
 
     it('shows its quote above the text, clamped until clicked', () => {
       show(quoted())

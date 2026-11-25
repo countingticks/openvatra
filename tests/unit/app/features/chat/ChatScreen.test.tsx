@@ -156,7 +156,7 @@ describe('ChatScreen', () => {
 
     await waitFor(() =>
       expect(runPosts(coreHttp)).toEqual([
-        { requestId: expect.any(String), text: 'Explain', model: 'tiny', quote: 'q' }
+        { requestId: expect.any(String), text: 'Explain', model: 'tiny', quotes: ['q'] }
       ])
     )
   })
@@ -711,7 +711,7 @@ describe('ChatScreen', () => {
         open: {
           transcript: transcript({
             seq: 3,
-            items: [{ ...input(2, 'hi'), quote: 'q' }, answer(3, 'old answer')],
+            items: [{ ...input(2, 'hi'), quotes: ['q'] }, answer(3, 'old answer')],
             runs: [run()]
           })
         }
@@ -725,7 +725,7 @@ describe('ChatScreen', () => {
           chatId: 'c1',
           text: 'hi',
           replaceFrom: 'r1',
-          quote: 'q'
+          quotes: ['q']
         })
       )
     })
@@ -752,7 +752,7 @@ describe('ChatScreen', () => {
       const { coreHttp } = show({ open: { transcript: done() } })
       coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({
         status: 200,
-        body: { seq: 4, text: 'hi', quote: 'q' }
+        body: { seq: 4, text: 'hi', quotes: ['q'] }
       }))
 
       fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))

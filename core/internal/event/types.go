@@ -76,10 +76,10 @@ func (RunQueued) EventType() Type { return Type{Name: "run.queued", V: 1, Class:
 
 // InputReceived is the user's text for a run; RequestID makes a repeated send write nothing.
 type InputReceived struct {
-	ChatID    string `json:"chatId"`
-	Text      string `json:"text"`
-	Quote     string `json:"quote,omitempty"` // the text the user quoted, already trimmed; "" = none
-	RequestID string `json:"requestId"`
+	ChatID    string   `json:"chatId"`
+	Text      string   `json:"text"`
+	Quotes    []string `json:"quotes,omitempty"` // the texts the user quoted, trimmed, in order; nil = none
+	RequestID string   `json:"requestId"`
 }
 
 func (InputReceived) EventType() Type { return Type{Name: "input.received", V: 1, Class: Durable} }
@@ -152,23 +152,24 @@ type MessagePart struct {
 	Text string `json:"text"`
 }
 
-// InputParts is a user message's parts: [quote, text] with a quote, [text] without.
-func InputParts(text, quote string) []MessagePart {
-	parts := []MessagePart{{Kind: "text", Text: text}}
-	if quote != "" {
-		parts = append([]MessagePart{{Kind: "quote", Text: quote}}, parts...)
+// InputParts is a user message's parts: one quote part per quote, in order, then the text.
+func InputParts(text string, quotes []string) []MessagePart {
+	parts := make([]MessagePart, 0, len(quotes)+1)
+	for _, q := range quotes {
+		parts = append(parts, MessagePart{Kind: "quote", Text: q})
 	}
-	return parts
+	return append(parts, MessagePart{Kind: "text", Text: text})
 }
 
-// QuoteOf is the text of parts' quote part; "" when there is none.
-func QuoteOf(parts []MessagePart) string {
+// QuotesOf is the texts of parts' quote parts, in order; nil when there are none.
+func QuotesOf(parts []MessagePart) []string {
+	var quotes []string
 	for _, p := range parts {
 		if p.Kind == "quote" {
-			return p.Text
+			quotes = append(quotes, p.Text)
 		}
 	}
-	return ""
+	return quotes
 }
 
 // MessageStats is the provider's usage plus the run's timing; Exact is false when the counts are estimated.

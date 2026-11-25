@@ -53,8 +53,8 @@ type Config struct {
 type SendInput struct {
 	RequestID, ChatID, Model, Text string
 	Replace                        bool
-	ReplaceFrom                    string // a run id: retract it and every later run, then send Text (required) as a new run
-	Quote                          string // text the user quoted, sent above Text; "" = none
+	ReplaceFrom                    string   // a run id: retract it and every later run, then send Text (required) as a new run
+	Quotes                         []string // texts the user quoted, sent above Text; nil = none
 }
 
 // Service is the chats API over the store, the engine and the config.
@@ -67,6 +67,7 @@ type Service struct {
 const (
 	maxInputRunes = 200_000
 	maxQuoteRunes = 4_000
+	maxQuotes     = 5
 	maxTitleRunes = 200
 )
 
@@ -87,14 +88,17 @@ func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
 	if in.ReplaceFrom != "" {
 		bad = strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes || in.ChatID == "" || in.Replace
 	}
-	if in.Quote != "" {
-		n := utf8.RuneCountInString(strings.TrimSpace(in.Quote))
-		bad = bad || n < 1 || n > maxQuoteRunes || strings.TrimSpace(in.Text) == ""
+	if len(in.Quotes) > 0 {
+		bad = bad || len(in.Quotes) > maxQuotes || strings.TrimSpace(in.Text) == ""
+		for _, q := range in.Quotes {
+			n := utf8.RuneCountInString(strings.TrimSpace(q))
+			bad = bad || n < 1 || n > maxQuoteRunes
+		}
 	}
 	if in.RequestID == "" || bad {
 		return run.Ref{}, run.ErrBadInput
 	}
-	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, Quote: in.Quote, RequestID: in.RequestID, Replace: in.Replace,
+	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, Quotes: in.Quotes, RequestID: in.RequestID, Replace: in.Replace,
 		ReplaceFrom: in.ReplaceFrom}
 	if in.ChatID != "" {
 		chat, _, err := s.c.Store.Chat(ctx, in.ChatID)
@@ -278,7 +282,7 @@ func (s *Service) Export(ctx context.Context, id string) (string, error) {
 		}
 		sections = append(sections, heading)
 		if m.Role == "user" {
-			if q := event.QuoteOf(parts); q != "" {
+			for _, q := range event.QuotesOf(parts) {
 				sections = append(sections, budget.Blockquote(q))
 			}
 		}

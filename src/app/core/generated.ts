@@ -538,8 +538,8 @@ export type TranscriptItem = {
   partial?: boolean
   /** answer */
   parts?: MessagePart[]
-  /** input: the text it quoted */
-  quote?: string
+  /** input: the texts it quoted */
+  quotes?: string[]
   runId: string
   seq: number
   /** answer */
@@ -557,8 +557,8 @@ export type Transcript = {
   seq: number
 }
 export type Rewound = {
-  /** the first input's quote, for the message box */
-  quote?: string
+  /** the first input's quotes, for the message box */
+  quotes?: string[]
   /** the last turn.retracted's seq */
   seq: number
   /** the run's first input, for the message box */
@@ -788,7 +788,7 @@ export type RunQueuedEvent = {
 }
 export type InputReceived = {
   chatId: string
-  quote?: string
+  quotes?: string[]
   requestId: string
   text: string
 }
@@ -1018,8 +1018,8 @@ export type StartRun = {
   chatId?: string
   /** omit for the chat's model, or for a new chat the last one named */
   model?: string
-  /** text the user quoted, 1 to 4,000 characters once trimmed; needs text */
-  quote?: string
+  /** texts the user quoted, at most 5, each 1 to 4,000 characters once trimmed; need text */
+  quotes?: string[]
   /** last: retract the chat's last turn and send it again (with text: edited) */
   replace?: 'last'
   /** a run id: retract that run and every later one, then send text as a new run */

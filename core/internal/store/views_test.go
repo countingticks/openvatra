@@ -34,16 +34,16 @@ func newChat(t *testing.T, s *Store, text string) (chatID, runID string) {
 // queueRun opens run runID in chatID with text as its input.
 func queueRun(t *testing.T, s *Store, chatID, runID, text string) string {
 	t.Helper()
-	return queueQuotedRun(t, s, chatID, runID, text, "")
+	return queueQuotedRun(t, s, chatID, runID, text)
 }
 
-// queueQuotedRun is queueRun with a quote on the input.
-func queueQuotedRun(t *testing.T, s *Store, chatID, runID, text, quote string) string {
+// queueQuotedRun is queueRun with quotes on the input.
+func queueQuotedRun(t *testing.T, s *Store, chatID, runID, text string, quotes ...string) string {
 	t.Helper()
 	req := NewID()
 	appendTo(t, s, "run:"+runID,
 		event.RunQueued{ChatID: chatID, Profile: "chat", Model: "m1", Origin: "user", RequestID: req},
-		event.InputReceived{ChatID: chatID, Text: text, Quote: quote, RequestID: req})
+		event.InputReceived{ChatID: chatID, Text: text, Quotes: quotes, RequestID: req})
 	return req
 }
 
@@ -131,10 +131,10 @@ func TestQuotedInputStoresAQuotePartBeforeTheText(t *testing.T) {
 	s, _ := newEventStore(t)
 	chatID := NewID()
 	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
-	queueQuotedRun(t, s, chatID, NewID(), "t", "q words")
+	queueQuotedRun(t, s, chatID, NewID(), "t", "q1 words", "q2 words")
 
 	got := row(t, s, "SELECT parts FROM messages")
-	if want := `[[{"kind":"quote","text":"q words"},{"kind":"text","text":"t"}]]`; got != want {
+	if want := `[[{"kind":"quote","text":"q1 words"},{"kind":"quote","text":"q2 words"},{"kind":"text","text":"t"}]]`; got != want {
 		t.Errorf("parts = %s, want %s", got, want)
 	}
 	if got := row(t, s, "SELECT title FROM chats"); got != "["+CutTitle("t")+"]" {
@@ -146,7 +146,7 @@ func TestSearchFindsAWordOfAQuote(t *testing.T) {
 	s, _ := newEventStore(t)
 	chatID := NewID()
 	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
-	queueQuotedRun(t, s, chatID, NewID(), "plain text", "zebra crossing")
+	queueQuotedRun(t, s, chatID, NewID(), "plain text", "first quote", "zebra crossing")
 	newChat(t, s, "something else")
 
 	if got := hitIDs(search(t, s, "zebra")); !slices.Equal(got, []string{chatID}) {

@@ -93,10 +93,19 @@ func sentText(m Message) (string, bool) {
 	if m.Role == "assistant" && b.Len() == 0 {
 		return "", false
 	}
-	if quote := event.QuoteOf(m.Parts); m.Role == "user" && quote != "" {
-		return Blockquote(quote) + "\n\n" + b.String(), true
+	if quotes := event.QuotesOf(m.Parts); m.Role == "user" && len(quotes) > 0 {
+		return Blockquotes(quotes) + "\n\n" + b.String(), true
 	}
 	return b.String(), true
+}
+
+// Blockquotes writes each quote with Blockquote, joined by a blank line; nil gives "".
+func Blockquotes(quotes []string) string {
+	blocks := make([]string, len(quotes))
+	for i, q := range quotes {
+		blocks[i] = Blockquote(q)
+	}
+	return strings.Join(blocks, "\n\n")
 }
 
 // Blockquote writes quote as Markdown: each line prefixed "> ", an empty line as ">".

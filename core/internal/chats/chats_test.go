@@ -358,9 +358,14 @@ func TestABadQuoteIsCheckedBeforeAnythingIsWritten(t *testing.T) {
 	f.setModels([]provider.Model{installed[0], {ID: "m3", Kind: provider.ModelChat, Context: 8192}})
 	before := f.chatModelEvents(first.ChatID)
 
-	_, err := f.svc.Send(bg, SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again", Quote: "  \n "})
-	if !errors.Is(err, run.ErrBadInput) {
-		t.Fatalf("Send = %v, want ErrBadInput", err)
+	for name, quotes := range map[string][]string{
+		"a blank quote": {"ok", "  \n "},
+		"6 quotes":      {"1", "2", "3", "4", "5", "6"},
+	} {
+		_, err := f.svc.Send(bg, SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again", Quotes: quotes})
+		if !errors.Is(err, run.ErrBadInput) {
+			t.Fatalf("%s: Send = %v, want ErrBadInput", name, err)
+		}
 	}
 	if after := f.chatModelEvents(first.ChatID); len(after) != len(before) {
 		t.Errorf("chat.model events grew from %d to %d", len(before), len(after))
