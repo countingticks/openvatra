@@ -3,19 +3,21 @@ const MINUTE = 60 * SECOND
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
 
-/** "just now", "5 min ago", "3 h ago", "2 d ago", "3 w ago", "4 mo ago", "2 y ago". */
+const ago = (n: number, unit: string): string => `${n} ${unit}${n === 1 ? '' : 's'} ago`
+
+/** "just now", "1 minute ago", "3 hours ago", "2 days ago", "3 weeks ago", "4 months ago", "2 years ago". */
 export function relativeTime(ms: number, now: number): string {
   // Clock skew can put a message slightly in the future; that reads as now.
   const d = Math.max(0, now - ms)
   if (d < MINUTE) return 'just now'
-  if (d < HOUR) return `${Math.floor(d / MINUTE)} min ago`
-  if (d < DAY) return `${Math.floor(d / HOUR)} h ago`
+  if (d < HOUR) return ago(Math.floor(d / MINUTE), 'minute')
+  if (d < DAY) return ago(Math.floor(d / HOUR), 'hour')
   const days = d / DAY
-  if (days < 7) return `${Math.floor(days)} d ago`
-  if (days < 35) return `${Math.floor(days / 7)} w ago`
+  if (days < 7) return ago(Math.floor(days), 'day')
+  if (days < 35) return ago(Math.floor(days / 7), 'week')
   const months = Math.floor(days / 30.44)
-  if (months < 12) return `${months} mo ago`
-  return `${Math.max(1, Math.floor(days / 365.25))} y ago`
+  if (months < 12) return ago(months, 'month')
+  return ago(Math.max(1, Math.floor(days / 365.25)), 'year')
 }
 
 /** The full local date and time, for the tooltip. */

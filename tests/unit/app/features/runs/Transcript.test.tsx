@@ -254,7 +254,7 @@ describe('Transcript', () => {
     const answerTime = now - 30_000
     show(transcript([{ ...input(1, 'Hi'), time: inputTime }, answer(2, { time: answerTime })]))
 
-    const five = screen.getByText('5 min ago')
+    const five = screen.getByText('5 minutes ago')
     const justNow = screen.getByText('just now')
     expect(five.tagName).toBe('TIME')
     expect(five).toHaveAttribute('title', fullTime(inputTime))
@@ -271,7 +271,7 @@ describe('Transcript', () => {
     act(() => {
       vi.advanceTimersByTime(60_000)
     })
-    expect(screen.getByText('1 min ago')).toBeInTheDocument()
+    expect(screen.getByText('1 minute ago')).toBeInTheDocument()
   })
 
   it('shows Copy on every message without hover', () => {
