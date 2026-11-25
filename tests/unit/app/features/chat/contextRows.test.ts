@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ContextUse } from '@app/core/generated'
-import { contextRows } from '@app/features/chat/contextRows'
+import { contextRows, withLive } from '@app/features/chat/contextRows'
 
 const use = (used: number, size: number, parts: Partial<ContextUse['parts']> = {}): ContextUse => ({
   used,
@@ -39,5 +39,17 @@ describe('contextRows', () => {
   it('never goes below 0: used below the system prompt, used above the size', () => {
     expect(tokens(use(100, 32768, { system: 900 })).messages).toBe(0)
     expect(tokens(use(40000, 32768)).free).toBe(0)
+  })
+})
+
+describe('withLive', () => {
+  it('returns the context unchanged without a live answer', () => {
+    const context = use(100, 1000)
+    expect(withLive(context, undefined)).toBe(context)
+  })
+
+  it('adds the estimate of text and reasoning to used and to messages', () => {
+    const live = { text: '1234567', reasoning: '1234567', n: 1, reasoningAt: null }
+    expect(withLive(use(100, 1000, { messages: 60 }), live)).toEqual(use(104, 1000, { messages: 64 }))
   })
 })

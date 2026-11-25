@@ -1,4 +1,5 @@
 import type { ContextUse } from '@app/core/generated'
+import { estimateTokens, type LiveAnswer } from '@app/features/runs'
 
 export interface ContextRow {
   key: 'system' | 'messages' | 'search' | 'files' | 'free'
@@ -23,4 +24,15 @@ export function contextRows({ used, size, parts }: ContextUse): ContextRow[] {
   if (parts.files > 0) rows.push({ key: 'files', label: 'Attached files', tokens: parts.files })
   rows.push({ key: 'free', label: 'Free', tokens: Math.max(0, size - used) })
   return rows
+}
+
+/** The context with a streaming answer's text and reasoning added as an estimate (decision 10). */
+export function withLive(context: ContextUse, live: LiveAnswer | undefined): ContextUse {
+  if (!live) return context
+  const n = estimateTokens(live.text + live.reasoning)
+  return {
+    ...context,
+    used: context.used + n,
+    parts: { ...context.parts, messages: context.parts.messages + n }
+  }
 }
