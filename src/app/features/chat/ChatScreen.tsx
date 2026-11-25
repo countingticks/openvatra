@@ -16,6 +16,7 @@ import { Ember } from '@app/ui/Ember'
 import { OverlayScroll } from '@app/ui/OverlayScroll'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
 import { Composer, type ComposerHandle } from './Composer'
+import { QuoteButton } from './QuoteButton'
 import { ContextPopover } from './ContextPopover'
 import { withLive } from './contextRows'
 import { useAnnouncer } from './useAnnouncer'
@@ -140,6 +141,7 @@ function ChatView(): React.JSX.Element {
   return (
     <div className="relative h-full overflow-hidden">
       <PixelBackdrop />
+      <QuoteButton container={scroller} onQuote={(text) => composer.current?.quote(chatId, text)} />
       <div className="relative flex h-full flex-col">
         {/* A div, not <header>: the title bar is the window's one banner landmark, and it keeps the drag region. */}
         <div

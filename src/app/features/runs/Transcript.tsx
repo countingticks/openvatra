@@ -80,7 +80,7 @@ export function Transcript({
               )}
             >
               {entry.quote && <QuoteBlock text={entry.quote} />}
-              {entry.text}
+              <div data-quote>{entry.text}</div>
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}
             <MessageActions>
@@ -112,6 +112,7 @@ export function Transcript({
             text={joined(entry, 'text')}
             reasoning={joined(entry, 'reasoning')}
             thinkingLabel={thoughtLabel(entry.stats?.reasoningMs)}
+            quotable
           >
             {entry.partial && !entry.failed && (
               <p className="mt-2 font-sans text-sm text-muted-foreground">Stopped</p>
