@@ -229,6 +229,7 @@ const repo = (patch: Partial<Repo> = {}): Repo => ({
   downloads: 1_400_000,
   likes: 230,
   updatedAt: '2026-11-10T12:00:00Z',
+  quants: 3,
   ...patch
 })
 

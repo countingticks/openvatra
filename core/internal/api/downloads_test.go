@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/downloads"
 	"github.com/countingticks/openvatra/core/internal/hf"
@@ -95,6 +96,17 @@ func TestStartHFChecksASingleFileGroup(t *testing.T) {
 		rec := callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
 		if rec.Code != http.StatusAccepted || !slices.Equal(dl.calls, []string{"start pick hf:o/r:Q4_K_M"}) {
 			t.Fatalf("start = %d %s, calls %v", rec.Code, rec.Body, dl.calls)
+		}
+	})
+	t.Run("a check refused for the rate limit is the answer and nothing starts", func(t *testing.T) {
+		dl, h := &stubDownloads{}, listedRepo()
+		h.checkErr = &hf.RateLimitedError{Wait: 12 * time.Second}
+		rec := callDownloadsHF(t, dl, h, "POST", "/api/downloads", `{"hf":{"repo":"o/r","quant":"Q4_K_M"}}`)
+		if rec.Code != http.StatusTooManyRequests || !strings.Contains(rec.Body.String(), `"error":"hf_rate_limited"`) {
+			t.Fatalf("start = %d %s", rec.Code, rec.Body)
+		}
+		if len(dl.calls) != 0 {
+			t.Fatalf("calls = %v, want none", dl.calls)
 		}
 	})
 	t.Run("the model file is checked once, not the projector", func(t *testing.T) {

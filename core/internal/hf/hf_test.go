@@ -43,15 +43,39 @@ func newFakeHF(t *testing.T, routes map[string]http.HandlerFunc) *fakeHF {
 	return f
 }
 
-// client is a Client on this server; cfg's BaseURL and Version are set here.
+// client is a Client on this server; cfg's BaseURL and Version are set here. Its rate limit never runs out, so
+// tests that are not about the limit never wait.
 func (f *fakeHF) client(t *testing.T, cfg Config) *Client {
 	t.Helper()
+	c, _ := f.limitedClient(t, cfg, nil)
+	c.limit.burst, c.limit.tokens = 1e9, 1e9
+	return c
+}
+
+// limitedClient is a Client on this server with the real rate limit. With a clock, the bucket reads it and its
+// sleep records each wait in the returned slice and moves the clock by it instead of waiting.
+func (f *fakeHF) limitedClient(t *testing.T, cfg Config, clock *fakeClock) (*Client, *[]time.Duration) {
+	t.Helper()
 	cfg.BaseURL, cfg.Version = f.srv.URL, "test"
+	if clock != nil {
+		cfg.Now = clock.now
+	}
 	c, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c
+	waits := &[]time.Duration{}
+	if clock != nil {
+		var mu sync.Mutex
+		c.limit.sleep = func(_ context.Context, d time.Duration) error {
+			mu.Lock()
+			defer mu.Unlock()
+			*waits = append(*waits, d)
+			clock.t = clock.t.Add(d)
+			return nil
+		}
+	}
+	return c, waits
 }
 
 func (f *fakeHF) requests() []*http.Request {
@@ -132,24 +156,27 @@ func (f *fakeHF) filesClient(t *testing.T, dir string) *Client {
 
 func TestSearchRecordedAnswer(t *testing.T) {
 	f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": serveFile(t, "search-qwen-coder.json")})
-	repos, err := f.client(t, Config{}).Search(context.Background(), "qwen coder")
+	answer, err := f.client(t, Config{}).Search(context.Background(), "qwen coder", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
+	repos := answer.Repos
 	want := []struct {
 		owner, name      string
 		downloads, likes int64
 		updated          string
 		tags             []string
 	}{
-		{"DavidAU", "Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF", 1833410, 4286, "2026-11-24T04:17:40Z", []string{"Code"}},
-		{"ISTA-DASLab", "Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF", 927903, 682, "2026-10-19T17:48:41Z", []string{"Code", "MoE"}},
-		{"nerkyor", "Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-MTP-DFlash2", 883302, 592, "2026-11-15T13:32:17Z", []string{"Code"}},
-		{"ccore", "Qwen3.5-4B-3D-Coder", 601055, 1191, "2026-11-06T01:12:46Z", []string{"Code"}},
-		{"Qwen", "Qwen2.5-Coder-7B-Instruct-GGUF", 488939, 681, "2024-11-12T07:59:32Z", []string{"Code"}},
-		{"unsloth", "Qwen3-Coder-30B-A3B-Instruct-GGUF", 465424, 1240, "2026-01-30T06:29:38Z", []string{"Code", "MoE"}},
-		{"llmfan46", "Qwen3-Coder-Next-Uncensored-Heretic-GGUF", 251907, 5, "2026-08-30T05:27:30Z", []string{"Code"}},
-		{"unsloth", "Qwen3-Coder-Next-GGUF", 217562, 905, "2026-03-06T14:38:33Z", []string{"Code"}},
+		{"DavidAU", "Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF", 1873950, 4349, "2026-11-24T04:17:40Z", []string{"Code"}},
+		{"ISTA-DASLab", "Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF", 970097, 688, "2026-10-19T17:48:41Z", []string{"Code", "MoE"}},
+		{"nerkyor", "Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-MTP-DFlash2", 890761, 595, "2026-11-15T13:32:17Z", []string{"Code"}},
+		{"ccore", "Qwen3.5-4B-3D-Coder", 636513, 1192, "2026-11-06T01:12:46Z", []string{"Code"}},
+		{"llmfan46", "Qwen3-Coder-Next-Uncensored-Heretic-GGUF", 607818, 6, "2026-08-30T05:27:30Z", []string{"Code"}},
+		{"Qwen", "Qwen2.5-Coder-7B-Instruct-GGUF", 521041, 683, "2024-11-12T07:59:32Z", []string{"Code"}},
+		{"unsloth", "Qwen3-Coder-30B-A3B-Instruct-GGUF", 459823, 1240, "2026-01-30T06:29:38Z", []string{"Code", "MoE"}},
+		{"unsloth", "Qwen3-Coder-Next-GGUF", 215604, 905, "2026-03-06T14:38:33Z", []string{"Code"}},
+		{"Qwen", "Qwen2.5-Coder-14B-Instruct-GGUF", 165929, 286, "2024-11-12T09:54:27Z", []string{"Code"}},
+		{"Qwen", "Qwen2.5-Coder-1.5B-Instruct-GGUF", 147574, 173, "2024-11-12T02:56:34Z", []string{"Code"}},
 	}
 	if len(repos) != len(want) {
 		t.Fatalf("%d repos, want %d", len(repos), len(want))
@@ -165,18 +192,18 @@ func TestSearchRecordedAnswer(t *testing.T) {
 
 func TestSearchRequestCarriesEveryParameter(t *testing.T) {
 	f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": serveBody("[]")})
-	if _, err := f.client(t, Config{}).Search(context.Background(), "qwen coder"); err != nil {
+	if _, err := f.client(t, Config{}).Search(context.Background(), "qwen coder", 0); err != nil {
 		t.Fatal(err)
 	}
 	q := f.requests()[0].URL.Query()
 	for key, want := range map[string]string{
-		"search": "qwen coder", "filter": "gguf", "sort": "downloads", "direction": "-1", "limit": "30",
+		"search": "qwen coder", "filter": "gguf", "sort": "downloads", "direction": "-1", "limit": "50",
 	} {
 		if got := q.Get(key); got != want {
 			t.Errorf("%s = %q, want %q", key, got, want)
 		}
 	}
-	if got, want := q["expand[]"], []string{"downloads", "likes", "lastModified", "tags", "pipeline_tag"}; !slices.Equal(got, want) {
+	if got, want := q["expand[]"], []string{"downloads", "likes", "lastModified", "tags", "pipeline_tag", "siblings"}; !slices.Equal(got, want) {
 		t.Errorf("expand[] = %v, want %v", got, want)
 	}
 }
@@ -189,7 +216,7 @@ func TestSearchSendsNoIdentityAlsoAfterARedirect(t *testing.T) {
 		},
 		"/moved": serveBody("[]"),
 	})
-	if _, err := f.client(t, Config{}).Search(context.Background(), "qwen"); err != nil {
+	if _, err := f.client(t, Config{}).Search(context.Background(), "qwen", 0); err != nil {
 		t.Fatal(err)
 	}
 	reqs := f.requests()
@@ -213,7 +240,7 @@ func TestSearchRefusesARedirectToAnotherHost(t *testing.T) {
 			http.Redirect(w, r, other.srv.URL+"/api/models", http.StatusFound)
 		},
 	})
-	_, err := f.client(t, Config{}).Search(context.Background(), "qwen")
+	_, err := f.client(t, Config{}).Search(context.Background(), "qwen", 0)
 	if !errors.Is(err, ErrBadAnswer) {
 		t.Fatalf("err = %v, want ErrBadAnswer", err)
 	}
@@ -222,18 +249,22 @@ func TestSearchRefusesARedirectToAnotherHost(t *testing.T) {
 	}
 }
 
+// oneQuant is a search hit's siblings field with one usable quant.
+const oneQuant = `"siblings":[{"rfilename":"m-Q4_K_M.gguf"}]`
+
 func TestSearchLeavesOutNonGGUFAndUnsafeIDs(t *testing.T) {
 	f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": serveBody(`[
-		{"id":"a/kept","tags":["gguf"]},
-		{"id":"a/no-gguf","tags":["safetensors"]},
-		{"id":"a/..","tags":["gguf"]},
-		{"id":"a b/c","tags":["gguf"]},
-		{"id":"no-owner","tags":["gguf"]}
+		{"id":"a/kept","tags":["gguf"],` + oneQuant + `},
+		{"id":"a/no-gguf","tags":["safetensors"],` + oneQuant + `},
+		{"id":"a/..","tags":["gguf"],` + oneQuant + `},
+		{"id":"a b/c","tags":["gguf"],` + oneQuant + `},
+		{"id":"no-owner","tags":["gguf"],` + oneQuant + `}
 	]`)})
-	repos, err := f.client(t, Config{}).Search(context.Background(), "qwen")
+	answer, err := f.client(t, Config{}).Search(context.Background(), "qwen", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
+	repos := answer.Repos
 	if len(repos) != 1 || repos[0].ID != "a/kept" || repos[0].Tags == nil {
 		t.Fatalf("repos = %+v, want only a/kept with tags []", repos)
 	}
@@ -244,19 +275,20 @@ func TestSearchTags(t *testing.T) {
 		name, model string
 		want        []string
 	}{
-		{"MoE from A3B in the name", `{"id":"o/Qwen3-30B-A3B-GGUF","tags":["gguf"]}`, []string{"MoE"}},
-		{"MoE from a moe tag", `{"id":"o/Mixer-GGUF","tags":["gguf","moe"]}`, []string{"MoE"}},
-		{"Embeddings from feature-extraction", `{"id":"o/embed-GGUF","tags":["gguf"],"pipeline_tag":"feature-extraction"}`, []string{"Embeddings"}},
-		{"Code from Coder", `{"id":"o/Qwen2.5-Coder-7B-GGUF","tags":["gguf"]}`, []string{"Code"}},
-		{"none", `{"id":"o/Qwen3-8B-GGUF","tags":["gguf"],"pipeline_tag":"text-generation"}`, []string{}},
+		{"MoE from A3B in the name", `{"id":"o/Qwen3-30B-A3B-GGUF","tags":["gguf"],` + oneQuant + `}`, []string{"MoE"}},
+		{"MoE from a moe tag", `{"id":"o/Mixer-GGUF","tags":["gguf","moe"],` + oneQuant + `}`, []string{"MoE"}},
+		{"Embeddings from feature-extraction", `{"id":"o/embed-GGUF","tags":["gguf"],"pipeline_tag":"feature-extraction",` + oneQuant + `}`, []string{"Embeddings"}},
+		{"Code from Coder", `{"id":"o/Qwen2.5-Coder-7B-GGUF","tags":["gguf"],` + oneQuant + `}`, []string{"Code"}},
+		{"none", `{"id":"o/Qwen3-8B-GGUF","tags":["gguf"],"pipeline_tag":"text-generation",` + oneQuant + `}`, []string{}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": serveBody("[" + tc.model + "]")})
-			repos, err := f.client(t, Config{}).Search(context.Background(), "qwen")
+			answer, err := f.client(t, Config{}).Search(context.Background(), "qwen", 0)
 			if err != nil {
 				t.Fatal(err)
 			}
+			repos := answer.Repos
 			if len(repos) != 1 || !slices.Equal(repos[0].Tags, tc.want) {
 				t.Fatalf("repos = %+v, want tags %v", repos, tc.want)
 			}
@@ -268,14 +300,14 @@ func TestSearchQueryLength(t *testing.T) {
 	f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": serveBody("[]")})
 	c := f.client(t, Config{})
 	for _, q := range []string{"q", strings.Repeat("q", 101), "   "} {
-		if _, err := c.Search(context.Background(), q); !errors.Is(err, ErrBadQuery) {
+		if _, err := c.Search(context.Background(), q, 0); !errors.Is(err, ErrBadQuery) {
 			t.Errorf("Search(%d chars) = %v, want ErrBadQuery", len(q), err)
 		}
 	}
 	if n := len(f.requests()); n != 0 {
 		t.Fatalf("a bad query sent %d requests", n)
 	}
-	if _, err := c.Search(context.Background(), "  qw  "); err != nil {
+	if _, err := c.Search(context.Background(), "  qw  ", 0); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.requests()[0].URL.Query().Get("search"); got != "qw" {
@@ -287,13 +319,12 @@ func TestSearchUnreachable(t *testing.T) {
 	slow := func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }
 	cases := map[string]http.HandlerFunc{
 		"slower than the timeout": slow,
-		"429":                     serveStatus(http.StatusTooManyRequests),
 		"503":                     serveStatus(http.StatusServiceUnavailable),
 	}
 	for name, h := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": h})
-			_, err := f.client(t, Config{Timeout: 50 * time.Millisecond}).Search(context.Background(), "qwen")
+			_, err := f.client(t, Config{Timeout: 50 * time.Millisecond}).Search(context.Background(), "qwen", 0)
 			if !errors.Is(err, ErrUnreachable) {
 				t.Fatalf("err = %v, want ErrUnreachable", err)
 			}
@@ -310,7 +341,7 @@ func TestSearchBadAnswer(t *testing.T) {
 	for name, h := range cases {
 		t.Run(name, func(t *testing.T) {
 			f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": h})
-			_, err := f.client(t, Config{}).Search(context.Background(), "qwen")
+			_, err := f.client(t, Config{}).Search(context.Background(), "qwen", 0)
 			if !errors.Is(err, ErrBadAnswer) {
 				t.Fatalf("err = %v, want ErrBadAnswer", err)
 			}

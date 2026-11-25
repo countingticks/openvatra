@@ -839,6 +839,12 @@
       },
       "HFSearchBody": {
         "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": "integer"
+          },
           "repos": {
             "items": {
               "$ref": "#/components/schemas/Repo"
@@ -847,7 +853,9 @@
           }
         },
         "required": [
-          "repos"
+          "repos",
+          "page",
+          "hasMore"
         ],
         "type": "object"
       },
@@ -1582,6 +1590,9 @@
           "owner": {
             "type": "string"
           },
+          "quants": {
+            "type": "integer"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -1600,7 +1611,8 @@
           "downloads",
           "likes",
           "updatedAt",
-          "tags"
+          "tags",
+          "quants"
         ],
         "type": "object"
       },
@@ -3152,7 +3164,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_quant_not_found, hf_incomplete_model, downloads_unavailable, internal."
+            "description": "Error. Codes: invalid_request, bad_request, unknown_model, no_models_folder, already_installed, not_enough_space, hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_rate_limited, hf_quant_not_found, hf_incomplete_model, downloads_unavailable, internal."
           }
         },
         "summary": "Queue a catalog model, the CUDA engine or a Hugging Face quant",
@@ -3492,7 +3504,7 @@
                 }
               }
             },
-            "description": "Error. Codes: hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer."
+            "description": "Error. Codes: hf_repo_not_found, hf_gated, hf_unreachable, hf_bad_answer, hf_rate_limited."
           }
         },
         "summary": "A Hugging Face repo's GGUF files for this PC",
@@ -3513,6 +3525,15 @@
             "schema": {
               "description": "2 to 100 characters after trimming",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "description": "0 to 9; default 0",
+              "type": "integer"
             }
           }
         ],
@@ -3535,7 +3556,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, hf_unreachable, hf_bad_answer."
+            "description": "Error. Codes: invalid_request, bad_request, hf_unreachable, hf_bad_answer, hf_rate_limited."
           }
         },
         "summary": "Search Hugging Face for GGUF models",

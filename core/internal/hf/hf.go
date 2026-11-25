@@ -52,6 +52,8 @@ type Client struct {
 	http      *http.Client
 	checkHTTP *http.Client // Check's: a large vocabulary makes a header several MB, so it gets twice the time
 	cache     *cache
+	limit     *bucket       // every Hugging Face API request takes a token (decision 18: not the file transfers)
+	searchSem chan struct{} // one search at a time
 }
 
 var (
@@ -59,7 +61,23 @@ var (
 	ErrBadQuery    = errors.New("the search must be 2 to 100 characters")
 	ErrUnreachable = errors.New("Hugging Face couldn't be reached")
 	ErrBadAnswer   = errors.New("Hugging Face sent an answer core couldn't read")
+	ErrRateLimited = errors.New("Hugging Face is busy")
 )
+
+// RateLimitedError is a call refused for the rate limit, ours or Hugging Face's. errors.Is(err, ErrRateLimited).
+type RateLimitedError struct{ Wait time.Duration }
+
+// Error says when to try again: Wait rounded up to whole seconds, at least 1.
+func (e *RateLimitedError) Error() string {
+	s := max(1, int64((e.Wait+time.Second-1)/time.Second))
+	unit := "seconds"
+	if s == 1 {
+		unit = "second"
+	}
+	return fmt.Sprintf("%s. Try again in %d %s.", ErrRateLimited, s, unit)
+}
+
+func (e *RateLimitedError) Is(target error) bool { return target == ErrRateLimited }
 
 // errRedirect marks a redirect checkRedirect refused, so it reads as a bad answer and not as an unreachable host.
 var errRedirect = errors.New("hf: redirect refused")
@@ -110,6 +128,8 @@ func New(cfg Config) (*Client, error) {
 	c.http = &http.Client{Timeout: timeout, CheckRedirect: c.checkRedirect}
 	c.checkHTTP = &http.Client{Timeout: 2 * timeout, CheckRedirect: c.checkRedirect}
 	c.cache = newCache(c.now)
+	c.limit = newBucket(c.now)
+	c.searchSem = make(chan struct{}, 1)
 	return c, nil
 }
 
@@ -157,8 +177,19 @@ type statusError struct {
 func (e *statusError) Error() string { return fmt.Sprintf("%v (status %d)", e.err, e.code) }
 func (e *statusError) Unwrap() error { return e.err }
 
-// fetch GETs u and returns its body (at most 8 MiB) and headers. Errors wrap ErrUnreachable or ErrBadAnswer.
+// rateLimited records Hugging Face's 429 in the bucket and is the error the caller gets.
+func (c *Client) rateLimited(resp *http.Response) error {
+	d := retryAfter(resp.Header.Get("Retry-After"), c.now())
+	c.limit.block(d)
+	return &RateLimitedError{Wait: d}
+}
+
+// fetch takes a token, then GETs u and returns its body (at most 8 MiB) and headers. Errors wrap ErrUnreachable,
+// ErrBadAnswer or ErrRateLimited, or are the context's.
 func (c *Client) fetch(ctx context.Context, u *url.URL) ([]byte, http.Header, error) {
+	if err := c.limit.take(ctx); err != nil {
+		return nil, nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, nil, ErrBadAnswer
@@ -174,7 +205,9 @@ func (c *Client) fetch(ctx context.Context, u *url.URL) ([]byte, http.Header, er
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusOK:
-	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, nil, c.rateLimited(resp)
+	case resp.StatusCode >= 500:
 		return nil, nil, &statusError{code: resp.StatusCode, err: ErrUnreachable}
 	default:
 		return nil, nil, &statusError{code: resp.StatusCode, err: ErrBadAnswer}

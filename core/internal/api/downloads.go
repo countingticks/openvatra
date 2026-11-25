@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -82,7 +83,8 @@ func startPick(ctx context.Context, dl Downloads, h HF, in HFStart) error {
 
 // checkGroup refuses a group whose one model file is not a complete model. Only a single-file group that isn't
 // installed is checked: a split group would cost a request per part, and an installed one gets already_installed
-// from the queue. A check that fails lets the download start; the scanner still catches the file afterwards.
+// from the queue. A check that fails lets the download start; the scanner still catches the file afterwards. A check
+// refused for the rate limit is the answer, so the user retries instead of skipping the check.
 func checkGroup(ctx context.Context, h HF, repo, revision string, g hf.Group) error {
 	if g.Installed {
 		return nil
@@ -97,6 +99,9 @@ func checkGroup(ctx context.Context, h HF, repo, revision string, g hf.Group) er
 		return nil
 	}
 	text, err := h.Check(ctx, repo, revision, model[0])
+	if errors.Is(err, hf.ErrRateLimited) {
+		return err
+	}
 	if err != nil || text == "" {
 		return nil
 	}
@@ -131,7 +136,7 @@ func downloadRoutes(dl Downloads, h HF) []Route {
 			WithStatus(http.StatusAccepted).
 			WithErrors("invalid_request", "bad_request", "unknown_model", "no_models_folder", "already_installed",
 				"not_enough_space", "hf_repo_not_found", "hf_gated", "hf_unreachable", "hf_bad_answer",
-				"hf_quant_not_found", "hf_incomplete_model", "downloads_unavailable", "internal"),
+				"hf_rate_limited", "hf_quant_not_found", "hf_incomplete_model", "downloads_unavailable", "internal"),
 		JSON(http.MethodDelete, "/api/downloads/{id}", UI, "cancelDownload", "Cancel a download and drop its partial files",
 			func(_ context.Context, in ModelPath) (StatusBody, error) { return accepted, dl.Cancel(in.ID) }).
 			WithStatus(http.StatusAccepted).

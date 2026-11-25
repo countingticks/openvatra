@@ -1,267 +1,906 @@
 [
-  {
-    "_id": "6a9678354e2541b828b4a40e",
-    "id": "DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF",
-    "lastModified": "2026-11-24T04:17:40.000Z",
-    "likes": 4286,
-    "downloads": 1833410,
-    "tags": [
-      "gguf",
-      "unsloth",
-      "fine tune",
-      "heretic",
-      "uncensored",
-      "abliterated",
-      "ara",
-      "MTP GGUF Quants",
-      "Regular GGUF Quants",
-      "qwen3_8",
-      "qwen3_6",
-      "qwen3_5",
-      "multi-stage tuned",
-      "thinking",
-      "reasoning",
-      "all use cases",
-      "coder",
-      "creative",
-      "creative writing",
-      "all genres",
-      "story",
-      "writing",
-      "fiction",
-      "roleplaying",
-      "bfloat16",
-      "multi-stage-tune",
-      "multi-state-merge",
-      "Turbo Brilliance 50x V2 AGI",
-      "image-text-to-text",
-      "ar",
-      "zh",
-      "en",
-      "fr",
-      "de",
-      "hi",
-      "id",
-      "it",
-      "ja",
-      "ko",
-      "pl",
-      "pt",
-      "ru",
-      "es",
-      "th",
-      "vi",
-      "dataset:DavidAU/Polar-STRICT-Datasets",
-      "dataset:DavidAU/F451-STRICT-Datasets",
-      "base_model:DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NM-DAU",
-      "base_model:quantized:DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NM-DAU",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "imatrix",
-      "conversational"
-    ],
-    "pipeline_tag": "image-text-to-text"
-  },
-  {
-    "_id": "6ab7939bff5de70b9ff8761d",
-    "id": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF",
-    "lastModified": "2026-10-19T17:48:41.000Z",
-    "likes": 682,
-    "downloads": 927903,
-    "tags": [
-      "gguf",
-      "gsq",
-      "rco",
-      "quantization",
-      "pruning",
-      "expert-pruning",
-      "mixed-precision",
-      "ist-daslab",
-      "moe",
-      "code",
-      "image-text-to-text",
-      "arxiv:2604.18556",
-      "arxiv:2605.00649",
-      "base_model:Qwen/Qwen3.8-Flash-Next",
-      "base_model:quantized:Qwen/Qwen3.8-Flash-Next",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "imatrix",
-      "conversational"
-    ],
-    "pipeline_tag": "image-text-to-text"
-  },
-  {
-    "_id": "6ac22dfb8f73e742da35e0f0",
-    "id": "nerkyor/Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-MTP-DFlash2",
-    "lastModified": "2026-11-15T13:32:17.000Z",
-    "likes": 592,
-    "downloads": 883302,
-    "tags": [
-      "safetensors",
-      "gguf",
-      "qwen3.8",
-      "efficient-thinking",
-      "reasoning",
-      "coding",
-      "uncensored",
-      "sft",
-      "simpo",
-      "rloo",
-      "fp8",
-      "bf16",
-      "nvfp4",
-      "modelopt",
-      "quantization",
-      "calibration",
-      "static-quantization",
-      "compressed-tensors",
-      "gsq-rco",
-      "gsq",
-      "rco",
-      "hessian",
-      "imatrix",
-      "block128",
-      "mtp",
-      "dflash2",
-      "speculative-decoding",
-      "multimodal",
-      "sglang",
-      "vllm",
-      "llama.cpp",
-      "image-text-to-text",
-      "en",
-      "zh",
-      "base_model:nerkyor/Qwen3.8-27B-EfficientThink-Uncensored-K3-Opus5-Grok4.6-GPT5.6Sol-SFT-SimPO-DFlash2",
-      "base_model:quantized:nerkyor/Qwen3.8-27B-EfficientThink-Uncensored-K3-Opus5-Grok4.6-GPT5.6Sol-SFT-SimPO-DFlash2",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "conversational"
-    ],
-    "pipeline_tag": "image-text-to-text"
-  },
-  {
-    "_id": "6add9706130a725e85d110c6",
-    "id": "ccore/Qwen3.5-4B-3D-Coder",
-    "lastModified": "2026-11-06T01:12:46.000Z",
-    "likes": 1191,
-    "downloads": 601055,
-    "tags": [
-      "safetensors",
-      "gguf",
-      "qwen3_5",
-      "code",
-      "threejs",
-      "3d",
-      "preview",
-      "dataset:ccore/ThreeJS-3D-Scenes",
-      "base_model:Qwen/Qwen3.5-4B",
-      "base_model:finetune:Qwen/Qwen3.5-4B",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "conversational"
-    ]
-  },
-  {
-    "_id": "66eabc37bcfa5271dcd6824a",
-    "id": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
-    "lastModified": "2024-11-12T07:59:32.000Z",
-    "likes": 681,
-    "downloads": 488939,
-    "tags": [
-      "transformers",
-      "gguf",
-      "code",
-      "codeqwen",
-      "chat",
-      "qwen",
-      "qwen-coder",
-      "text-generation",
-      "en",
-      "arxiv:2409.12186",
-      "arxiv:2407.10671",
-      "base_model:Qwen/Qwen2.5-Coder-7B-Instruct",
-      "base_model:quantized:Qwen/Qwen2.5-Coder-7B-Instruct",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "conversational"
-    ],
-    "pipeline_tag": "text-generation"
-  },
-  {
-    "_id": "688b451a53e70a07b0669a7c",
-    "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
-    "lastModified": "2026-01-30T06:29:38.000Z",
-    "likes": 1240,
-    "downloads": 465424,
-    "tags": [
-      "transformers",
-      "gguf",
-      "unsloth",
-      "qwen3",
-      "qwen",
-      "text-generation",
-      "arxiv:2505.09388",
-      "base_model:Qwen/Qwen3-Coder-30B-A3B-Instruct",
-      "base_model:quantized:Qwen/Qwen3-Coder-30B-A3B-Instruct",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "imatrix",
-      "conversational"
-    ],
-    "pipeline_tag": "text-generation"
-  },
-  {
-    "_id": "6a93983be710781835c14c88",
-    "id": "llmfan46/Qwen3-Coder-Next-Uncensored-Heretic-GGUF",
-    "lastModified": "2026-08-30T05:27:30.000Z",
-    "likes": 5,
-    "downloads": 251907,
-    "tags": [
-      "transformers",
-      "gguf",
-      "qwen3_next",
-      "heretic",
-      "uncensored",
-      "decensored",
-      "abliterated",
-      "text-generation",
-      "base_model:llmfan46/Qwen3-Coder-Next-Uncensored-Heretic",
-      "base_model:quantized:llmfan46/Qwen3-Coder-Next-Uncensored-Heretic",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "conversational"
-    ],
-    "pipeline_tag": "text-generation"
-  },
-  {
-    "_id": "6981f3a909190d1015f75eeb",
-    "id": "unsloth/Qwen3-Coder-Next-GGUF",
-    "lastModified": "2026-03-06T14:38:33.000Z",
-    "likes": 905,
-    "downloads": 217562,
-    "tags": [
-      "gguf",
-      "qwen3_next",
-      "unsloth",
-      "qwen",
-      "qwen3",
-      "text-generation",
-      "base_model:Qwen/Qwen3-Coder-Next",
-      "base_model:quantized:Qwen/Qwen3-Coder-Next",
-      "license:apache-2.0",
-      "endpoints_compatible",
-      "region:us",
-      "imatrix",
-      "conversational"
-    ],
-    "pipeline_tag": "text-generation"
-  }
+ {
+  "id": "DavidAU/Qwen3.8-27B-TURBO-Fable-Cold-Fusion-735-882-Heretic-Uncensored-NEO-CODER-MAX-MTP-GGUF",
+  "lastModified": "2026-11-24T04:17:40.000Z",
+  "likes": 4349,
+  "downloads": 1873950,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "image-text-to-text",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TBrill-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TBrill-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TBrill-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q5_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TBrill-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TBrill-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q8_0.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-IQ2_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-IQ3_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-LOW-MTP-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-LOW-MTP-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-IQ2_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-IQ3_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q5_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q5_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q8_0.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-Q5_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-Q5_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-Q8_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "mmproj-BF16.gguf"
+   },
+   {
+    "rfilename": "mmproj-F16.gguf"
+   },
+   {
+    "rfilename": "mmproj-F32.gguf"
+   }
+  ]
+ },
+ {
+  "id": "ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF",
+  "lastModified": "2026-10-19T17:48:41.000Z",
+  "likes": 688,
+  "downloads": 970097,
+  "tags": [
+   "gguf",
+   "moe"
+  ],
+  "pipeline_tag": "image-text-to-text",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "IQ1_M/Qwen3.8-Flash-Next-GSQ-RCO-IQ1_M-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "mmproj-Qwen3.8-Flash-Next-BF16.gguf"
+   }
+  ]
+ },
+ {
+  "id": "nerkyor/Qwen3.8-27B-Coder390-EfficientThink-Opus5.5-GPT6Astra-Grok4.7-DSV4Pro-K3-SFT-RLOO-MTP-DFlash2",
+  "lastModified": "2026-11-15T13:32:17.000Z",
+  "likes": 595,
+  "downloads": 890761,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "image-text-to-text",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q2LynnStyle-MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q2LynnStyle-Q8MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q3LynnStyle-MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q3LynnStyle-Q8MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q4LynnStyle-MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q4LynnStyle-Q8MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q6_K-MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-EfficientThink-Q8_0-MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/Qwen3.8-27B-Coder390-Q3LynnStyle16G-MTP.gguf"
+   },
+   {
+    "rfilename": "GGUF/mmproj-Qwen3.8-27B-Q8_0.gguf"
+   },
+   {
+    "rfilename": "GGUF/mtp-Qwen3.8-27B-Coder390-EfficientThink-Q8_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   }
+  ]
+ },
+ {
+  "id": "ccore/Qwen3.5-4B-3D-Coder",
+  "lastModified": "2026-11-06T01:12:46.000Z",
+  "likes": 1192,
+  "downloads": 636513,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": null,
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "Qwen3.5-4B-3D-Coder-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3.5-4B-3D-Coder-Q8_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "mmproj-Qwen3.5-4B-BF16.gguf"
+   }
+  ]
+ },
+ {
+  "id": "llmfan46/Qwen3-Coder-Next-Uncensored-Heretic-GGUF",
+  "lastModified": "2026-08-30T05:27:30.000Z",
+  "likes": 6,
+  "downloads": 607818,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-BF16.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q3_K_L.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q3_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q3_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q5_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q5_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Uncensored-Heretic-Q8_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   }
+  ]
+ },
+ {
+  "id": "Qwen/Qwen2.5-Coder-7B-Instruct-GGUF",
+  "lastModified": "2024-11-12T07:59:32.000Z",
+  "likes": 683,
+  "downloads": 521041,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-fp16-00001-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-fp16-00002-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-fp16-00003-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-fp16-00004-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-fp16.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q2_k.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q3_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q4_0-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q4_0-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q4_0.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q4_k_m-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q4_k_m-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q4_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q5_0-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q5_0-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q5_k_m-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q5_k_m-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q5_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q6_k-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q6_k-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q6_k.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q8_0-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q8_0-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q8_0-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-7b-instruct-q8_0.gguf"
+   }
+  ]
+ },
+ {
+  "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+  "lastModified": "2026-01-30T06:29:38.000Z",
+  "likes": 1240,
+  "downloads": 459823,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "BF16/Qwen3-Coder-30B-A3B-Instruct-BF16-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "BF16/Qwen3-Coder-30B-A3B-Instruct-BF16-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-IQ4_NL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q2_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q2_K_L.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q3_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q3_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q4_0.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q4_1.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q5_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q5_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q8_0.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ1_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ1_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ2_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ2_XXS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-IQ3_XXS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-Q2_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-Q3_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-Q4_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-Q6_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-Q8_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-UD-TQ1_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   }
+  ]
+ },
+ {
+  "id": "unsloth/Qwen3-Coder-Next-GGUF",
+  "lastModified": "2026-03-06T14:38:33.000Z",
+  "likes": 905,
+  "downloads": 215604,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "BF16/Qwen3-Coder-Next-BF16-00001-of-00004.gguf"
+   },
+   {
+    "rfilename": "BF16/Qwen3-Coder-Next-BF16-00002-of-00004.gguf"
+   },
+   {
+    "rfilename": "BF16/Qwen3-Coder-Next-BF16-00003-of-00004.gguf"
+   },
+   {
+    "rfilename": "BF16/Qwen3-Coder-Next-BF16-00004-of-00004.gguf"
+   },
+   {
+    "rfilename": "Q4_1/Qwen3-Coder-Next-Q4_1-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q4_1/Qwen3-Coder-Next-Q4_1-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q4_1/Qwen3-Coder-Next-Q4_1-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q5_K_M/Qwen3-Coder-Next-Q5_K_M-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q5_K_M/Qwen3-Coder-Next-Q5_K_M-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q5_K_M/Qwen3-Coder-Next-Q5_K_M-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q5_K_S/Qwen3-Coder-Next-Q5_K_S-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q5_K_S/Qwen3-Coder-Next-Q5_K_S-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q5_K_S/Qwen3-Coder-Next-Q5_K_S-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q6_K/Qwen3-Coder-Next-Q6_K-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q6_K/Qwen3-Coder-Next-Q6_K-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q6_K/Qwen3-Coder-Next-Q6_K-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q8_0/Qwen3-Coder-Next-Q8_0-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q8_0/Qwen3-Coder-Next-Q8_0-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "Q8_0/Qwen3-Coder-Next-Q8_0-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-IQ4_NL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-MXFP4_MOE.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q2_K.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q2_K_L.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q3_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q3_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q4_0.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ1_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ1_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ2_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ2_XXS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ3_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ3_XXS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ4_NL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q2_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q3_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q3_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q3_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-Q4_K_XL.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-Next-UD-TQ1_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "UD-Q5_K_M/Qwen3-Coder-Next-UD-Q5_K_M-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_M/Qwen3-Coder-Next-UD-Q5_K_M-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_M/Qwen3-Coder-Next-UD-Q5_K_M-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_S/Qwen3-Coder-Next-UD-Q5_K_S-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_S/Qwen3-Coder-Next-UD-Q5_K_S-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_S/Qwen3-Coder-Next-UD-Q5_K_S-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_XL/Qwen3-Coder-Next-UD-Q5_K_XL-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_XL/Qwen3-Coder-Next-UD-Q5_K_XL-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q5_K_XL/Qwen3-Coder-Next-UD-Q5_K_XL-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q6_K/Qwen3-Coder-Next-UD-Q6_K-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q6_K/Qwen3-Coder-Next-UD-Q6_K-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q6_K/Qwen3-Coder-Next-UD-Q6_K-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q6_K_XL/Qwen3-Coder-Next-UD-Q6_K_XL-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q6_K_XL/Qwen3-Coder-Next-UD-Q6_K_XL-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q6_K_XL/Qwen3-Coder-Next-UD-Q6_K_XL-00003-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q8_K_XL/Qwen3-Coder-Next-UD-Q8_K_XL-00001-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q8_K_XL/Qwen3-Coder-Next-UD-Q8_K_XL-00002-of-00003.gguf"
+   },
+   {
+    "rfilename": "UD-Q8_K_XL/Qwen3-Coder-Next-UD-Q8_K_XL-00003-of-00003.gguf"
+   }
+  ]
+ },
+ {
+  "id": "Qwen/Qwen2.5-Coder-14B-Instruct-GGUF",
+  "lastModified": "2024-11-12T09:54:27.000Z",
+  "likes": 286,
+  "downloads": 165929,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-fp16-00001-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-fp16-00002-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-fp16-00003-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-fp16-00004-of-00004.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-fp16.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q2_k.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q3_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q4_0.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q4_k_m-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q4_k_m-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q4_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q5_0-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q5_0-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q5_0.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q5_k_m-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q5_k_m-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q5_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q6_k-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q6_k-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q6_k.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q8_0-00001-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q8_0-00002-of-00002.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-14b-instruct-q8_0.gguf"
+   }
+  ]
+ },
+ {
+  "id": "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF",
+  "lastModified": "2024-11-12T02:56:34.000Z",
+  "likes": 173,
+  "downloads": 147574,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "README.md"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q2_k.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q3_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q4_0.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q5_0.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q5_k_m.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q6_k.gguf"
+   },
+   {
+    "rfilename": "qwen2.5-coder-1.5b-instruct-q8_0.gguf"
+   }
+  ]
+ },
+ {
+  "id": "mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-i1-GGUF",
+  "lastModified": "2025-12-25T03:18:26.000Z",
+  "likes": 228,
+  "downloads": 127431,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": null,
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ1_M.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ1_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ2_M.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ2_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ2_XS.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ2_XXS.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ3_M.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ3_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ3_XS.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ3_XXS.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-IQ4_XS.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q2_K.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q2_K_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q3_K_L.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q3_K_M.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q3_K_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q4_0.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q4_1.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q4_K_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q5_K_M.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q5_K_S.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.i1-Q6_K.gguf"
+   },
+   {
+    "rfilename": "Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated.imatrix.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   }
+  ]
+ },
+ {
+  "id": "ggml-org/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+  "lastModified": "2026-11-12T11:11:21.000Z",
+  "likes": 6,
+  "downloads": 118627,
+  "tags": [
+   "gguf"
+  ],
+  "pipeline_tag": "text-generation",
+  "siblings": [
+   {
+    "rfilename": ".gitattributes"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-BF16.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf"
+   },
+   {
+    "rfilename": "Qwen3-Coder-30B-A3B-Instruct-Q8_0.gguf"
+   },
+   {
+    "rfilename": "README.md"
+   }
+  ]
+ }
 ]

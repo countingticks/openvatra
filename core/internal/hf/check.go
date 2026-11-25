@@ -48,6 +48,9 @@ func (c *Client) checkFile(ctx context.Context, repo, revision, filePath string)
 	if !ok {
 		return "", ErrBadAnswer
 	}
+	if err := c.limit.take(ctx); err != nil {
+		return "", err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", ErrBadAnswer
@@ -64,7 +67,9 @@ func (c *Client) checkFile(ctx context.Context, repo, revision, filePath string)
 	defer resp.Body.Close()
 	switch {
 	case resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusPartialContent:
-	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return "", c.rateLimited(resp)
+	case resp.StatusCode >= 500:
 		return "", &statusError{code: resp.StatusCode, err: ErrUnreachable}
 	default:
 		return "", &statusError{code: resp.StatusCode, err: ErrBadAnswer}
