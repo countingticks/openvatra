@@ -93,7 +93,27 @@ func sentText(m Message) (string, bool) {
 	if m.Role == "assistant" && b.Len() == 0 {
 		return "", false
 	}
+	if quote := event.QuoteOf(m.Parts); m.Role == "user" && quote != "" {
+		return Blockquote(quote) + "\n\n" + b.String(), true
+	}
 	return b.String(), true
+}
+
+// Blockquote writes quote as Markdown: each line prefixed "> ", an empty line as ">".
+func Blockquote(quote string) string {
+	if quote == "" {
+		return ""
+	}
+	lines := strings.Split(quote, "\n")
+	for i, l := range lines {
+		l = strings.TrimSuffix(l, "\r")
+		if l == "" {
+			lines[i] = ">"
+		} else {
+			lines[i] = "> " + l
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // capTool keeps the first and last toolCap/2 tokens' worth of a long tool result.
