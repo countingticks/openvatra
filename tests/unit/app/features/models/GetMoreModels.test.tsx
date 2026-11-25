@@ -46,6 +46,9 @@ const catalog = (...entries: CatalogEntry[]): CatalogView => ({
   recommended: qwen.id
 })
 
+/** The tab's own content: the Downloading card above the tabs shows the same controls. */
+const panel = (dialog: HTMLElement): Promise<HTMLElement> => within(dialog).findByRole('tabpanel')
+
 /** Settings on Models, with its Get more models tab open; `dialog` is the Settings dialog. */
 async function openDialog(
   view: CatalogView,
@@ -132,9 +135,11 @@ describe('Get more models', () => {
       }
     ])
 
-    expect(await within(dialog).findByText('2.1 of 5.0 GB · 38 MB/s')).toBeInTheDocument()
-    expect(within(dialog).getByRole('progressbar', { name: 'Download progress' })).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Pause Qwen3 8B' }))
+    expect(await within(await panel(dialog)).findByText('2.1 of 5.0 GB · 38 MB/s')).toBeInTheDocument()
+    expect(
+      within(await panel(dialog)).getByRole('progressbar', { name: 'Download progress' })
+    ).toBeInTheDocument()
+    fireEvent.click(within(await panel(dialog)).getByRole('button', { name: 'Pause Qwen3 8B' }))
     await waitFor(() =>
       expect(writes(coreHttp)).toEqual([
         { method: 'POST', path: '/api/downloads/qwen3-8b/pause', body: undefined }
@@ -147,21 +152,27 @@ describe('Get more models', () => {
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
 
-    await within(dialog).findByText('1.0 of 5.0 GB')
+    await within(await panel(dialog)).findByText('1.0 of 5.0 GB')
     // A queue that starts paused opens the resume dialog; a download that pauses in this run does not.
     setup.emitDownloads([
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
-    expect(await within(dialog).findByText('Paused · 1.0 of 5.0 GB')).toBeInTheDocument()
-    expect(await within(dialog).findByRole('button', { name: 'Resume Qwen3 8B' })).toBeInTheDocument()
-    expect(within(dialog).getByRole('button', { name: 'Cancel Qwen3 8B' })).toBeInTheDocument()
+    expect(await within(await panel(dialog)).findByText('Paused · 1.0 of 5.0 GB')).toBeInTheDocument()
+    expect(
+      await within(await panel(dialog)).findByRole('button', { name: 'Resume Qwen3 8B' })
+    ).toBeInTheDocument()
+    expect(within(await panel(dialog)).getByRole('button', { name: 'Cancel Qwen3 8B' })).toBeInTheDocument()
 
     setup.emitDownloads([
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'verifying', bytes: 5 * GB, total: 5 * GB, speed: 0 }
     ])
-    expect(await within(dialog).findByText('Checking the download…')).toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: 'Resume Qwen3 8B' })).not.toBeInTheDocument()
-    expect(within(dialog).queryByRole('button', { name: 'Cancel Qwen3 8B' })).not.toBeInTheDocument()
+    expect(await within(await panel(dialog)).findByText('Checking the download…')).toBeInTheDocument()
+    expect(
+      within(await panel(dialog)).queryByRole('button', { name: 'Resume Qwen3 8B' })
+    ).not.toBeInTheDocument()
+    expect(
+      within(await panel(dialog)).queryByRole('button', { name: 'Cancel Qwen3 8B' })
+    ).not.toBeInTheDocument()
   })
 
   it('cancels a model being downloaded', async () => {
@@ -169,8 +180,8 @@ describe('Get more models', () => {
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
 
-    expect(await within(dialog).findByText('1.0 of 5.0 GB')).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel Qwen3 8B' }))
+    expect(await within(await panel(dialog)).findByText('1.0 of 5.0 GB')).toBeInTheDocument()
+    fireEvent.click(within(await panel(dialog)).getByRole('button', { name: 'Cancel Qwen3 8B' }))
     await waitFor(() =>
       expect(writes(coreHttp)).toEqual([
         { method: 'DELETE', path: '/api/downloads/qwen3-8b', body: undefined }
@@ -182,12 +193,12 @@ describe('Get more models', () => {
     const { coreHttp, setup, dialog } = await openDialog(catalog(qwen), [
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'downloading', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
-    await within(dialog).findByText('1.0 of 5.0 GB')
+    await within(await panel(dialog)).findByText('1.0 of 5.0 GB')
 
     setup.emitDownloads([
       { id: qwen.id, name: 'qwen3-8b.gguf', state: 'paused', bytes: 1 * GB, total: 5 * GB, speed: 0 }
     ])
-    fireEvent.click(await within(dialog).findByRole('button', { name: 'Resume Qwen3 8B' }))
+    fireEvent.click(await within(await panel(dialog)).findByRole('button', { name: 'Resume Qwen3 8B' }))
 
     await waitFor(() =>
       expect(writes(coreHttp)).toEqual([

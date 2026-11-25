@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@app/ui/button'
-import { EmbeddingSelect, GpuCard } from '@app/features/models'
+import { DownloadsCard, EmbeddingSelect, GpuCard } from '@app/features/models'
 import { ModelsTabs } from './ModelsTabs'
 import { PathRow } from './PathRow'
 import { SegmentedControl } from '@app/ui/SegmentedControl'
@@ -65,6 +65,7 @@ export function ModelsSection(): React.JSX.Element {
   return (
     <div className="flex flex-col">
       <GpuCard />
+      <DownloadsCard />
 
       <div className="pt-4">
         <PathRow
