@@ -10,6 +10,7 @@ import {
   estimateTokens,
   firstInputs,
   messagesAfter,
+  quotedInput,
   runIdOf,
   runView,
   waitingLine,
@@ -278,6 +279,32 @@ describe('applyRunEvent', () => {
     ])
   })
 
+  it("an input's quote comes from the item, and from input.received", () => {
+    const at = (data: object): Event =>
+      ({ type: 'input.received', stream: 'run:r1', seq: 4, v: 1, time: 0, data }) as Event
+    const item = { kind: 'input', seq: 1, runId: 'r1', time: 0, text: 'A' } as const
+    const quote = (t: Transcript): unknown => {
+      const found = runView(t).entries.find((e) => e.kind === 'input')
+      return found?.kind === 'input' ? found.quote : undefined
+    }
+    expect(quote({ ...emptyTranscript, items: [{ ...item, quote: 'q' }] })).toBe('q')
+    expect(quote({ ...emptyTranscript, items: [{ ...item, quote: '' }] })).toBeNull()
+    expect(quote({ ...emptyTranscript, items: [item] })).toBeNull()
+    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quote: 'q2' })]))).toBe('q2')
+    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]))).toBeNull()
+  })
+
+  it("a quoted input.received adds the blockquote's tokens to the live estimate", () => {
+    const at = (data: object): Event =>
+      ({ type: 'input.received', stream: 'run:r1', seq: 4, v: 1, time: 0, data }) as Event
+    const long = 'a'.repeat(70)
+    const plain = fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]).context.used
+    const quoted = fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quote: long })]).context.used
+    expect(plain).toBe(estimateTokens('B'))
+    expect(quoted).toBe(estimateTokens(quotedInput('B', long)))
+    expect(quoted).toBeGreaterThan(plain)
+  })
+
   it("items added from events carry the event's time", () => {
     const at = (type: string, seq: number, time: number, data: object): Event =>
       ({ type, stream: 'run:r1', seq, v: 1, time, data }) as Event
@@ -466,5 +493,13 @@ describe('answerState and waitingLine', () => {
   it('a running run without a live entry is idle', () => {
     expect(answerState(run(), live('Hi', ''), false)).toBe('idle')
     expect(answerState(run(), undefined, false)).toBe('idle')
+  })
+})
+
+describe('quotedInput', () => {
+  it('writes each line as a blockquote, an empty line as >, then the text', () => {
+    expect(quotedInput('Explain', 'one\n\ntwo\r\nthree')).toBe('> one\n>\n> two\n> three\n\nExplain')
+    expect(quotedInput('Explain', null)).toBe('Explain')
+    expect(quotedInput('Explain', '')).toBe('Explain')
   })
 })

@@ -160,3 +160,22 @@ test('Rewind removes the second turn and puts its text in the message box in pla
   await expect(box).toHaveValue('Second')
   await expect(box).toBeFocused()
 })
+
+test('Quote puts selected answer text above the next message and sends it', async () => {
+  const box = mainWindow.getByRole('textbox', { name: 'Message' })
+  const conversation = mainWindow.getByRole('log', { name: 'Conversation' })
+  const copies = conversation.getByRole('button', { name: 'Copy answer' })
+
+  await box.fill('Explain')
+  await conversation.getByText(answer, { exact: true }).selectText()
+  await mainWindow.getByRole('button', { name: 'Quote' }).click()
+
+  const chip = mainWindow.getByRole('group', { name: 'Quote' })
+  await expect(chip).toContainText('w1 w2')
+  await box.press('Enter')
+
+  await expect(conversation.getByRole('button', { name: answer })).toBeVisible()
+  await expect(conversation.getByText('Explain', { exact: true })).toBeVisible()
+  await expect(chip).toHaveCount(0)
+  await expect(copies).toHaveCount(2, { timeout: 20_000 })
+})

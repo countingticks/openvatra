@@ -7,17 +7,27 @@ export function AnswerBlock({
   text,
   reasoning,
   thinkingLabel,
+  quotable = false,
   children
 }: {
   text: string
   reasoning: string
   thinkingLabel: string
+  /** The text can be quoted from a selection (a finished answer; the live one cannot). */
+  quotable?: boolean
   children?: ReactNode
 }): React.JSX.Element {
   return (
     <div className="group font-serif text-[17px] leading-[1.65]">
       {reasoning !== '' && <ThinkingDisclosure label={thinkingLabel} reasoning={reasoning} />}
-      {text !== '' && <Markdown text={text} />}
+      {text !== '' &&
+        (quotable ? (
+          <div data-quote>
+            <Markdown text={text} />
+          </div>
+        ) : (
+          <Markdown text={text} />
+        ))}
       {children}
     </div>
   )

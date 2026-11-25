@@ -98,6 +98,7 @@ interface Options {
   /** Opens this chat (its transcript and chat entry answer as given); omitted: a new chat. */
   open?: { transcript?: Transcript; chat?: ChatBody }
   models?: ModelInfo[]
+  storage?: Record<string, string>
 }
 
 function show(options: Options = {}): ReturnType<typeof renderWithStore> & {
@@ -105,7 +106,8 @@ function show(options: Options = {}): ReturnType<typeof renderWithStore> & {
 } {
   const saved = options.open ? { lastRoute: 'chat/c1' } : {}
   const rendered = renderWithStore(<ChatScreen showWelcome={false} />, saved, {
-    models: options.models ?? [model('tiny')]
+    models: options.models ?? [model('tiny')],
+    storage: options.storage
   })
   const { coreHttp } = rendered
   coreHttp.answer('/api/chats/c1', options.open?.chat ?? chatBody())
@@ -143,6 +145,20 @@ describe('ChatScreen', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+  })
+
+  it('a send with a quote posts it', async () => {
+    const { coreHttp } = show({ storage: { 'chat.quote:new': 'q' } })
+    await screen.findByRole('button', { name: /^Model: tiny,/ })
+
+    await type('Explain')
+    enter()
+
+    await waitFor(() =>
+      expect(runPosts(coreHttp)).toEqual([
+        { requestId: expect.any(String), text: 'Explain', model: 'tiny', quote: 'q' }
+      ])
+    )
   })
 
   it('starts a new chat with the first chat model, then shows it in place', async () => {
@@ -690,6 +706,30 @@ describe('ChatScreen', () => {
       )
     })
 
+    it('Edit of a quoted message posts replaceFrom with its quote', async () => {
+      const { coreHttp } = show({
+        open: {
+          transcript: transcript({
+            seq: 3,
+            items: [{ ...input(2, 'hi'), quote: 'q' }, answer(3, 'old answer')],
+            runs: [run()]
+          })
+        }
+      })
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit message' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await waitFor(() =>
+        expect(runPosts(coreHttp)).toContainEqual({
+          requestId: expect.any(String),
+          chatId: 'c1',
+          text: 'hi',
+          replaceFrom: 'r1',
+          quote: 'q'
+        })
+      )
+    })
+
     it('Rewind posts the run at once and puts its text in the message box, replacing the draft', async () => {
       const { coreHttp } = show({ open: { transcript: done() } })
       coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({ status: 200, body: { seq: 4, text: 'hi' } }))
@@ -706,6 +746,19 @@ describe('ChatScreen', () => {
       )
       await waitFor(() => expect(message()).toHaveValue('hi'))
       expect(message()).toHaveFocus()
+    })
+
+    it('Rewind of a quoted message puts its text and quote back in the box', async () => {
+      const { coreHttp } = show({ open: { transcript: done() } })
+      coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({
+        status: 200,
+        body: { seq: 4, text: 'hi', quote: 'q' }
+      }))
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))
+
+      await waitFor(() => expect(message()).toHaveValue('hi'))
+      expect(screen.getByRole('group', { name: 'Quote' })).toHaveTextContent('q')
     })
 
     it('a refused rewind is logged and leaves the box as it was', async () => {
@@ -742,6 +795,109 @@ describe('ChatScreen', () => {
 
       expect(await within(conversation()).findByText('new answer')).toBeInTheDocument()
       expect(within(conversation()).queryByText('old answer')).toBeNull()
+    })
+  })
+
+  describe('quoting a selection', () => {
+    const rect = { top: 100, bottom: 120, left: 10, right: 50, width: 40, height: 20, x: 10, y: 100 }
+
+    beforeEach(() => {
+      // jsdom has no layout: a fixed rectangle for every range.
+      Object.defineProperty(Range.prototype, 'getClientRects', {
+        value: () => [rect],
+        configurable: true
+      })
+      Object.defineProperty(Range.prototype, 'getBoundingClientRect', {
+        value: () => rect,
+        configurable: true
+      })
+    })
+
+    afterEach(() => {
+      document.getSelection()?.removeAllRanges()
+    })
+
+    const select = (node: Node, start: number, end: number): void => {
+      const range = document.createRange()
+      range.setStart(node, start)
+      range.setEnd(node, end)
+      const selection = document.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      fireEvent(document, new Event('selectionchange'))
+    }
+    const textOf = (element: HTMLElement): Text => element.firstChild as Text
+    const answered = (text: string, extra: Partial<TranscriptItem> = {}): Transcript =>
+      transcript({
+        seq: 2,
+        items: [input(1, 'first'), { ...answer(2, text), ...extra }],
+        runs: [run()]
+      })
+
+    it("selecting an answer's words shows Quote, and clicking it puts the chip in the box", async () => {
+      show({ open: { transcript: answered('Some answer words') } })
+      const words = await screen.findByText('Some answer words')
+
+      select(textOf(words), 5, 11)
+      fireEvent.click(await screen.findByRole('button', { name: 'Quote' }))
+
+      expect(screen.getByRole('group', { name: 'Quote' })).toHaveTextContent('answer')
+      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+      expect(message()).toHaveFocus()
+    })
+
+    it('selecting thinking or the live answer shows no Quote', async () => {
+      const { push } = show({
+        open: {
+          transcript: answered('Done', {
+            parts: [
+              { kind: 'reasoning', text: 'pondering deeply' },
+              { kind: 'text', text: 'Done' }
+            ]
+          })
+        }
+      })
+      fireEvent.click(await screen.findByRole('button', { name: /Thought/ }))
+      select(textOf(screen.getByText('pondering deeply')), 0, 9)
+      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+
+      await push(
+        event('run.queued', 3, { chatId: 'c1', profile: 'chat', model: 'tiny' }),
+        event('input.received', 4, { chatId: 'c1', requestId: 'x', text: 'again' }),
+        event('run.started', 5, { chatId: 'c1' }),
+        event('message.delta', undefined, { text: 'Streaming words', n: 1 })
+      )
+      const live = await screen.findByText('Streaming words')
+      select(textOf(live), 0, 9)
+      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    })
+
+    it('Escape and a scroll of the conversation hide Quote', async () => {
+      show({ open: { transcript: answered('Some answer words') } })
+      const words = await screen.findByText('Some answer words')
+
+      select(textOf(words), 0, 4)
+      expect(await screen.findByRole('button', { name: 'Quote' })).toBeInTheDocument()
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+
+      select(textOf(words), 0, 4)
+      expect(await screen.findByRole('button', { name: 'Quote' })).toBeInTheDocument()
+      fireEvent.scroll(conversation())
+      expect(screen.queryByRole('button', { name: 'Quote' })).toBeNull()
+    })
+
+    it('a selection over 4,000 characters shows Quote as aria-disabled with its title', async () => {
+      show({ open: { transcript: answered('x'.repeat(4001)) } })
+      const words = await screen.findByText('x'.repeat(4001))
+
+      select(textOf(words), 0, 4001)
+      const quote = await screen.findByRole('button', { name: 'Quote' })
+      expect(quote).toHaveAttribute('aria-disabled', 'true')
+      expect(quote).toHaveAttribute('title', 'Select at most 4,000 characters to quote')
+      fireEvent.click(quote)
+
+      expect(screen.queryByRole('group', { name: 'Quote' })).toBeNull()
     })
   })
 })
