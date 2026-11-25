@@ -161,21 +161,23 @@ test('Rewind removes the second turn and puts its text in the message box in pla
   await expect(box).toBeFocused()
 })
 
-test('Quote puts selected answer text above the next message and sends it', async () => {
+test('Quote with a reply puts a card in the box, and sends it on its own', async () => {
   const box = mainWindow.getByRole('textbox', { name: 'Message' })
   const conversation = mainWindow.getByRole('log', { name: 'Conversation' })
   const copies = conversation.getByRole('button', { name: 'Copy answer' })
 
-  await box.fill('Explain')
+  await box.fill('')
   await conversation.getByText(answer, { exact: true }).selectText()
-  await mainWindow.getByRole('button', { name: 'Reply' }).click()
+  await mainWindow.getByRole('button', { name: 'Quote' }).click()
+  await mainWindow.getByRole('textbox', { name: 'Reply to this quote' }).fill('Explain this')
+  await mainWindow.getByRole('textbox', { name: 'Reply to this quote' }).press('Enter')
 
-  const chip = mainWindow.getByRole('group', { name: 'Quote' })
-  await expect(chip).toContainText('w1 w2')
+  const card = mainWindow.getByRole('group', { name: 'Quote' })
+  await expect(card).toContainText('With reply')
   await box.press('Enter')
 
   await expect(conversation.getByRole('button', { name: answer })).toBeVisible()
-  await expect(conversation.getByText('Explain', { exact: true })).toBeVisible()
-  await expect(chip).toHaveCount(0)
+  await expect(conversation.getByText('Explain this', { exact: true })).toBeVisible()
+  await expect(card).toHaveCount(0)
   await expect(copies).toHaveCount(2, { timeout: 20_000 })
 })
