@@ -168,7 +168,7 @@ test('Quote puts selected answer text above the next message and sends it', asyn
 
   await box.fill('Explain')
   await conversation.getByText(answer, { exact: true }).selectText()
-  await mainWindow.getByRole('button', { name: 'Quote' }).click()
+  await mainWindow.getByRole('button', { name: 'Reply' }).click()
 
   const chip = mainWindow.getByRole('group', { name: 'Quote' })
   await expect(chip).toContainText('w1 w2')
