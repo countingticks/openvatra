@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -176,14 +177,14 @@ func TestStartRunTwiceWithOneRequestIDAnswersTheSameRun(t *testing.T) {
 
 func TestStartRunWithAQuoteListsItOnTheInput(t *testing.T) {
 	f := newRunsFixture(t, chatModels, hiTurn)
-	ref := f.start(`{"requestId":"r1","text":"why?","quote":"the part"}`)
+	ref := f.start(`{"requestId":"r1","text":"why?","quotes":["one","two"]}`)
 	f.waitFor("run.finished", ref.RunID)
 	var tr Transcript
 	f.get("/api/chats/"+ref.ChatID+"/messages", &tr)
 	for _, it := range tr.Items {
 		if it.Kind == "input" {
-			if it.Text != "why?" || it.Quote != "the part" {
-				t.Errorf("input = %+v, want text why? and quote the part", it)
+			if it.Text != "why?" || !slices.Equal(it.Quotes, []string{"one", "two"}) {
+				t.Errorf("input = %+v, want text why? and quotes one, two", it)
 			}
 			return
 		}
@@ -199,9 +200,10 @@ func TestStartRunErrors(t *testing.T) {
 	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r1","model":"nope","text":"hi"}`), 404,
 		"model_not_found")
 	for name, body := range map[string]string{
-		"a quote of only spaces": `{"requestId":"r1","text":"hi","quote":"   "}`,
-		"a quote too long":       `{"requestId":"r1","text":"hi","quote":"` + strings.Repeat("a", 4001) + `"}`,
-		"a quote without text":   `{"requestId":"r1","quote":"q"}`,
+		"a quote of only spaces": `{"requestId":"r1","text":"hi","quotes":["   "]}`,
+		"a quote too long":       `{"requestId":"r1","text":"hi","quotes":["` + strings.Repeat("a", 4001) + `"]}`,
+		"a quote without text":   `{"requestId":"r1","quotes":["q"]}`,
+		"6 quotes":               `{"requestId":"r1","text":"hi","quotes":["1","2","3","4","5","6"]}`,
 	} {
 		t.Run(name, func(t *testing.T) { wantErrorCode(t, f.call(http.MethodPost, "/api/runs", body), 400, "bad_request") })
 	}
@@ -406,7 +408,7 @@ func TestRewindChatAnswersTheFirstInputAndRetractsTheRest(t *testing.T) {
 	f := newRunsFixture(t, chatModels, hiTurn, hiTurn, hiTurn)
 	first := f.start(`{"requestId":"r1","text":"one"}`)
 	f.waitFor("run.finished", first.RunID)
-	second := f.start(`{"requestId":"r2","chatId":"` + first.ChatID + `","text":"two","quote":"the part"}`)
+	second := f.start(`{"requestId":"r2","chatId":"` + first.ChatID + `","text":"two","quotes":["one","two"]}`)
 	f.waitFor("run.finished", second.RunID)
 	third := f.start(`{"requestId":"r3","chatId":"` + first.ChatID + `","text":"three"}`)
 	f.waitFor("run.finished", third.RunID)
@@ -416,7 +418,7 @@ func TestRewindChatAnswersTheFirstInputAndRetractsTheRest(t *testing.T) {
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil {
 		t.Fatalf("rewind = %d %s", rec.Code, rec.Body)
 	}
-	if got.Text != "two" || got.Quote != "the part" || got.Seq <= 0 {
+	if got.Text != "two" || !slices.Equal(got.Quotes, []string{"one", "two"}) || got.Seq <= 0 {
 		t.Errorf("rewound = %+v, want text two, its quote and a seq", got)
 	}
 	if in := f.inputs(first.ChatID); len(in) != 1 || in[0] != "one" {
@@ -505,7 +507,7 @@ func TestExportChatIsMarkdownInReadingOrder(t *testing.T) {
 	first := f.start(`{"requestId":"r1","text":"hello"}`)
 	f.waitFor("run.finished", first.RunID)
 	chat := first.ChatID
-	second := f.start(`{"requestId":"r2","chatId":"` + chat + `","text":"second","quote":"the part"}`)
+	second := f.start(`{"requestId":"r2","chatId":"` + chat + `","text":"second","quotes":["one","two"]}`)
 	f.waitFor("run.finished", second.RunID)
 	regen := f.start(`{"requestId":"r3","chatId":"` + chat + `","replace":"last"}`)
 	f.waitFor("run.finished", regen.RunID)
@@ -519,7 +521,7 @@ func TestExportChatIsMarkdownInReadingOrder(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "text/markdown; charset=utf-8" {
 		t.Fatalf("export = %d %q", rec.Code, rec.Header().Get("Content-Type"))
 	}
-	want := "# hello\n\n## You\n\nhello\n\n## tiny\n\nfirst answer\n\n## You\n\n> the part\n\nsecond\n\n## tiny\n\nnew answer\n\n" +
+	want := "# hello\n\n## You\n\nhello\n\n## tiny\n\nfirst answer\n\n## You\n\n> one\n\n> two\n\nsecond\n\n## tiny\n\nnew answer\n\n" +
 		"## You\n\nthird\n\n## tiny\n\nhalf\n\n_(stopped)_\n"
 	if got := rec.Body.String(); got != want {
 		t.Errorf("export =\n%s\nwant\n%s", got, want)

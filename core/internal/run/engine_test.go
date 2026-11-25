@@ -477,12 +477,12 @@ func TestStart(t *testing.T) {
 
 	t.Run("a quote is trimmed, stored on the input and sent above the text", func(t *testing.T) {
 		f := newFixture(t, answer("a"))
-		ref := f.start(Spec{Model: "m1", Quote: "  q1\nq2 ", Text: "why?", RequestID: "req-1"})
+		ref := f.start(Spec{Model: "m1", Quotes: []string{"  q1\nq2 ", " second "}, Text: "why?", RequestID: "req-1"})
 		f.finished(ref.RunID)
-		if got := decodeAs[event.InputReceived](t, f.storedOf("input.received")[0]); got.Quote != "q1\nq2" {
-			t.Fatalf("stored quote %q", got.Quote)
+		if got := decodeAs[event.InputReceived](t, f.storedOf("input.received")[0]); !slices.Equal(got.Quotes, []string{"q1\nq2", "second"}) {
+			t.Fatalf("stored quote %q", got.Quotes)
 		}
-		if got := f.prompt(0); !slices.Equal(got, []string{"user:> q1\n> q2\n\nwhy?"}) {
+		if got := f.prompt(0); !slices.Equal(got, []string{"user:> q1\n> q2\n\n> second\n\nwhy?"}) {
 			t.Fatalf("prompt %q", got)
 		}
 	})
@@ -494,10 +494,12 @@ func TestStart(t *testing.T) {
 			name string
 			spec Spec
 		}{
-			{"only spaces", Spec{ChatID: first.ChatID, Text: "t", Quote: "   "}},
-			{"4,001 runes", Spec{ChatID: first.ChatID, Text: "t", Quote: strings.Repeat("ă", 4_001)}},
-			{"blank text", Spec{ChatID: first.ChatID, Text: " ", Quote: "q"}},
-			{"replace without text", Spec{ChatID: first.ChatID, Quote: "q", Replace: true}},
+			{"only spaces", Spec{ChatID: first.ChatID, Text: "t", Quotes: []string{"   "}}},
+			{"4,001 runes", Spec{ChatID: first.ChatID, Text: "t", Quotes: []string{strings.Repeat("ă", 4_001)}}},
+			{"6 quotes", Spec{ChatID: first.ChatID, Text: "t", Quotes: []string{"1", "2", "3", "4", "5", "6"}}},
+			{"one of two quotes blank", Spec{ChatID: first.ChatID, Text: "t", Quotes: []string{"q", " "}}},
+			{"blank text", Spec{ChatID: first.ChatID, Text: " ", Quotes: []string{"q"}}},
+			{"replace without text", Spec{ChatID: first.ChatID, Quotes: []string{"q"}, Replace: true}},
 		}
 		for i, tc := range cases {
 			before := len(f.stored())
@@ -509,7 +511,7 @@ func TestStart(t *testing.T) {
 				t.Errorf("%s: %d events appended", tc.name, after-before)
 			}
 		}
-		ok := f.start(Spec{ChatID: first.ChatID, Text: "t", Quote: strings.Repeat("ă", 4_000), RequestID: "ok"})
+		ok := f.start(Spec{ChatID: first.ChatID, Text: "t", Quotes: []string{"1", "2", "3", "4", strings.Repeat("ă", 4_000)}, RequestID: "ok"})
 		f.finished(ok.RunID)
 	})
 
@@ -518,11 +520,11 @@ func TestStart(t *testing.T) {
 		release := f.model.holdCall(1)
 		ref := f.send("one", "req-1")
 		f.entered()
-		f.start(Spec{ChatID: ref.ChatID, Text: "two", Quote: "q", RequestID: "req-2"})
+		f.start(Spec{ChatID: ref.ChatID, Text: "two", Quotes: []string{"q1", "q2"}, RequestID: "req-2"})
 		release()
 		f.finished(ref.RunID)
 		inputs := f.storedOf("input.received")
-		if got := decodeAs[event.InputReceived](t, inputs[1]); got.Quote != "q" {
+		if got := decodeAs[event.InputReceived](t, inputs[1]); !slices.Equal(got.Quotes, []string{"q1", "q2"}) {
 			t.Fatalf("queued input %+v", got)
 		}
 	})
@@ -1530,24 +1532,24 @@ func TestReplace(t *testing.T) {
 
 	t.Run("regenerate sends each input again with its own quote", func(t *testing.T) {
 		f := newFixture(t, answer("a1"), answer("a1 again"))
-		first := f.start(Spec{Model: "m1", Text: "why?", Quote: "the part", RequestID: "req-q"})
+		first := f.start(Spec{Model: "m1", Text: "why?", Quotes: []string{"the part", "and this"}, RequestID: "req-q"})
 		f.finished(first.RunID)
 		ref, _ := f.replace(first.ChatID, "")
 		inputs := f.storedOf("input.received")
 		got := decodeAs[event.InputReceived](t, inputs[len(inputs)-1])
-		if inputs[len(inputs)-1].Stream != "run:"+ref.RunID || got.Text != "why?" || got.Quote != "the part" {
+		if inputs[len(inputs)-1].Stream != "run:"+ref.RunID || got.Text != "why?" || !slices.Equal(got.Quotes, []string{"the part", "and this"}) {
 			t.Fatalf("regenerated input %+v", got)
 		}
 	})
 
 	t.Run("replace with text drops the old quote unless named again", func(t *testing.T) {
 		f := newFixture(t, answer("a1"), answer("a2"))
-		first := f.start(Spec{Model: "m1", Text: "why?", Quote: "the part", RequestID: "req-q"})
+		first := f.start(Spec{Model: "m1", Text: "why?", Quotes: []string{"the part"}, RequestID: "req-q"})
 		f.finished(first.RunID)
 		f.replace(first.ChatID, "edited")
 		inputs := f.storedOf("input.received")
 		got := decodeAs[event.InputReceived](t, inputs[len(inputs)-1])
-		if got.Text != "edited" || got.Quote != "" {
+		if got.Text != "edited" || len(got.Quotes) != 0 {
 			t.Fatalf("edited input %+v", got)
 		}
 	})
@@ -1722,7 +1724,7 @@ func TestReplace(t *testing.T) {
 	t.Run("replace from a run sends the request's quote", func(t *testing.T) {
 		f := newFixture(t, answer("a1"), answer("a2"))
 		first, _ := f.say("", "q1")
-		edit := f.start(Spec{ChatID: first.ChatID, Text: "edited", Quote: "q", RequestID: "ed", ReplaceFrom: first.RunID})
+		edit := f.start(Spec{ChatID: first.ChatID, Text: "edited", Quotes: []string{"q1", "q2"}, RequestID: "ed", ReplaceFrom: first.RunID})
 		f.finished(edit.RunID)
 		var got event.InputReceived
 		for _, e := range f.storedOf("input.received") {
@@ -1730,7 +1732,7 @@ func TestReplace(t *testing.T) {
 				got = decodeAs[event.InputReceived](t, e)
 			}
 		}
-		if got.Text != "edited" || got.Quote != "q" {
+		if got.Text != "edited" || !slices.Equal(got.Quotes, []string{"q1", "q2"}) {
 			t.Fatalf("input %+v", got)
 		}
 	})
@@ -1812,13 +1814,13 @@ func TestRewind(t *testing.T) {
 
 	t.Run("rewind answers the run's first input's quote", func(t *testing.T) {
 		f := newFixture(t, answer("a1"), answer("a2"))
-		quoted := f.start(Spec{Model: "m1", Text: "q1", Quote: "the part", RequestID: "req-q"})
+		quoted := f.start(Spec{Model: "m1", Text: "q1", Quotes: []string{"the part", "and this"}, RequestID: "req-q"})
 		f.finished(quoted.RunID)
 		plain, _ := f.say(quoted.ChatID, "q2")
-		if got, err := f.eng.Rewind(bg, quoted.ChatID, plain.RunID); err != nil || got.Quote != "" {
+		if got, err := f.eng.Rewind(bg, quoted.ChatID, plain.RunID); err != nil || len(got.Quotes) != 0 {
 			t.Fatalf("unquoted rewound %+v, err %v", got, err)
 		}
-		if got, err := f.eng.Rewind(bg, quoted.ChatID, quoted.RunID); err != nil || got.Text != "q1" || got.Quote != "the part" {
+		if got, err := f.eng.Rewind(bg, quoted.ChatID, quoted.RunID); err != nil || got.Text != "q1" || !slices.Equal(got.Quotes, []string{"the part", "and this"}) {
 			t.Fatalf("quoted rewound %+v, err %v", got, err)
 		}
 	})

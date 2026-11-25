@@ -899,8 +899,11 @@
           "chatId": {
             "type": "string"
           },
-          "quote": {
-            "type": "string"
+          "quotes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "requestId": {
             "type": "string"
@@ -1647,9 +1650,12 @@
       },
       "Rewound": {
         "properties": {
-          "quote": {
-            "description": "the first input's quote, for the message box",
-            "type": "string"
+          "quotes": {
+            "description": "the first input's quotes, for the message box",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "seq": {
             "description": "the last turn.retracted's seq",
@@ -2163,9 +2169,12 @@
             "description": "omit for the chat's model, or for a new chat the last one named",
             "type": "string"
           },
-          "quote": {
-            "description": "text the user quoted, 1 to 4,000 characters once trimmed; needs text",
-            "type": "string"
+          "quotes": {
+            "description": "texts the user quoted, at most 5, each 1 to 4,000 characters once trimmed; need text",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "replace": {
             "description": "last: retract the chat's last turn and send it again (with text: edited)",
@@ -2303,9 +2312,12 @@
             },
             "type": "array"
           },
-          "quote": {
-            "description": "input: the text it quoted",
-            "type": "string"
+          "quotes": {
+            "description": "input: the texts it quoted",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "runId": {
             "type": "string"

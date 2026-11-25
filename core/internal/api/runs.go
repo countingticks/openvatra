@@ -16,13 +16,13 @@ import (
 )
 
 type StartRun struct {
-	RequestID   string `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
-	ChatID      string `json:"chatId,omitempty" doc:"omit to start a new chat"`
-	Model       string `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
-	Text        string `json:"text,omitempty"`
-	Replace     string `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
-	ReplaceFrom string `json:"replaceFrom,omitempty" doc:"a run id: retract that run and every later one, then send text as a new run"`
-	Quote       string `json:"quote,omitempty" doc:"text the user quoted, 1 to 4,000 characters once trimmed; needs text"`
+	RequestID   string   `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
+	ChatID      string   `json:"chatId,omitempty" doc:"omit to start a new chat"`
+	Model       string   `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
+	Text        string   `json:"text,omitempty"`
+	Replace     string   `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
+	ReplaceFrom string   `json:"replaceFrom,omitempty" doc:"a run id: retract that run and every later one, then send text as a new run"`
+	Quotes      []string `json:"quotes,omitempty" doc:"texts the user quoted, at most 5, each 1 to 4,000 characters once trimmed; need text"`
 }
 
 type RewindChat struct {
@@ -31,9 +31,9 @@ type RewindChat struct {
 }
 
 type Rewound struct {
-	Seq   int64  `json:"seq" doc:"the last turn.retracted's seq"`
-	Text  string `json:"text" doc:"the run's first input, for the message box"`
-	Quote string `json:"quote,omitempty" doc:"the first input's quote, for the message box"`
+	Seq    int64    `json:"seq" doc:"the last turn.retracted's seq"`
+	Text   string   `json:"text" doc:"the run's first input, for the message box"`
+	Quotes []string `json:"quotes,omitempty" doc:"the first input's quotes, for the message box"`
 }
 
 type RunRef struct {
@@ -100,7 +100,7 @@ type TranscriptItem struct {
 	RunID   string              `json:"runId"`
 	Time    int64               `json:"time" doc:"Unix ms when the message was written"`
 	Text    string              `json:"text,omitempty" doc:"input and summary"`
-	Quote   string              `json:"quote,omitempty" doc:"input: the text it quoted"`
+	Quotes  []string            `json:"quotes,omitempty" doc:"input: the texts it quoted"`
 	Parts   []event.MessagePart `json:"parts,omitempty" doc:"answer"`
 	Stats   *event.MessageStats `json:"stats,omitempty" doc:"answer"`
 	Partial bool                `json:"partial,omitempty" doc:"the answer was cut off by a stop or a failure"`
@@ -151,7 +151,7 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 					return RunRef{}, err
 				}
 				ref, err := svc.Send(ctx, chats.SendInput{RequestID: in.RequestID, ChatID: in.ChatID, Model: in.Model,
-					Text: in.Text, Replace: in.Replace == "last", ReplaceFrom: in.ReplaceFrom, Quote: in.Quote})
+					Text: in.Text, Replace: in.Replace == "last", ReplaceFrom: in.ReplaceFrom, Quotes: in.Quotes})
 				return RunRef{RunID: ref.RunID, ChatID: ref.ChatID, Seq: ref.Seq}, err
 			}).
 			WithStatus(http.StatusAccepted).
@@ -190,7 +190,7 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 					return Rewound{}, err
 				}
 				r, err := engine.Rewind(ctx, in.ID, in.RunID)
-				return Rewound{Seq: r.Seq, Text: r.Text, Quote: r.Quote}, err
+				return Rewound{Seq: r.Seq, Text: r.Text, Quotes: r.Quotes}, err
 			}).
 			WithErrors("invalid_request", "bad_request", "chat_not_found", "run_not_found", "chat_busy",
 				"chat_unavailable"),
@@ -333,7 +333,7 @@ func transcript(msgs []store.MessageRow, runs []store.RunRow, seq int64) (Transc
 		item := TranscriptItem{Seq: m.Seq, RunID: m.RunID, Time: m.CreatedAt}
 		switch m.Role {
 		case "user":
-			item.Kind, item.Text, item.Quote = "input", textOf(parts), event.QuoteOf(parts)
+			item.Kind, item.Text, item.Quotes = "input", textOf(parts), event.QuotesOf(parts)
 		case "summary":
 			item.Kind, item.Text = "summary", textOf(parts)
 		case "assistant":

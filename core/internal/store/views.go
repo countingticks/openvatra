@@ -521,7 +521,7 @@ func applyInput(tx *sql.Tx, runID string, e event.Event) error {
 	if err != nil {
 		return err
 	}
-	parts, _ := json.Marshal(event.InputParts(p.Text, p.Quote))
+	parts, _ := json.Marshal(event.InputParts(p.Text, p.Quotes))
 	if _, err := tx.Exec(`INSERT INTO messages (seq, chat_id, run_id, role, parts, created_at)
 		VALUES (?, ?, ?, 'user', ?, ?)`, e.Seq, p.ChatID, runID, string(parts), e.Time); err != nil {
 		return err
@@ -532,8 +532,8 @@ func applyInput(tx *sql.Tx, runID string, e event.Event) error {
 		return err
 	}
 	body := p.Text
-	if p.Quote != "" {
-		body = p.Quote + "\n\n" + p.Text
+	if len(p.Quotes) > 0 {
+		body = strings.Join(p.Quotes, "\n\n") + "\n\n" + p.Text
 	}
 	if err := indexMessage(tx, e.Seq, p.ChatID, body); err != nil {
 		return err

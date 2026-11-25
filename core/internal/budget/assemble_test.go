@@ -18,8 +18,8 @@ func reasoned(seq int64, text, reasoning string) Message {
 	return m
 }
 
-func quoted(seq int64, quote, text string) Message {
-	return Message{Seq: seq, Role: "user", Parts: event.InputParts(text, quote)}
+func quoted(seq int64, text string, quotes ...string) Message {
+	return Message{Seq: seq, Role: "user", Parts: event.InputParts(text, quotes)}
 }
 
 // words is a text of n tokens by the estimate.
@@ -105,14 +105,27 @@ func TestAssembleSend(t *testing.T) {
 	})
 
 	t.Run("a quoted user message is sent as the blockquote, a blank line, then the text", func(t *testing.T) {
-		p := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "l1\nl2", "why?")}}, w)
+		p := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "why?", "l1\nl2")}}, w)
 		if got := sentTexts(p)[1]; got != "user:> l1\n> l2\n\nwhy?" {
 			t.Fatalf("sent = %q", got)
 		}
 	})
 
+	t.Run("two quotes are sent as two blockquotes, a blank line apart, then the text", func(t *testing.T) {
+		p := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "why?", "a", "b")}}, w)
+		if got := sentTexts(p)[1]; got != "user:> a\n\n> b\n\nwhy?" {
+			t.Fatalf("sent = %q", got)
+		}
+	})
+
+	t.Run("Blockquotes of nil is empty", func(t *testing.T) {
+		if got := Blockquotes(nil); got != "" {
+			t.Fatalf("Blockquotes(nil) = %q", got)
+		}
+	})
+
 	t.Run("a quote's tokens count", func(t *testing.T) {
-		with := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "quote", "text")}}, w)
+		with := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "text", "quote")}}, w)
 		without := Assemble(Input{Fixed: "S", Messages: []Message{msg(1, "user", "text")}}, w)
 		if got, want := with.Tokens-without.Tokens, EstimateTokens("> quote\n\ntext")-EstimateTokens("text"); got != want {
 			t.Fatalf("extra tokens = %d, want %d", got, want)
