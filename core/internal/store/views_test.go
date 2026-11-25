@@ -38,7 +38,17 @@ func queueRun(t *testing.T, s *Store, chatID, runID, text string) string {
 }
 
 // queueQuotedRun is queueRun with quotes on the input.
-func queueQuotedRun(t *testing.T, s *Store, chatID, runID, text string, quotes ...string) string {
+func queueQuotedRun(t *testing.T, s *Store, chatID, runID, text string, texts ...string) string {
+	t.Helper()
+	quotes := make([]event.Quote, len(texts))
+	for i, q := range texts {
+		quotes[i] = event.Quote{Text: q}
+	}
+	return queueRepliedRun(t, s, chatID, runID, text, quotes...)
+}
+
+// queueRepliedRun is queueRun with quotes, possibly with replies, on the input.
+func queueRepliedRun(t *testing.T, s *Store, chatID, runID, text string, quotes ...event.Quote) string {
 	t.Helper()
 	req := NewID()
 	appendTo(t, s, "run:"+runID,
@@ -139,6 +149,33 @@ func TestQuotedInputStoresAQuotePartBeforeTheText(t *testing.T) {
 	}
 	if got := row(t, s, "SELECT title FROM chats"); got != "["+CutTitle("t")+"]" {
 		t.Errorf("title = %s", got)
+	}
+}
+
+func TestAMessageWithABlankTextTakesItsTitleFromTheFirstReply(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID := NewID()
+	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
+	queueRepliedRun(t, s, chatID, NewID(), " ", event.Quote{Text: "a"}, event.Quote{Text: "b", Reply: "first reply"},
+		event.Quote{Text: "c", Reply: "second reply"})
+
+	if got := row(t, s, "SELECT title FROM chats"); got != "["+CutTitle("first reply")+"]" {
+		t.Errorf("title = %s", got)
+	}
+	if got := row(t, s, "SELECT parts FROM messages"); strings.Contains(got, `"kind":"text"`) {
+		t.Errorf("parts = %s, want no text part", got)
+	}
+}
+
+func TestSearchFindsAWordOnlyInAReply(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID := NewID()
+	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
+	queueRepliedRun(t, s, chatID, NewID(), "plain text", event.Quote{Text: "a quote", Reply: "a quokka appears"})
+	newChat(t, s, "something else")
+
+	if got := hitIDs(search(t, s, "quokka")); !slices.Equal(got, []string{chatID}) {
+		t.Errorf("hits = %v, want [%s]", got, chatID)
 	}
 }
 

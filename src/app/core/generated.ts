@@ -519,6 +519,14 @@ export type ContextUse = {
 }
 export type MessagePart = {
   kind: 'text' | 'reasoning' | 'quote'
+  /** a quote part's reply */
+  reply?: string
+  text: string
+}
+export type Quote = {
+  /** the user's reply to it, at most 4,000 characters once trimmed */
+  reply?: string
+  /** the quoted text, 1 to 4,000 characters once trimmed */
   text: string
 }
 export type MessageStats = {
@@ -538,8 +546,8 @@ export type TranscriptItem = {
   partial?: boolean
   /** answer */
   parts?: MessagePart[]
-  /** input: the texts it quoted */
-  quotes?: string[]
+  /** input: its quotes, each with an optional reply */
+  quotes?: Quote[]
   runId: string
   seq: number
   /** answer */
@@ -557,8 +565,8 @@ export type Transcript = {
   seq: number
 }
 export type Rewound = {
-  /** the first input's quotes, for the message box */
-  quotes?: string[]
+  /** the first input's quotes, each with its reply, for the message box */
+  quotes?: Quote[]
   /** the last turn.retracted's seq */
   seq: number
   /** the run's first input, for the message box */
@@ -788,7 +796,7 @@ export type RunQueuedEvent = {
 }
 export type InputReceived = {
   chatId: string
-  quotes?: string[]
+  quotes?: Quote[]
   requestId: string
   text: string
 }
@@ -1018,8 +1026,8 @@ export type StartRun = {
   chatId?: string
   /** omit for the chat's model, or for a new chat the last one named */
   model?: string
-  /** texts the user quoted, at most 5, each 1 to 4,000 characters once trimmed; need text */
-  quotes?: string[]
+  /** what the user quoted, at most 5, each with an optional reply; text may be blank when a quote has a reply */
+  quotes?: Quote[]
   /** last: retract the chat's last turn and send it again (with text: edited) */
   replace?: 'last'
   /** a run id: retract that run and every later one, then send text as a new run */

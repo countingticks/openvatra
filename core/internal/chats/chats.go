@@ -53,8 +53,8 @@ type Config struct {
 type SendInput struct {
 	RequestID, ChatID, Model, Text string
 	Replace                        bool
-	ReplaceFrom                    string   // a run id: retract it and every later run, then send Text (required) as a new run
-	Quotes                         []string // texts the user quoted, sent above Text; nil = none
+	ReplaceFrom                    string        // a run id: retract it and every later run, then send Text (required) as a new run
+	Quotes                         []event.Quote // what the user quoted, sent above Text; nil = none
 }
 
 // Service is the chats API over the store, the engine and the config.
@@ -67,6 +67,7 @@ type Service struct {
 const (
 	maxInputRunes = 200_000
 	maxQuoteRunes = 4_000
+	maxReplyRunes = 4_000
 	maxQuotes     = 5
 	maxTitleRunes = 200
 )
@@ -81,19 +82,22 @@ func New(c Config) *Service {
 
 // Send starts a run for the input, or adds it to the chat's active run.
 func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
-	bad := strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes
+	quotesBad, replied := len(in.Quotes) > maxQuotes, false
+	for _, q := range in.Quotes {
+		n := utf8.RuneCountInString(strings.TrimSpace(q.Text))
+		quotesBad = quotesBad || n < 1 || n > maxQuoteRunes ||
+			utf8.RuneCountInString(strings.TrimSpace(q.Reply)) > maxReplyRunes
+		replied = replied || strings.TrimSpace(q.Reply) != ""
+	}
+	// The text may be blank only when a quote has a reply.
+	blank := strings.TrimSpace(in.Text) == ""
+	bad := (blank && !replied) || utf8.RuneCountInString(in.Text) > maxInputRunes || quotesBad
 	if in.Replace {
-		bad = (in.Text != "" && bad) || in.ChatID == ""
+		bad = (in.Text != "" && (blank || utf8.RuneCountInString(in.Text) > maxInputRunes)) || in.ChatID == "" ||
+			(in.Text == "" && len(in.Quotes) > 0) || quotesBad
 	}
 	if in.ReplaceFrom != "" {
-		bad = strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes || in.ChatID == "" || in.Replace
-	}
-	if len(in.Quotes) > 0 {
-		bad = bad || len(in.Quotes) > maxQuotes || strings.TrimSpace(in.Text) == ""
-		for _, q := range in.Quotes {
-			n := utf8.RuneCountInString(strings.TrimSpace(q))
-			bad = bad || n < 1 || n > maxQuoteRunes
-		}
+		bad = bad || in.ChatID == "" || in.Replace
 	}
 	if in.RequestID == "" || bad {
 		return run.Ref{}, run.ErrBadInput
@@ -283,7 +287,10 @@ func (s *Service) Export(ctx context.Context, id string) (string, error) {
 		sections = append(sections, heading)
 		if m.Role == "user" {
 			for _, q := range event.QuotesOf(parts) {
-				sections = append(sections, budget.Blockquote(q))
+				sections = append(sections, budget.Blockquote(q.Text))
+				if q.Reply != "" {
+					sections = append(sections, q.Reply)
+				}
 			}
 		}
 		if t := strings.TrimRight(text.String(), " \t\r\n"); t != "" {

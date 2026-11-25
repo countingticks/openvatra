@@ -901,7 +901,7 @@
           },
           "quotes": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Quote"
             },
             "type": "array"
           },
@@ -1280,6 +1280,10 @@
             ],
             "type": "string"
           },
+          "reply": {
+            "description": "a quote part's reply",
+            "type": "string"
+          },
           "text": {
             "type": "string"
           }
@@ -1531,6 +1535,22 @@
         ],
         "type": "object"
       },
+      "Quote": {
+        "properties": {
+          "reply": {
+            "description": "the user's reply to it, at most 4,000 characters once trimmed",
+            "type": "string"
+          },
+          "text": {
+            "description": "the quoted text, 1 to 4,000 characters once trimmed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
       "ReasoningDelta": {
         "properties": {
           "n": {
@@ -1651,9 +1671,9 @@
       "Rewound": {
         "properties": {
           "quotes": {
-            "description": "the first input's quotes, for the message box",
+            "description": "the first input's quotes, each with its reply, for the message box",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Quote"
             },
             "type": "array"
           },
@@ -2170,9 +2190,9 @@
             "type": "string"
           },
           "quotes": {
-            "description": "texts the user quoted, at most 5, each 1 to 4,000 characters once trimmed; need text",
+            "description": "what the user quoted, at most 5, each with an optional reply; text may be blank when a quote has a reply",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Quote"
             },
             "type": "array"
           },
@@ -2313,9 +2333,9 @@
             "type": "array"
           },
           "quotes": {
-            "description": "input: the texts it quoted",
+            "description": "input: its quotes, each with an optional reply",
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/Quote"
             },
             "type": "array"
           },

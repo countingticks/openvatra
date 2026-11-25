@@ -94,16 +94,23 @@ func sentText(m Message) (string, bool) {
 		return "", false
 	}
 	if quotes := event.QuotesOf(m.Parts); m.Role == "user" && len(quotes) > 0 {
+		if strings.TrimSpace(b.String()) == "" {
+			return Blockquotes(quotes), true
+		}
 		return Blockquotes(quotes) + "\n\n" + b.String(), true
 	}
 	return b.String(), true
 }
 
-// Blockquotes writes each quote with Blockquote, joined by a blank line; nil gives "".
-func Blockquotes(quotes []string) string {
+// Blockquotes writes each quote with Blockquote, then a blank line and its reply when it has one; the quotes are
+// joined by a blank line. nil gives "".
+func Blockquotes(quotes []event.Quote) string {
 	blocks := make([]string, len(quotes))
 	for i, q := range quotes {
-		blocks[i] = Blockquote(q)
+		blocks[i] = Blockquote(q.Text)
+		if q.Reply != "" {
+			blocks[i] += "\n\n" + q.Reply
+		}
 	}
 	return strings.Join(blocks, "\n\n")
 }

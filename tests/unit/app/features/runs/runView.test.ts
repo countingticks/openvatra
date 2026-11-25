@@ -287,9 +287,13 @@ describe('applyRunEvent', () => {
       const found = runView(t).entries.find((e) => e.kind === 'input')
       return found?.kind === 'input' ? found.quotes : undefined
     }
-    expect(quote({ ...emptyTranscript, items: [{ ...item, quotes: ['q', 'r'] }] })).toEqual(['q', 'r'])
+    expect(
+      quote({ ...emptyTranscript, items: [{ ...item, quotes: [{ text: 'q' }, { text: 'r' }] }] })
+    ).toEqual(['q', 'r'])
     expect(quote({ ...emptyTranscript, items: [item] })).toEqual([])
-    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: ['q2'] })]))).toEqual(['q2'])
+    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: [{ text: 'q2' }] })]))).toEqual([
+      'q2'
+    ])
     expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]))).toEqual([])
   })
 
@@ -298,7 +302,8 @@ describe('applyRunEvent', () => {
       ({ type: 'input.received', stream: 'run:r1', seq: 4, v: 1, time: 0, data }) as Event
     const long = 'a'.repeat(70)
     const plain = fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]).context.used
-    const quoted = fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: [long] })]).context.used
+    const quoted = fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: [{ text: long }] })]).context
+      .used
     expect(plain).toBe(estimateTokens('B'))
     expect(quoted).toBe(estimateTokens(quotedInput('B', [long])))
     expect(quoted).toBeGreaterThan(plain)
