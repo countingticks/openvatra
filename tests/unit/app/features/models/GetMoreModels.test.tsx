@@ -416,6 +416,7 @@ describe('Get more models: searching Hugging Face', () => {
       expect(within(dialog).getAllByText('Code')).toHaveLength(3)
       expect(within(dialog).getAllByLabelText('1.4M downloads')).toHaveLength(3)
       expect(within(dialog).getAllByLabelText('230 likes')).toHaveLength(3)
+      expect(within(dialog).getAllByText('3 quants')).toHaveLength(3)
       expect(within(dialog).getAllByText('2 weeks ago')).toHaveLength(3)
     } finally {
       vi.useRealTimers()

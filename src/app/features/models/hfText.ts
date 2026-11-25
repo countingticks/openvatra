@@ -48,3 +48,8 @@ export function resultRange(page: number, count: number): string {
   const first = page * 10 + 1
   return `Results ${first}–${first + count - 1}`
 }
+
+/** "1 quant", "12 quants". */
+export function quantsLabel(n: number): string {
+  return `${n} ${n === 1 ? 'quant' : 'quants'}`
+}

@@ -3,6 +3,7 @@ import type { DownloadItem } from '@app/core/types'
 import {
   compactCount,
   downloadPercent,
+  quantsLabel,
   resultRange,
   speedProgress,
   updatedAgo
@@ -75,5 +76,14 @@ describe('resultRange', () => {
     [0, 1, 'Results 1–1']
   ])('page %i with %i repos reads %s', (page, count, text) => {
     expect(resultRange(page, count)).toBe(text)
+  })
+})
+
+describe('quantsLabel', () => {
+  it.each([
+    [1, '1 quant'],
+    [3, '3 quants']
+  ])('%i reads %s', (n, text) => {
+    expect(quantsLabel(n)).toBe(text)
   })
 })
