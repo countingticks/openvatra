@@ -518,7 +518,7 @@ export type ContextUse = {
   used: number
 }
 export type MessagePart = {
-  kind: 'text' | 'reasoning'
+  kind: 'text' | 'reasoning' | 'quote'
   text: string
 }
 export type MessageStats = {
@@ -784,6 +784,7 @@ export type RunQueuedEvent = {
 }
 export type InputReceived = {
   chatId: string
+  quote?: string
   requestId: string
   text: string
 }

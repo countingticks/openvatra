@@ -899,6 +899,9 @@
           "chatId": {
             "type": "string"
           },
+          "quote": {
+            "type": "string"
+          },
           "requestId": {
             "type": "string"
           },
@@ -1269,7 +1272,8 @@
           "kind": {
             "enum": [
               "text",
-              "reasoning"
+              "reasoning",
+              "quote"
             ],
             "type": "string"
           },

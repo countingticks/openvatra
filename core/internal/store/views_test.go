@@ -34,10 +34,16 @@ func newChat(t *testing.T, s *Store, text string) (chatID, runID string) {
 // queueRun opens run runID in chatID with text as its input.
 func queueRun(t *testing.T, s *Store, chatID, runID, text string) string {
 	t.Helper()
+	return queueQuotedRun(t, s, chatID, runID, text, "")
+}
+
+// queueQuotedRun is queueRun with a quote on the input.
+func queueQuotedRun(t *testing.T, s *Store, chatID, runID, text, quote string) string {
+	t.Helper()
 	req := NewID()
 	appendTo(t, s, "run:"+runID,
 		event.RunQueued{ChatID: chatID, Profile: "chat", Model: "m1", Origin: "user", RequestID: req},
-		event.InputReceived{ChatID: chatID, Text: text, RequestID: req})
+		event.InputReceived{ChatID: chatID, Text: text, Quote: quote, RequestID: req})
 	return req
 }
 
@@ -118,6 +124,33 @@ func TestChatWithRunAndAnswerHasOneRowPerTableAndTheCutTitle(t *testing.T) {
 	}
 	if stats.PromptTokens != 12 || stats.AnswerTokens != 3 || !stats.Exact {
 		t.Errorf("stats = %+v", stats)
+	}
+}
+
+func TestQuotedInputStoresAQuotePartBeforeTheText(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID := NewID()
+	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
+	queueQuotedRun(t, s, chatID, NewID(), "t", "q words")
+
+	got := row(t, s, "SELECT parts FROM messages")
+	if want := `[[{"kind":"quote","text":"q words"},{"kind":"text","text":"t"}]]`; got != want {
+		t.Errorf("parts = %s, want %s", got, want)
+	}
+	if got := row(t, s, "SELECT title FROM chats"); got != "["+CutTitle("t")+"]" {
+		t.Errorf("title = %s", got)
+	}
+}
+
+func TestSearchFindsAWordOfAQuote(t *testing.T) {
+	s, _ := newEventStore(t)
+	chatID := NewID()
+	appendTo(t, s, "chat:"+chatID, event.ChatCreated{Model: "m1", Profile: "chat"})
+	queueQuotedRun(t, s, chatID, NewID(), "plain text", "zebra crossing")
+	newChat(t, s, "something else")
+
+	if got := hitIDs(search(t, s, "zebra")); !slices.Equal(got, []string{chatID}) {
+		t.Errorf("hits = %v, want [%s]", got, chatID)
 	}
 }
 
@@ -281,7 +314,7 @@ func TestViewsRebuiltByReplayEqualTheLiveOnes(t *testing.T) {
 		event.RunFinished{ChatID: chatID, State: "done"})
 	appendTo(t, s, "chat:"+chatID, event.ChatTitled{Title: "T", Source: "user"}, event.ChatModel{Model: "m2"})
 	second := NewID()
-	queueRun(t, s, chatID, second, "two")
+	queueQuotedRun(t, s, chatID, second, "two", "quoted words")
 	appendTo(t, s, "run:"+second, event.RunStarted{ChatID: chatID}, event.RunPaused{ChatID: chatID, Reason: "interrupted"},
 		event.RunResumed{ChatID: chatID}, event.CompactionCompleted{ChatID: chatID, Summary: "sum", FirstKeptSeq: 3},
 		answer(chatID, "half", true),
