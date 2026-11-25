@@ -205,18 +205,24 @@ type rawGroup struct {
 	bad   bool
 }
 
-// listing judges a repo's answer against this PC. Only this part runs on a cache hit: fit, installed and disk
-// space change while core runs.
-func (c *Client) listing(owner, name string, a repoAnswer) Listing {
-	repo := owner + "/" + name
+// labeledGroup is a usable model group and the label Files shows for it.
+type labeledGroup struct {
+	label string
+	g     *rawGroup
+}
+
+// groupFiles applies Files' rule to the GGUF entries: projectors (base name contains "mmproj", any case) go to
+// projectors when judge accepts them; the rest group by folder + stem with the split suffix removed; a group is
+// kept when complete(); its label is models.Quant(key), or the stem when that is "" or shared by two groups;
+// a label still shared by two groups drops both. Order: first appearance in entries.
+func groupFiles(entries []treeEntry, judge func(treeEntry) (GroupFile, bool)) (groups []labeledGroup, projectors []GroupFile) {
 	byKey := map[string]*rawGroup{}
 	var keys []string
-	var projectors []GroupFile
-	for _, e := range a.tree {
+	for _, e := range entries {
 		if e.Type != "file" || !strings.HasSuffix(strings.ToLower(e.Path), ".gguf") {
 			continue
 		}
-		f, ok := checkFile(e)
+		f, ok := judge(e)
 		base := path.Base(e.Path)
 		if strings.Contains(strings.ToLower(base), "mmproj") {
 			if ok {
@@ -253,26 +259,36 @@ func (c *Client) listing(owner, name string, a repoAnswer) Listing {
 		}
 	}
 	labels := map[string]int{}
-	labelOf := map[*rawGroup]string{}
+	labeled := make([]labeledGroup, 0, len(usable))
 	for _, g := range usable {
 		label := models.Quant(g.key)
 		if label == "" || quants[label] > 1 {
 			label = g.stem
 		}
-		labelOf[g] = label
+		labeled = append(labeled, labeledGroup{label: label, g: g})
 		labels[label]++
 	}
+	for _, lg := range labeled {
+		if labels[lg.label] == 1 {
+			groups = append(groups, lg)
+		}
+	}
+	return groups, projectors
+}
+
+// listing judges a repo's answer against this PC. Only this part runs on a cache hit: fit, installed and disk
+// space change while core runs.
+func (c *Client) listing(owner, name string, a repoAnswer) Listing {
+	repo := owner + "/" + name
+	usable, projectors := groupFiles(a.tree, checkFile)
 
 	projector, hasProjector := pickProjector(projectors)
 	projector.Projector = true
 	report := c.hardware()
 	dir := c.modelsDir()
 	groups := []Group{}
-	for _, g := range usable {
-		label := labelOf[g]
-		if labels[label] > 1 {
-			continue
-		}
+	for _, lg := range usable {
+		g, label := lg.g, lg.label
 		files := make([]GroupFile, 0, len(g.parts)+1)
 		for _, p := range slices.Sorted(maps.Keys(g.parts)) {
 			files = append(files, g.parts[p])
@@ -318,12 +334,18 @@ func checkFile(e treeEntry) (GroupFile, bool) {
 	if e.LFS != nil {
 		f.SHA256 = e.LFS.OID
 	}
-	for seg := range strings.SplitSeq(e.Path, "/") {
+	return f, checkName(e.Path) && sha256Re.MatchString(f.SHA256) && e.Size > 0
+}
+
+// checkName reports whether a repo path is safe to use: every segment matches pathSegRe and the base name matches
+// baseNameRe.
+func checkName(p string) bool {
+	for seg := range strings.SplitSeq(p, "/") {
 		if !pathSegRe.MatchString(seg) {
-			return f, false
+			return false
 		}
 	}
-	return f, baseNameRe.MatchString(f.Name) && sha256Re.MatchString(f.SHA256) && e.Size > 0
+	return baseNameRe.MatchString(path.Base(p))
 }
 
 // complete reports whether g has no bad file and, when split, every part from 1 to its total.
