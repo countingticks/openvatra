@@ -475,6 +475,58 @@ func TestStart(t *testing.T) {
 		f.checkLog("queued_input")
 	})
 
+	t.Run("a quote is trimmed, stored on the input and sent above the text", func(t *testing.T) {
+		f := newFixture(t, answer("a"))
+		ref := f.start(Spec{Model: "m1", Quote: "  q1\nq2 ", Text: "why?", RequestID: "req-1"})
+		f.finished(ref.RunID)
+		if got := decodeAs[event.InputReceived](t, f.storedOf("input.received")[0]); got.Quote != "q1\nq2" {
+			t.Fatalf("stored quote %q", got.Quote)
+		}
+		if got := f.prompt(0); !slices.Equal(got, []string{"user:> q1\n> q2\n\nwhy?"}) {
+			t.Fatalf("prompt %q", got)
+		}
+	})
+
+	t.Run("a bad quote is refused before anything is appended", func(t *testing.T) {
+		f := newFixture(t, answer("a"))
+		first, _ := f.say("", "q1")
+		cases := []struct {
+			name string
+			spec Spec
+		}{
+			{"only spaces", Spec{ChatID: first.ChatID, Text: "t", Quote: "   "}},
+			{"4,001 runes", Spec{ChatID: first.ChatID, Text: "t", Quote: strings.Repeat("ă", 4_001)}},
+			{"blank text", Spec{ChatID: first.ChatID, Text: " ", Quote: "q"}},
+			{"replace without text", Spec{ChatID: first.ChatID, Quote: "q", Replace: true}},
+		}
+		for i, tc := range cases {
+			before := len(f.stored())
+			tc.spec.RequestID = fmt.Sprintf("bad-%d", i)
+			if _, err := f.eng.Start(bg, tc.spec); !errors.Is(err, ErrBadInput) {
+				t.Errorf("%s: err = %v, want ErrBadInput", tc.name, err)
+			}
+			if after := len(f.stored()); after != before {
+				t.Errorf("%s: %d events appended", tc.name, after-before)
+			}
+		}
+		ok := f.start(Spec{ChatID: first.ChatID, Text: "t", Quote: strings.Repeat("ă", 4_000), RequestID: "ok"})
+		f.finished(ok.RunID)
+	})
+
+	t.Run("an input queued into a running answer keeps its quote", func(t *testing.T) {
+		f := newFixture(t, answer("one!"), answer("two!"))
+		release := f.model.holdCall(1)
+		ref := f.send("one", "req-1")
+		f.entered()
+		f.start(Spec{ChatID: ref.ChatID, Text: "two", Quote: "q", RequestID: "req-2"})
+		release()
+		f.finished(ref.RunID)
+		inputs := f.storedOf("input.received")
+		if got := decodeAs[event.InputReceived](t, inputs[1]); got.Quote != "q" {
+			t.Fatalf("queued input %+v", got)
+		}
+	})
+
 	t.Run("two Starts on one chat at once make one run", func(t *testing.T) {
 		f := newFixture(t, providertest.Turn{Text: []string{"a"}}, providertest.Turn{Text: []string{"b"}},
 			providertest.Turn{Text: []string{"c"}})
@@ -1476,6 +1528,30 @@ func TestReplace(t *testing.T) {
 		}
 	})
 
+	t.Run("regenerate sends each input again with its own quote", func(t *testing.T) {
+		f := newFixture(t, answer("a1"), answer("a1 again"))
+		first := f.start(Spec{Model: "m1", Text: "why?", Quote: "the part", RequestID: "req-q"})
+		f.finished(first.RunID)
+		ref, _ := f.replace(first.ChatID, "")
+		inputs := f.storedOf("input.received")
+		got := decodeAs[event.InputReceived](t, inputs[len(inputs)-1])
+		if inputs[len(inputs)-1].Stream != "run:"+ref.RunID || got.Text != "why?" || got.Quote != "the part" {
+			t.Fatalf("regenerated input %+v", got)
+		}
+	})
+
+	t.Run("replace with text drops the old quote unless named again", func(t *testing.T) {
+		f := newFixture(t, answer("a1"), answer("a2"))
+		first := f.start(Spec{Model: "m1", Text: "why?", Quote: "the part", RequestID: "req-q"})
+		f.finished(first.RunID)
+		f.replace(first.ChatID, "edited")
+		inputs := f.storedOf("input.received")
+		got := decodeAs[event.InputReceived](t, inputs[len(inputs)-1])
+		if got.Text != "edited" || got.Quote != "" {
+			t.Fatalf("edited input %+v", got)
+		}
+	})
+
 	t.Run("regenerate after a failed run asks its input again", func(t *testing.T) {
 		f := newFixture(t, providertest.Turn{Text: []string{"half"}, Err: errors.New("connection reset")}, answer("whole"))
 		first, fin := f.say("", "q1")
@@ -1643,6 +1719,22 @@ func TestReplace(t *testing.T) {
 		}
 	})
 
+	t.Run("replace from a run sends the request's quote", func(t *testing.T) {
+		f := newFixture(t, answer("a1"), answer("a2"))
+		first, _ := f.say("", "q1")
+		edit := f.start(Spec{ChatID: first.ChatID, Text: "edited", Quote: "q", RequestID: "ed", ReplaceFrom: first.RunID})
+		f.finished(edit.RunID)
+		var got event.InputReceived
+		for _, e := range f.storedOf("input.received") {
+			if e.Stream == "run:"+edit.RunID {
+				got = decodeAs[event.InputReceived](t, e)
+			}
+		}
+		if got.Text != "edited" || got.Quote != "q" {
+			t.Fatalf("input %+v", got)
+		}
+	})
+
 	t.Run("replace from is refused before anything is appended", func(t *testing.T) {
 		f := newFixture(t, answer("a1"))
 		first, _ := f.say("", "q1")
@@ -1715,6 +1807,19 @@ func TestRewind(t *testing.T) {
 		got, err := f.eng.Rewind(bg, ref.ChatID, ref.RunID)
 		if err != nil || got.Text != "one" {
 			t.Fatalf("rewound %+v, err %v", got, err)
+		}
+	})
+
+	t.Run("rewind answers the run's first input's quote", func(t *testing.T) {
+		f := newFixture(t, answer("a1"), answer("a2"))
+		quoted := f.start(Spec{Model: "m1", Text: "q1", Quote: "the part", RequestID: "req-q"})
+		f.finished(quoted.RunID)
+		plain, _ := f.say(quoted.ChatID, "q2")
+		if got, err := f.eng.Rewind(bg, quoted.ChatID, plain.RunID); err != nil || got.Quote != "" {
+			t.Fatalf("unquoted rewound %+v, err %v", got, err)
+		}
+		if got, err := f.eng.Rewind(bg, quoted.ChatID, quoted.RunID); err != nil || got.Text != "q1" || got.Quote != "the part" {
+			t.Fatalf("quoted rewound %+v, err %v", got, err)
 		}
 	})
 

@@ -44,10 +44,12 @@ type Config struct {
 
 // Spec is one send from the user.
 type Spec struct {
-	ChatID    string // "" = a new chat
-	Model     string // required for a new chat, ignored otherwise
-	Profile   string // "" = "chat"
-	Text      string
+	ChatID  string // "" = a new chat
+	Model   string // required for a new chat, ignored otherwise
+	Profile string // "" = "chat"
+	Text    string
+	// Quote is text the user quoted, sent above Text; "" = none. Needs Text.
+	Quote     string
 	RequestID string
 	// Replace true: retract the chat's last turn and send its inputs again; Text, when set, replaces the last of them.
 	Replace bool
@@ -71,6 +73,7 @@ var (
 
 const (
 	maxInputRunes      = 200_000
+	maxQuoteRunes      = 4_000
 	defaultContextSize = 16_384
 	readPage           = 1000
 	defaultProfile     = "chat"
@@ -144,6 +147,11 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	if s.ReplaceFrom != "" {
 		bad = strings.TrimSpace(s.Text) == "" || utf8.RuneCountInString(s.Text) > maxInputRunes || s.ChatID == "" || s.Replace
 	}
+	if s.Quote != "" {
+		s.Quote = strings.TrimSpace(s.Quote)
+		n := utf8.RuneCountInString(s.Quote)
+		bad = bad || n < 1 || n > maxQuoteRunes || strings.TrimSpace(s.Text) == ""
+	}
 	if s.RequestID == "" || bad || (s.ChatID == "" && s.Model == "") {
 		return Ref{}, ErrBadInput
 	}
@@ -190,7 +198,7 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	runID := store.NewID()
 	events, err := e.c.Log.Append(ctx, "run:"+runID,
 		event.RunQueued{ChatID: chatID, Profile: s.Profile, Model: model, Origin: "user", RequestID: s.RequestID},
-		event.InputReceived{ChatID: chatID, Text: s.Text, RequestID: s.RequestID})
+		event.InputReceived{ChatID: chatID, Text: s.Text, Quote: s.Quote, RequestID: s.RequestID})
 	if err != nil {
 		return Ref{}, err
 	}
@@ -212,19 +220,19 @@ func (e *Engine) replaceLocked(ctx context.Context, s Spec) (Ref, error) {
 	}
 	inputs := r.Inputs
 	if s.Text != "" {
-		inputs[len(inputs)-1] = s.Text
+		inputs[len(inputs)-1] = userInput{s.Text, s.Quote}
 	}
 
 	runID := store.NewID()
 	payloads := []event.Payload{
 		event.RunQueued{ChatID: chat.ID, Profile: s.Profile, Model: chat.Model, Origin: "user", RequestID: s.RequestID},
 	}
-	for i, text := range inputs {
+	for i, in := range inputs {
 		req := s.RequestID
 		if i > 0 {
 			req = fmt.Sprintf("%s:%d", s.RequestID, i+1)
 		}
-		payloads = append(payloads, event.InputReceived{ChatID: chat.ID, Text: text, RequestID: req})
+		payloads = append(payloads, event.InputReceived{ChatID: chat.ID, Text: in.Text, Quote: in.Quote, RequestID: req})
 	}
 	// If this append fails, the retraction stays: the turn is gone and the user can send again.
 	events, err := e.c.Log.Append(ctx, "run:"+runID, payloads...)
@@ -250,7 +258,7 @@ func (e *Engine) replaceFromLocked(ctx context.Context, s Spec) (Ref, error) {
 	// If this append fails, the retraction stays, as in replaceLocked.
 	events, err := e.c.Log.Append(ctx, "run:"+runID,
 		event.RunQueued{ChatID: chat.ID, Profile: s.Profile, Model: chat.Model, Origin: "user", RequestID: s.RequestID},
-		event.InputReceived{ChatID: chat.ID, Text: s.Text, RequestID: s.RequestID})
+		event.InputReceived{ChatID: chat.ID, Text: s.Text, Quote: s.Quote, RequestID: s.RequestID})
 	if err != nil {
 		return Ref{}, err
 	}
@@ -261,8 +269,9 @@ func (e *Engine) replaceFromLocked(ctx context.Context, s Spec) (Ref, error) {
 
 // Rewound is a rewind's result: the last turn.retracted's seq and the rewound run's first input.
 type Rewound struct {
-	Seq  int64
-	Text string
+	Seq   int64
+	Text  string
+	Quote string // "" = none
 }
 
 // Rewind retracts runID and every later run of the chat that still has a message.
@@ -281,15 +290,17 @@ func (e *Engine) Rewind(ctx context.Context, chatID, runID string) (Rewound, err
 		return Rewound{}, err
 	}
 	e.log.Info("chat rewound", "chat", chat.ID, "run", runID, "retracted", r.Runs)
-	return Rewound{Seq: r.Seq, Text: r.Inputs[0]}, nil
+	return Rewound{Seq: r.Seq, Text: r.Inputs[0].Text, Quote: r.Inputs[0].Quote}, nil
 }
 
+type userInput struct{ Text, Quote string }
+
 // retraction is what retractFrom appended: Seq is the last turn.retracted's seq, Inputs the first retracted
-// run's user rows' text, by seq.
+// run's user rows' text and quote, by seq.
 type retraction struct {
 	Seq    int64
 	Runs   int
-	Inputs []string
+	Inputs []userInput
 }
 
 // retractFrom retracts runID and every later run of chat that still has a message; runID "" means the last
@@ -330,7 +341,7 @@ func (e *Engine) retractFrom(ctx context.Context, chat store.ChatRow, runID stri
 		return retraction{}, ErrRunNotFound
 	}
 	// The target's inputs are its user rows, by seq.
-	var inputs []string
+	var inputs []userInput
 	for _, m := range msgs {
 		if m.RunID != runs[from].ID || m.Retracted || m.Role != "user" {
 			continue
@@ -339,7 +350,7 @@ func (e *Engine) retractFrom(ctx context.Context, chat store.ChatRow, runID stri
 		if err := json.Unmarshal(m.Parts, &parts); err != nil {
 			return retraction{}, fmt.Errorf("message %d: %w", m.Seq, err)
 		}
-		inputs = append(inputs, textOf(parts))
+		inputs = append(inputs, userInput{Text: textOf(parts), Quote: event.QuoteOf(parts)})
 	}
 	if len(inputs) == 0 {
 		return retraction{}, ErrBadInput
@@ -359,7 +370,7 @@ func (e *Engine) retractFrom(ctx context.Context, chat store.ChatRow, runID stri
 
 // sendLocked adds an input to the chat's active run; a cut-off run is resumed by it. The caller holds mu.
 func (e *Engine) sendLocked(ctx context.Context, chat store.ChatRow, s Spec) (Ref, error) {
-	payloads := []event.Payload{event.InputReceived{ChatID: chat.ID, Text: s.Text, RequestID: s.RequestID}}
+	payloads := []event.Payload{event.InputReceived{ChatID: chat.ID, Text: s.Text, Quote: s.Quote, RequestID: s.RequestID}}
 	resume := chat.ActiveState == string(Interrupted)
 	if resume {
 		payloads = append(payloads, event.RunResumed{ChatID: chat.ID})

@@ -18,6 +18,10 @@ func reasoned(seq int64, text, reasoning string) Message {
 	return m
 }
 
+func quoted(seq int64, quote, text string) Message {
+	return Message{Seq: seq, Role: "user", Parts: event.InputParts(text, quote)}
+}
+
 // words is a text of n tokens by the estimate.
 func words(n int) string { return strings.Repeat("w", n*7/2) }
 
@@ -88,6 +92,30 @@ func TestAssembleSend(t *testing.T) {
 		p := Assemble(Input{Fixed: "S", Messages: []Message{retracted, msg(2, "user", "q"), failed, empty, reasoned(6, "full", "secret thoughts"), partial, msg(7, "user", "next")}}, w)
 		if got := strings.Join(sentTexts(p), ","); got != "system:S,user:q,assistant:full,assistant:half an ans,user:next" {
 			t.Fatalf("sent = %s", got)
+		}
+	})
+
+	t.Run("Blockquote prefixes each line, and an empty line is a bare >", func(t *testing.T) {
+		if got := Blockquote("a\r\n\nb"); got != "> a\n>\n> b" {
+			t.Fatalf("Blockquote = %q", got)
+		}
+		if got := Blockquote(""); got != "" {
+			t.Fatalf("Blockquote of nothing = %q", got)
+		}
+	})
+
+	t.Run("a quoted user message is sent as the blockquote, a blank line, then the text", func(t *testing.T) {
+		p := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "l1\nl2", "why?")}}, w)
+		if got := sentTexts(p)[1]; got != "user:> l1\n> l2\n\nwhy?" {
+			t.Fatalf("sent = %q", got)
+		}
+	})
+
+	t.Run("a quote's tokens count", func(t *testing.T) {
+		with := Assemble(Input{Fixed: "S", Messages: []Message{quoted(1, "quote", "text")}}, w)
+		without := Assemble(Input{Fixed: "S", Messages: []Message{msg(1, "user", "text")}}, w)
+		if got, want := with.Tokens-without.Tokens, EstimateTokens("> quote\n\ntext")-EstimateTokens("text"); got != want {
+			t.Fatalf("extra tokens = %d, want %d", got, want)
 		}
 	})
 

@@ -78,6 +78,7 @@ func (RunQueued) EventType() Type { return Type{Name: "run.queued", V: 1, Class:
 type InputReceived struct {
 	ChatID    string `json:"chatId"`
 	Text      string `json:"text"`
+	Quote     string `json:"quote,omitempty"` // the text the user quoted, already trimmed; "" = none
 	RequestID string `json:"requestId"`
 }
 
@@ -147,8 +148,27 @@ func (MessagePartial) EventType() Type { return Type{Name: "message.partial", V:
 
 // MessagePart is one part of a stored message.
 type MessagePart struct {
-	Kind string `json:"kind" enum:"text,reasoning"`
+	Kind string `json:"kind" enum:"text,reasoning,quote"`
 	Text string `json:"text"`
+}
+
+// InputParts is a user message's parts: [quote, text] with a quote, [text] without.
+func InputParts(text, quote string) []MessagePart {
+	parts := []MessagePart{{Kind: "text", Text: text}}
+	if quote != "" {
+		parts = append([]MessagePart{{Kind: "quote", Text: quote}}, parts...)
+	}
+	return parts
+}
+
+// QuoteOf is the text of parts' quote part; "" when there is none.
+func QuoteOf(parts []MessagePart) string {
+	for _, p := range parts {
+		if p.Kind == "quote" {
+			return p.Text
+		}
+	}
+	return ""
 }
 
 // MessageStats is the provider's usage plus the run's timing; Exact is false when the counts are estimated.

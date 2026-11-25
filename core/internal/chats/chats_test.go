@@ -352,6 +352,21 @@ func (f *fixture) firstOnM1() run.Ref {
 	return first
 }
 
+func TestABadQuoteIsCheckedBeforeAnythingIsWritten(t *testing.T) {
+	f := newFixture(t, installed, answer)
+	first := f.firstOnM1()
+	f.setModels([]provider.Model{installed[0], {ID: "m3", Kind: provider.ModelChat, Context: 8192}})
+	before := f.chatModelEvents(first.ChatID)
+
+	_, err := f.svc.Send(bg, SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again", Quote: "  \n "})
+	if !errors.Is(err, run.ErrBadInput) {
+		t.Fatalf("Send = %v, want ErrBadInput", err)
+	}
+	if after := f.chatModelEvents(first.ChatID); len(after) != len(before) {
+		t.Errorf("chat.model events grew from %d to %d", len(before), len(after))
+	}
+}
+
 func TestRemovedModelFallsBackOnTheNextSend(t *testing.T) {
 	m3 := provider.Model{ID: "m3", Kind: provider.ModelChat, Context: 8192}
 	e1 := installed[0]

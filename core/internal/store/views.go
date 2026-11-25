@@ -521,8 +521,9 @@ func applyInput(tx *sql.Tx, runID string, e event.Event) error {
 	if err != nil {
 		return err
 	}
+	parts, _ := json.Marshal(event.InputParts(p.Text, p.Quote))
 	if _, err := tx.Exec(`INSERT INTO messages (seq, chat_id, run_id, role, parts, created_at)
-		VALUES (?, ?, ?, 'user', ?, ?)`, e.Seq, p.ChatID, runID, textParts(p.Text), e.Time); err != nil {
+		VALUES (?, ?, ?, 'user', ?, ?)`, e.Seq, p.ChatID, runID, string(parts), e.Time); err != nil {
 		return err
 	}
 	// A new run's first input repeats its run's request id, which run.queued already mapped.
@@ -530,7 +531,11 @@ func applyInput(tx *sql.Tx, runID string, e event.Event) error {
 		p.RequestID, runID, p.ChatID); err != nil {
 		return err
 	}
-	if err := indexMessage(tx, e.Seq, p.ChatID, p.Text); err != nil {
+	body := p.Text
+	if p.Quote != "" {
+		body = p.Quote + "\n\n" + p.Text
+	}
+	if err := indexMessage(tx, e.Seq, p.ChatID, body); err != nil {
 		return err
 	}
 	res, err := tx.Exec(`UPDATE chats SET title = ? WHERE id = ? AND title = ''`, CutTitle(p.Text), p.ChatID)
