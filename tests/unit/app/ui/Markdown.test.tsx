@@ -32,10 +32,9 @@ describe('Markdown', () => {
     })
 
     expect(writeText).toHaveBeenCalledWith('const a = 1\n')
-    expect(screen.getByRole('button', { name: 'Copy code' })).toHaveTextContent('Copied')
+    expect(screen.getByRole('button', { name: 'Copied' })).toBeInTheDocument()
     act(() => vi.advanceTimersByTime(1500))
-    expect(screen.getByRole('button', { name: 'Copy code' })).toHaveTextContent('Copy')
-    expect(screen.getByRole('button', { name: 'Copy code' })).not.toHaveTextContent('Copied')
+    expect(screen.getByRole('button', { name: 'Copy code' })).toBeInTheDocument()
   })
 
   it('shows a script tag as text and never makes it an element', () => {

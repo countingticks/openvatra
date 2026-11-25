@@ -5,7 +5,7 @@ import { ModelButton } from '@app/features/models'
 import { useUpdateChatMutation } from '@app/core/generated'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { exampleConnection, renderWithStore } from '../../../renderWithStore'
-import { selectExpandModel, selectModelsTab, selectSettingsSection } from '@app/store/uiSlice'
+import { selectModelsTab, selectSettingsSection } from '@app/store/uiSlice'
 import type { ModelInfo } from '@app/core/types'
 
 const qwen: ModelInfo = {
@@ -65,7 +65,6 @@ describe('model button', () => {
     expect(screen.queryByRole('dialog', { name: 'Models service' })).not.toBeInTheDocument()
     expect(selectSettingsSection(store.getState())).toBe('models')
     expect(selectModelsTab(store.getState())).toBe('installed')
-    expect(selectExpandModel(store.getState())).toBe(qwen.id)
   })
 
   it('closes with Esc', async () => {

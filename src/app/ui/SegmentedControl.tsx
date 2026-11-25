@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react'
 import { Radio } from '@base-ui/react/radio'
 import { RadioGroup } from '@base-ui/react/radio-group'
+import { cn } from '@app/lib/utils'
 
 interface SegmentedControlProps<T extends string> {
   /** Id of the visible label, so the group is announced by name. */
@@ -22,14 +23,18 @@ export function SegmentedControl<T extends string>({
 }: SegmentedControlProps<T>): React.JSX.Element {
   const groupRef = useRef<HTMLDivElement>(null)
   // Where the raised pill sits: under the checked option. It slides there instead of jumping.
-  const [pill, setPill] = useState<{ left: number; width: number }>()
+  // It slides only to a pick the user just made: the first placement and values from props jump into place.
+  const [pill, setPill] = useState<{ left: number; width: number; slide: boolean }>()
+  const picked = useRef(false)
 
   useLayoutEffect(() => {
     const group = groupRef.current
     if (!group) return
     function place(): void {
       const checked = group?.querySelector<HTMLElement>('[role="radio"][data-checked]')
-      if (checked) setPill({ left: checked.offsetLeft, width: checked.offsetWidth })
+      if (!checked) return
+      setPill({ left: checked.offsetLeft, width: checked.offsetWidth, slide: picked.current })
+      picked.current = false
     }
     place()
     // Fonts loading or a text-size change moves the options without the value changing.
@@ -47,15 +52,23 @@ export function SegmentedControl<T extends string>({
       // Base UI reports the new value as unknown; only accept one of ours.
       onValueChange={(next) => {
         const option = options.find((candidate) => candidate.value === next)
-        if (option) onChange(option.value)
+        if (!option) return
+        picked.current = true
+        onChange(option.value)
       }}
       className="relative inline-flex shrink-0 gap-0.5 rounded-lg border border-border bg-sidebar p-[3px]"
     >
       {pill && (
         <span
           aria-hidden
+          data-pill=""
+          data-slide={pill.slide ? '' : undefined}
           style={{ width: pill.width, transform: `translateX(${pill.left}px)` }}
-          className="absolute top-[3px] bottom-[3px] left-0 rounded-md bg-popover shadow-sm transition-[transform,width] duration-200 ease-out in-data-[motion=reduce]:transition-none dark:bg-accent"
+          className={cn(
+            'absolute top-[3px] bottom-[3px] left-0 rounded-md bg-popover shadow-sm dark:bg-accent',
+            pill.slide &&
+              'transition-[transform,width] duration-200 ease-out in-data-[motion=reduce]:transition-none'
+          )}
         />
       )}
       {options.map((option) => (

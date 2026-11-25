@@ -125,13 +125,14 @@ test('a custom context size is passed to llama-server', async () => {
     .toMatch(/-c 4096\b.*--fit off|--fit off.*-c 4096\b/)
 })
 
-test('Manage models… opens Settings on Models with the chat model expanded', async () => {
+test('Manage models… opens Settings on Models with every row closed', async () => {
   await mainWindow.getByRole('button', { name: /^Model:/ }).click()
   await mainWindow.getByRole('button', { name: 'Manage models…' }).click()
 
   const dialog = mainWindow.getByRole('dialog', { name: 'Settings' })
   await expect(dialog.getByRole('heading', { name: 'Models' })).toBeVisible()
-  await expect(dialog.getByRole('group', { name: 'Options for tiny' })).toBeVisible()
+  await expect(dialog.getByRole('list', { name: 'Installed models' })).toBeVisible()
+  await expect(dialog.getByRole('group', { name: 'Options for tiny' })).toHaveCount(0)
   await mainWindow.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
 })

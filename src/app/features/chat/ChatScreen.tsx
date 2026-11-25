@@ -55,11 +55,10 @@ function ChatView(): React.JSX.Element {
   const scroller = useRef<HTMLDivElement>(null)
   const chatId = route.tab === 'chat' && route.chatId ? route.chatId : undefined
   const { view, context, status } = useRunView(chatId)
-  const { data: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: chatId === undefined })
+  const { currentData: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: chatId === undefined })
   const { model, loading, pick } = useChatModel(chatId)
   const activeRun = view?.activeRun ?? null
   const live = useLiveAnswer(activeRun?.id)
-  const newText = activeRun?.state === 'running'
   const answering = activeRun !== null && (activeRun.state === 'queued' || activeRun.state === 'running')
   const hasLiveEntry = view?.entries.some((entry) => entry.kind === 'live') ?? false
   const [startRun] = useStartRunMutation()
@@ -141,17 +140,11 @@ function ChatView(): React.JSX.Element {
               <Button
                 variant="outline"
                 size="icon"
-                aria-label={newText ? 'Scroll to latest, new text below' : 'Scroll to latest'}
+                aria-label="Scroll to latest"
                 onClick={jumpToLatest}
-                className="absolute bottom-3.5 left-1/2 size-[34px] -translate-x-1/2 animate-in rounded-full bg-background duration-160 fade-in slide-in-from-bottom-1 in-data-[motion=reduce]:animate-none"
+                className="absolute bottom-3.5 left-1/2 size-[34px] -translate-x-1/2 animate-in rounded-full bg-background dark:bg-background duration-160 fade-in slide-in-from-bottom-1 in-data-[motion=reduce]:animate-none"
               >
                 <ArrowDown aria-hidden className="size-4" />
-                {newText && (
-                  <span
-                    aria-hidden
-                    className="absolute -top-0.5 -right-0.5 size-[9px] rounded-full bg-brand ring-2 ring-background"
-                  />
-                )}
               </Button>
             )
           }

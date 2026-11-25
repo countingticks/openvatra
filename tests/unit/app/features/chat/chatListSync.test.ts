@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { ChatItem, ChatList as ChatListBody, Event, SchedState } from '@app/core/generated'
 import { ChatList } from '@app/features/chat'
 import { selectSched } from '@app/features/runs'
+import { selectCanGoBack, selectRoute } from '@app/store/uiSlice'
 import { renderWithStore } from '../../../renderWithStore'
 
 const chat = (id: string, title: string, overrides: Partial<ChatItem> = {}): ChatItem => ({
@@ -38,13 +39,16 @@ interface Shown {
   listRequests(): number
 }
 
-function show(body: ChatListBody, options: { gated?: boolean } = {}): Shown & { release(): void } {
+function show(
+  body: ChatListBody,
+  options: { gated?: boolean; saved?: object } = {}
+): Shown & { release(): void } {
   // The fake core answers through fetch, so holding the list means holding that fetch.
   let release = (): void => {}
   const opened = new Promise<void>((resolve) => {
     release = resolve
   })
-  const rendered = renderWithStore(createElement(ChatList))
+  const rendered = renderWithStore(createElement(ChatList), options.saved)
   const http = rendered.coreHttp
   const original = http.fetch
   if (options.gated) {
@@ -126,6 +130,34 @@ describe('registerChatList', () => {
     await push(event('chat.deleted', 2, { chatId: 'c2' }, 'chat:c2'))
 
     await waitFor(() => expect(titles()).toEqual(['Trip to Cluj']))
+  })
+
+  it('replaces the route with a new chat when the open chat is deleted', async () => {
+    const { rendered, push } = show(
+      { seq: 1, chats: [chat('c2', 'Rust lifetimes, again'), chat('c1', 'Trip to Cluj')] },
+      { saved: { lastRoute: 'chat/c2' } }
+    )
+    await screen.findByRole('list', { name: 'Chats' })
+    expect(selectRoute(rendered.store.getState())).toEqual({ tab: 'chat', chatId: 'c2' })
+    const canGoBack = selectCanGoBack(rendered.store.getState())
+
+    await push(event('chat.deleted', 2, { chatId: 'c2' }, 'chat:c2'))
+
+    await waitFor(() => expect(selectRoute(rendered.store.getState())).toEqual({ tab: 'chat' }))
+    expect(selectCanGoBack(rendered.store.getState())).toBe(canGoBack)
+  })
+
+  it('keeps the route when another chat is deleted', async () => {
+    const { rendered, push, flush } = show(
+      { seq: 1, chats: [chat('c2', 'Rust lifetimes, again'), chat('c1', 'Trip to Cluj')] },
+      { saved: { lastRoute: 'chat/c2' } }
+    )
+    await screen.findByRole('list', { name: 'Chats' })
+
+    await push(event('chat.deleted', 2, { chatId: 'c1' }, 'chat:c1'))
+    await flush()
+
+    expect(selectRoute(rendered.store.getState())).toEqual({ tab: 'chat', chatId: 'c2' })
   })
 
   it('applies an event that arrived while the list loaded, except one at or below its seq', async () => {

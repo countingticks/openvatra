@@ -10,6 +10,7 @@ import { gpuMemory } from './gpuMemory'
 import { failureReason, formatSize } from './modelText'
 import { useCudaEngine } from './useCudaEngine'
 import { useEngineSettings } from './useEngineSettings'
+import { cn } from '@app/lib/utils'
 import { useFreshHardware } from './useFreshHardware'
 import { useModels } from './useModels'
 import { useSetup } from './useSetup'
@@ -21,11 +22,14 @@ const engines: { value: Engine; label: string }[] = [
   { value: 'compatible', label: 'Compatible' }
 ]
 
+// The numbers jump while the first measurement settles, and animate once they are true.
+const slide = 'transition-[width] in-data-[motion=reduce]:transition-none'
+
 const gigabytes = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`
 
 /** The graphics card: its memory, who holds it, and the engine switch (Faster is CUDA, Compatible is Vulkan). */
 export function GpuCard(): React.JSX.Element | null {
-  useFreshHardware()
+  const { fresh } = useFreshHardware()
   const { hardware } = useSetup()
   const models = useModels()
   const { status, custom, item, progress } = useCudaEngine()
@@ -140,21 +144,27 @@ export function GpuCard(): React.JSX.Element | null {
         <div
           role="img"
           aria-label={`Model ${gigabytes(memory.modelBytes)}, other apps ${gigabytes(memory.otherBytes)}, free ${gigabytes(memory.freeBytes)} of ${gigabytes(memory.totalBytes)}`}
-          className="flex h-2 overflow-hidden rounded-full bg-[#E9E9EC] dark:bg-border-strong"
+          // Hidden (its space kept) until the mount's measurement answered: the stored numbers may be stale.
+          className={cn(
+            'flex h-2 overflow-hidden rounded-full bg-[#E9E9EC] dark:bg-border-strong',
+            !fresh && 'invisible'
+          )}
         >
           <div
-            className="bg-brand transition-[width] in-data-[motion=reduce]:transition-none"
+            data-slide={fresh ? '' : undefined}
+            className={cn('bg-brand', fresh && slide)}
             style={{ width: percent(memory.modelBytes) }}
           />
           <div
-            className="bg-subtle transition-[width] in-data-[motion=reduce]:transition-none"
+            data-slide={fresh ? '' : undefined}
+            className={cn('bg-subtle', fresh && slide)}
             style={{ width: percent(memory.otherBytes) }}
           />
         </div>
 
         <div className="flex min-w-0 items-center gap-4 text-[12.5px]">
           {legend.map(({ label, bytes, swatch }) => (
-            <span key={label} className="flex shrink-0 items-center gap-1.5">
+            <span key={label} className={cn('flex shrink-0 items-center gap-1.5', !fresh && 'invisible')}>
               <span aria-hidden className={`size-2 rounded-full ${swatch}`} />
               {label} · {gigabytes(bytes)}
             </span>

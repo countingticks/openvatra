@@ -1,5 +1,5 @@
 // Shared by the Settings → Models tests: the app with Settings open on Models, and the model and request fixtures.
-import { act, screen } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import { Shell } from '@app/shell/Shell'
 import type { LlamaCppSettings, LlamaServerSettings } from '@app/core/generated'
 import { settingsOpened } from '@app/store/uiSlice'
@@ -76,5 +76,9 @@ export async function openModels(
     rendered.store.dispatch(settingsOpened({ section: 'models' }))
   })
   const section = await screen.findByRole('region', { name: 'Models' })
+  // With core connected the section waits for its values: its first row shows once they are in.
+  if ((options.coreState ?? ready).status === 'ready') {
+    await within(section).findByRole('radiogroup', { name: 'Unload models after' })
+  }
   return { ...rendered, section }
 }

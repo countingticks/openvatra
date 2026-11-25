@@ -18,6 +18,19 @@ export function isAppUrl(url: string, appUrl: string): boolean {
   return target.origin === app.origin
 }
 
+/** The one permission the window gets: clipboard writes, from the app's own page. Everything else is refused. */
+export function allowsPermission(
+  permission: string,
+  requestingUrl: string | undefined,
+  appUrl: string
+): boolean {
+  return (
+    permission === 'clipboard-sanitized-write' &&
+    requestingUrl !== undefined &&
+    isAppUrl(requestingUrl, appUrl)
+  )
+}
+
 /** The origin core must accept for the window, or null when the page is a file (production sends no Origin). */
 export function devServerOrigin(appUrl: string): string | null {
   const parsed = parse(appUrl)

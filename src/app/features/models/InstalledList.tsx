@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import { InstalledRow, UnreadableRow } from './InstalledRow'
 import { useCoreState } from '@app/core/useCoreState'
-import { useAppSelector } from '@app/store/hooks'
-import { selectExpandModel } from '@app/store/uiSlice'
 import { useLlamacppSettings } from './useLlamacppSettings'
 import { useModels } from './useModels'
 import type { ModelOptions } from '@app/core/generated'
@@ -16,21 +14,7 @@ export function InstalledList(): React.JSX.Element {
   const { value: settings, update } = useLlamacppSettings()
   const core = useCoreState()
   const models = useModels()
-  const expandModel = useAppSelector(selectExpandModel)
   const [openId, setOpenId] = useState<string | null>(null)
-  // Where the dialog was asked to open (the chat's model) is read once per mount: closing the row by hand sticks.
-  // The list may arrive after the mount, so the id is looked for until it is first found.
-  const [expandHandled, setExpandHandled] = useState(false)
-  const [revealId, setRevealId] = useState<string | null>(null)
-  if (
-    !expandHandled &&
-    expandModel !== null &&
-    models.some((model) => model.id === expandModel && model.kind !== 'unreadable')
-  ) {
-    setExpandHandled(true)
-    setOpenId(expandModel)
-    setRevealId(expandModel)
-  }
 
   const usable = [
     ...models.filter((model) => model.kind === 'chat').sort(byName),
@@ -70,7 +54,6 @@ export function InstalledList(): React.JSX.Element {
           options={settings.options[model.id]}
           onOptions={(next) => setOptions(model.id, next)}
           expanded={openId === model.id}
-          reveal={revealId === model.id}
           onToggle={() => setOpenId(openId === model.id ? null : model.id)}
         />
       ))}

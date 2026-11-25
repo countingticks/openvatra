@@ -141,6 +141,7 @@ describe('ChatScreen', () => {
   it('starts a new chat with the first chat model, then shows it in place', async () => {
     const { coreHttp, store, push } = show()
     await screen.findByRole('button', { name: /^Model: tiny,/ })
+    expect(message()).toHaveAttribute('placeholder', 'Ask anything…')
 
     await type('hi')
     enter()
@@ -150,12 +151,50 @@ describe('ChatScreen', () => {
     )
     await waitFor(() => expect(selectRoute(store.getState())).toEqual({ tab: 'chat', chatId: 'c1' }))
     expect(selectCanGoBack(store.getState())).toBe(false)
+    await waitFor(() => expect(message()).toHaveAttribute('placeholder', 'Reply…'))
 
     await push(
       event('run.queued', 1, { chatId: 'c1', profile: 'chat', model: 'tiny' }),
       event('input.received', 2, { chatId: 'c1', requestId: 'x', text: 'hi' })
     )
     expect(await within(conversation()).findByText('hi')).toBeInTheDocument()
+  })
+
+  it("shows nothing of the first chat while another chat's messages are on their way", async () => {
+    const { coreHttp, store } = show({
+      open: { transcript: transcript({ seq: 2, items: [input(1, 'first'), answer(2, 'earlier answer')] }) }
+    })
+    await within(conversation()).findByText('earlier answer')
+    expect(await screen.findByRole('heading', { name: 'Quantization formats' })).toBeInTheDocument()
+
+    let release = (): void => {}
+    const opened = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = coreHttp.fetch
+    vi.stubGlobal('fetch', (async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (new URL(url).pathname.startsWith('/api/chats/c2')) await opened
+      return original(input, init)
+    }) as typeof fetch)
+    coreHttp.answer('/api/chats/c2', {
+      seq: 0,
+      chat: { id: 'c2', title: 'Second chat', titleSource: 'auto', model: 'tiny', updatedAt: 0 }
+    })
+    coreHttp.answer(
+      '/api/chats/c2/messages',
+      transcript({ seq: 1, items: [input(1, 'other question')], runs: [] })
+    )
+
+    act(() => {
+      store.dispatch(navigated({ tab: 'chat', chatId: 'c2' }))
+    })
+
+    await waitFor(() => expect(screen.queryByText('earlier answer')).not.toBeInTheDocument())
+    expect(screen.queryByRole('heading', { name: 'Quantization formats' })).not.toBeInTheDocument()
+
+    release()
+    expect(await within(conversation()).findByText('other question')).toBeInTheDocument()
   })
 
   it.each([
@@ -175,11 +214,14 @@ describe('ChatScreen', () => {
   })
 
   it.each([
-    ['a new chat', {}],
-    ['a saved chat', { open: {} }]
-  ])('asks for a reply in %s', async (_case, options) => {
+    ['a new chat', {}, 'Ask anything…'],
+    ['a saved chat', { open: {} }, 'Reply…']
+  ])('words the message box for %s', async (_case, options, placeholder) => {
     show(options)
-    expect(await screen.findByRole('textbox', { name: 'Message' })).toHaveAttribute('placeholder', 'Reply…')
+    expect(await screen.findByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      placeholder
+    )
   })
 
   it('adds a line with Shift+Enter and never sends blank text', async () => {
@@ -310,7 +352,7 @@ describe('ChatScreen', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Answer finished'))
   })
 
-  it('offers Scroll to latest while scrolled away, with a dot while text is arriving', async () => {
+  it('offers Scroll to latest while scrolled away', async () => {
     const running = run({ state: 'running' })
     const { push } = show({
       open: {
@@ -328,9 +370,7 @@ describe('ChatScreen', () => {
     conversation().scrollTop = 0
     fireEvent.scroll(conversation())
 
-    expect(
-      await screen.findByRole('button', { name: 'Scroll to latest, new text below' })
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
 
     await push(
       event('message.completed', 5, {
@@ -343,6 +383,7 @@ describe('ChatScreen', () => {
     )
 
     expect(await screen.findByRole('button', { name: 'Scroll to latest' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Scroll to latest, new text below' })).not.toBeInTheDocument()
   })
 
   it("announces a failed run's message", async () => {

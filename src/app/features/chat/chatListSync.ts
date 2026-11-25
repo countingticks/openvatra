@@ -5,6 +5,7 @@ import { coreApi } from '@app/core/coreApi'
 import { coreEvent } from '@app/core/events'
 import { chatIdOf, runIdOf } from '@app/features/runs'
 import type { AppDispatch, AppStartListening } from '@app/store/store'
+import { routeReplaced, selectRoute } from '@app/store/uiSlice'
 
 // The full list; a search (q) is a separate entry the events don't patch.
 const listArg = {}
@@ -106,6 +107,13 @@ export function registerChatList(startListening: AppStartListening): void {
     actionCreator: coreEvent,
     effect: (action, api) => {
       const event = action.payload
+      // The open chat was deleted (here or elsewhere): its screen has nothing left to show.
+      if (event.type === 'chat.deleted') {
+        const route = selectRoute(api.getState())
+        if (route.tab === 'chat' && route.chatId && route.chatId === chatIdOf(event)) {
+          api.dispatch(routeReplaced({ tab: 'chat' }))
+        }
+      }
       if (event.seq === undefined) return
       const entry = coreApi.endpoints.listChats.select(listArg)(api.getState())
       if (entry.status === 'pending') {

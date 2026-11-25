@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import { devServerOrigin, isAppUrl, isExternalWebUrl } from '../../../src/main/urlPolicy'
+import { allowsPermission, devServerOrigin, isAppUrl, isExternalWebUrl } from '../../../src/main/urlPolicy'
 
 describe('devServerOrigin', () => {
   it('gives the dev server URL its origin without the path', () => {
@@ -57,5 +57,26 @@ describe('isAppUrl', () => {
     expect(isAppUrl('https://evil.example/', prod)).toBe(false)
     expect(isAppUrl('https://evil.example/', dev)).toBe(false)
     expect(isAppUrl('not a url', dev)).toBe(false)
+  })
+})
+
+describe('allowsPermission', () => {
+  const prod = 'file:///C:/Program%20Files/OpenVatra/resources/app.asar/out/renderer/index.html'
+  const dev = 'http://localhost:5173/'
+  const write = 'clipboard-sanitized-write'
+
+  it('allows clipboard writes from the bundled page and the dev server origin', () => {
+    expect(allowsPermission(write, `${prod}#/chat`, prod)).toBe(true)
+    expect(allowsPermission(write, 'http://localhost:5173/src/main.tsx', dev)).toBe(true)
+  })
+
+  it('refuses clipboard writes from another file, a remote site or an unknown URL', () => {
+    expect(allowsPermission(write, 'file:///C:/Users/me/evil.html', prod)).toBe(false)
+    expect(allowsPermission(write, 'https://evil.example/', dev)).toBe(false)
+    expect(allowsPermission(write, undefined, prod)).toBe(false)
+  })
+
+  it.each(['clipboard-read', 'notifications', 'media'])('refuses %s from the app itself', (permission) => {
+    expect(allowsPermission(permission, prod, prod)).toBe(false)
   })
 })
