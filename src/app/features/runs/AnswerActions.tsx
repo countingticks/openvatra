@@ -4,15 +4,18 @@ import { Button } from '@app/ui/button'
 import { answerCopyText, speedText, statsLine } from './answerText'
 import { CopyButton } from '@app/ui/CopyButton'
 import { MessageActions } from './MessageActions'
+import { MessageTime } from './MessageTime'
 
-/** Copy, Regenerate and the speed under a finished answer; shown on hover or focus, always in the accessibility tree. */
+/** Copy, Regenerate, the speed and the age under a finished answer. */
 export function AnswerActions({
   parts,
   stats,
+  time,
   onRegenerate
 }: {
   parts: MessagePart[]
   stats: MessageStats | null
+  time: number
   onRegenerate?: () => void
 }): React.JSX.Element {
   const speed = stats ? speedText(stats) : ''
@@ -25,10 +28,11 @@ export function AnswerActions({
         </Button>
       )}
       {stats && speed && (
-        <span title={statsLine(stats)} className="ml-1 text-xs text-muted-foreground tabular-nums">
+        <span title={statsLine(stats)} className="mx-1 text-xs text-muted-foreground tabular-nums">
           {speed}
         </span>
       )}
+      <MessageTime time={time} />
     </MessageActions>
   )
 }

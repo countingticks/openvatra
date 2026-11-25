@@ -9,6 +9,7 @@ import { LastInputEditor } from './LastInputEditor'
 import { LiveEntry } from './LiveEntry'
 import { CopyButton } from '@app/ui/CopyButton'
 import { MessageActions } from './MessageActions'
+import { MessageTime } from './MessageTime'
 import type { RunView, TranscriptEntry } from './runView'
 
 // Failures the model settings can fix (decision 20).
@@ -64,7 +65,7 @@ export function Transcript({
           )
         }
         return (
-          <div className="group flex flex-col items-end gap-1">
+          <div className="flex flex-col items-end gap-1">
             <div
               className={cn(
                 'max-w-[80%] rounded-2xl bg-bubble px-4 py-2.5 text-[15px] leading-[1.55] whitespace-pre-wrap',
@@ -75,6 +76,7 @@ export function Transcript({
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}
             <MessageActions>
+              <CopyButton text={entry.text} label="Copy message" />
               {entry === lastInput && !entry.queued && (
                 <Button
                   variant="ghost"
@@ -85,7 +87,7 @@ export function Transcript({
                   <Pencil aria-hidden className="size-3.5" />
                 </Button>
               )}
-              <CopyButton text={entry.text} label="Copy message" />
+              <MessageTime time={entry.time} />
             </MessageActions>
           </div>
         )
@@ -102,6 +104,7 @@ export function Transcript({
             <AnswerActions
               parts={entry.parts}
               stats={entry.stats}
+              time={entry.time}
               onRegenerate={idle && entry === last && !entry.failed ? onRegenerate : undefined}
             />
           </AnswerBlock>

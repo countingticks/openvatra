@@ -9,6 +9,7 @@ import type {
   TranscriptItem
 } from '@app/core/generated'
 import { runView, Transcript } from '@app/features/runs'
+import { fullTime } from '@app/ui/relativeTime'
 import { renderWithStore } from '../../../renderWithStore'
 
 const stats = (overrides: Partial<MessageStats> = {}): MessageStats => ({
@@ -245,6 +246,41 @@ describe('Transcript', () => {
     expect(within(rows[1]).getByRole('button', { name: 'Edit message' })).toBeInTheDocument()
   })
 
+  it("shows each input's and answer's age, and the full date as its title", () => {
+    const now = new Date('2026-06-01T12:00:00Z').getTime()
+    vi.useFakeTimers({ toFake: ['Date', 'requestAnimationFrame', 'cancelAnimationFrame'] })
+    vi.setSystemTime(now)
+    const inputTime = now - 5 * 60_000
+    const answerTime = now - 30_000
+    show(transcript([{ ...input(1, 'Hi'), time: inputTime }, answer(2, { time: answerTime })]))
+
+    const five = screen.getByText('5 minutes ago')
+    const justNow = screen.getByText('just now')
+    expect(five.tagName).toBe('TIME')
+    expect(five).toHaveAttribute('title', fullTime(inputTime))
+    expect(justNow).toHaveAttribute('title', fullTime(answerTime))
+  })
+
+  it('updates the age once a minute', () => {
+    const now = new Date('2026-06-01T12:00:00Z').getTime()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'requestAnimationFrame'] })
+    vi.setSystemTime(now)
+    show(transcript([input(1, 'Hi'), answer(2, { time: now })]))
+    expect(screen.getByText('just now')).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(60_000)
+    })
+    expect(screen.getByText('1 minute ago')).toBeInTheDocument()
+  })
+
+  it('shows Copy on every message without hover', () => {
+    show(transcript([input(1, 'Hi'), answer(2)]))
+
+    expect(screen.getByRole('button', { name: 'Copy answer' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Copy message' })).toBeVisible()
+  })
+
   it('copies the input text and names the button Copied for 1.5 s', async () => {
     show(transcript([input(1, 'Hello there')]))
     vi.useFakeTimers({
@@ -287,6 +323,7 @@ describe('Transcript', () => {
     show(transcript([{ kind: 'summary', seq: 1, runId: 'r1', time: 0, text: 'SUMMARY' }, input(2, 'Hi')]))
 
     expect(screen.getByText('Earlier messages summarised')).toBeInTheDocument()
+    expect(screen.getByText('Earlier messages summarised').querySelector('time')).toBeNull()
   })
 
   it('offers Continue for an interrupted run and model settings only for failures they fix', () => {
