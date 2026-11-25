@@ -37,7 +37,6 @@ export interface UiState {
   settingsSection: SettingsSection
   /** Which tab Settings › Models shows. */
   modelsTab: ModelsTab
-  /** The model id whose options the Installed list opens when it mounts; null for none. */
 }
 
 /** Enough to go back a long way, small enough that the history never grows without bound. */
