@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { selectConnection } from '@app/core/connectionSlice'
 import { useRefreshHardwareMutation } from '@app/core/generated'
 import { useAppSelector } from '@app/store/hooks'
@@ -10,9 +10,11 @@ const minGapMs = 5000
 /**
  * Asks core to measure the hardware on mount, and again 1 s after any model turns ready or stopped, at most once
  * every 5 s: the card's free memory is only true right after a model has loaded or let go.
+ * `fresh` turns true once the mount's refresh has answered (success or error), and stays true.
  */
-export function useFreshHardware(): void {
+export function useFreshHardware(): { fresh: boolean } {
   const [refresh] = useRefreshHardwareMutation()
+  const [fresh, setFresh] = useState(false)
   const connected = useAppSelector(selectConnection) !== null
   const models = useModels()
   const lastAt = useRef(0)
@@ -23,7 +25,7 @@ export function useFreshHardware(): void {
   useEffect(() => {
     if (!connected) return
     lastAt.current = Date.now()
-    void refresh()
+    void refresh().then(() => setFresh(true))
   }, [connected, refresh])
 
   useEffect(() => () => clearTimeout(timer.current), [])
@@ -46,4 +48,6 @@ export function useFreshHardware(): void {
       void refresh()
     }, wait)
   }, [models, refresh])
+
+  return { fresh }
 }

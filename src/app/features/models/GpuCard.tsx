@@ -10,6 +10,7 @@ import { gpuMemory } from './gpuMemory'
 import { failureReason, formatSize } from './modelText'
 import { useCudaEngine } from './useCudaEngine'
 import { useEngineSettings } from './useEngineSettings'
+import { cn } from '@app/lib/utils'
 import { useFreshHardware } from './useFreshHardware'
 import { useModels } from './useModels'
 import { useSetup } from './useSetup'
@@ -21,11 +22,14 @@ const engines: { value: Engine; label: string }[] = [
   { value: 'compatible', label: 'Compatible' }
 ]
 
+// The numbers jump while the first measurement settles, and animate once they are true.
+const slide = 'transition-[width] in-data-[motion=reduce]:transition-none'
+
 const gigabytes = (bytes: number): string => `${(bytes / 1024 ** 3).toFixed(1)} GB`
 
 /** The graphics card: its memory, who holds it, and the engine switch (Faster is CUDA, Compatible is Vulkan). */
 export function GpuCard(): React.JSX.Element | null {
-  useFreshHardware()
+  const { fresh } = useFreshHardware()
   const { hardware } = useSetup()
   const models = useModels()
   const { status, custom, item, progress } = useCudaEngine()
@@ -143,11 +147,13 @@ export function GpuCard(): React.JSX.Element | null {
           className="flex h-2 overflow-hidden rounded-full bg-[#E9E9EC] dark:bg-border-strong"
         >
           <div
-            className="bg-brand transition-[width] in-data-[motion=reduce]:transition-none"
+            data-slide={fresh ? '' : undefined}
+            className={cn('bg-brand', fresh && slide)}
             style={{ width: percent(memory.modelBytes) }}
           />
           <div
-            className="bg-subtle transition-[width] in-data-[motion=reduce]:transition-none"
+            data-slide={fresh ? '' : undefined}
+            className={cn('bg-subtle', fresh && slide)}
             style={{ width: percent(memory.otherBytes) }}
           />
         </div>

@@ -236,6 +236,38 @@ describe('GpuCard', () => {
   })
 })
 
+describe('the memory bar', () => {
+  it('jumps while the first refresh is on its way and animates once it answered', async () => {
+    let release = (): void => {}
+    const opened = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const rendered = renderWithStore(
+      <Shell />,
+      {},
+      { coreState: ready, engines: { cuda: 'none' }, models: [] }
+    )
+    const original = rendered.coreHttp.fetch
+    vi.stubGlobal('fetch', (async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (new URL(url).pathname === '/api/hardware/refresh') await opened
+      return original(input, init)
+    }) as typeof fetch)
+    rendered.coreHttp.answer('/api/hardware/refresh', exampleHardware, { method: 'POST' })
+    act(() => {
+      rendered.store.dispatch(settingsOpened({ section: 'models' }))
+    })
+    await card()
+    const segments = (): Element[] => Array.from(screen.getByRole('img', { name: /^Model / }).children)
+
+    expect(segments()).toHaveLength(2)
+    segments().forEach((segment) => expect(segment).not.toHaveAttribute('data-slide'))
+    release()
+
+    await waitFor(() => segments().forEach((segment) => expect(segment).toHaveAttribute('data-slide')))
+  })
+})
+
 describe('useFreshHardware', () => {
   const refreshes = (http: FakeCoreHttp): number => writes(http, 'POST', '/api/hardware/refresh')
 
