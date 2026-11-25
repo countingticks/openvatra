@@ -113,3 +113,22 @@ test('a chat keeps its model-made title across a restart and opens from the side
   await expect(conversation.getByText(answer, { exact: true })).toHaveCount(1)
   await expect(mainWindow.getByRole('heading', { level: 1 })).toHaveText(title)
 })
+
+test('Copy puts the answer on the clipboard, and deleting the open chat opens a new one', async () => {
+  // navigator.clipboard refuses a page without focus.
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+  const heading = mainWindow.getByRole('heading', { level: 1 })
+  const title = (await heading.textContent()) ?? ''
+  const conversation = mainWindow.getByRole('log', { name: 'Conversation' })
+  await conversation.getByRole('button', { name: 'Copy answer' }).click()
+  await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(answer)
+
+  const chats = mainWindow.getByRole('list', { name: 'Chats' })
+  await chats.getByRole('button', { name: `Actions for ${title}` }).click()
+  await mainWindow.getByRole('menuitem', { name: 'Delete' }).click()
+  await mainWindow.getByRole('dialog').getByRole('button', { name: 'Delete' }).click()
+
+  await expect(heading).toHaveText('New chat')
+  await expect(chats.getByRole('button', { name: `Actions for ${title}` })).toHaveCount(0)
+  await expect(mainWindow.getByRole('textbox', { name: 'Message' })).toBeFocused()
+})

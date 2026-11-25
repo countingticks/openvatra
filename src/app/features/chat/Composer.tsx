@@ -110,7 +110,7 @@ export function Composer({ chatId, answering, onSend, onStop, footer }: Composer
           ref={field}
           rows={1}
           value={text}
-          placeholder="Reply…"
+          placeholder={chatId === undefined || chatId === '' ? 'Ask anything…' : 'Reply…'}
           onChange={(event) => change(event.target.value)}
           onKeyDown={onKeyDown}
           // Grows with its text up to 8 lines (22 px each, plus padding), then scrolls.

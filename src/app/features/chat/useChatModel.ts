@@ -13,7 +13,7 @@ export function useChatModel(chatId: string | undefined): {
   pick(id: string): Promise<void>
 } {
   const saved = chatId !== undefined && chatId !== ''
-  const { data: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: !saved })
+  const { currentData: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: !saved })
   const { data: config } = useGetConfigChatQuery(undefined, { skip: saved })
   const [updateChat] = useUpdateChatMutation()
   const chatModels = useModels().filter((model) => model.kind === 'chat')
