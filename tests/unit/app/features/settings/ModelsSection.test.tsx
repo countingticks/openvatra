@@ -1,9 +1,11 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { coreApi } from '@app/core/coreApi'
 import type { LlamaServerSettings } from '@app/core/generated'
 import { defaultEngineSettings, defaultLlamacppSettings } from '@app/features/models/modelSettings'
 import type { ModelInfo } from '@app/core/types'
+import { Shell } from '@app/shell/Shell'
+import { settingsOpened } from '@app/store/uiSlice'
 import { coreWrites, type FakeCoreHttp } from '../../../fakeCoreHttp'
 import {
   chosen,
@@ -14,6 +16,7 @@ import {
   ready,
   type Preferences
 } from '../models/openModelsSection'
+import { renderWithStore } from '../../../renderWithStore'
 
 /** Settings on Models with Advanced already open, unless the test's preferences say otherwise. */
 const openAdvanced = (
@@ -262,7 +265,7 @@ describe('Settings → Models', () => {
     await waitFor(() => expect(within(group).getByRole('radio', { name: '1 hour' })).toBeChecked())
     fireEvent.click(within(group).getByRole('radio', { name: 'Never' }))
 
-    await waitFor(() => expect(within(group).getByRole('radio', { name: 'Never' })).toBeChecked())
+    await waitFor(() => expect(within(group).getByRole('radio', { name: '1 hour' })).toBeChecked())
     expect(putValues(coreHttp).map((value) => value.idleUnloadMinutes)).toEqual([60, null])
     expect(enginePutValues(coreHttp)).toEqual([])
   })
@@ -330,5 +333,38 @@ describe('Settings → Models', () => {
 
       expect(await screen.findByRole('alert')).toHaveTextContent("deleted isn't an available embedding model")
     })
+  })
+})
+
+describe('opening before core answered', () => {
+  it('shows no values until core answered, then the saved ones at once', async () => {
+    let release = (): void => {}
+    const opened = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const rendered = renderWithStore(
+      <Shell />,
+      {},
+      // Core connects only after the fetch is held: until then nothing is asked.
+      { coreState: { status: 'starting' }, llamacppSettings: { idleUnloadMinutes: 60 } }
+    )
+    const original = rendered.coreHttp.fetch
+    vi.stubGlobal('fetch', (async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (new URL(url).pathname === '/api/config/provider.llamacpp') await opened
+      return original(input, init)
+    }) as typeof fetch)
+    act(() => {
+      rendered.store.dispatch(settingsOpened({ section: 'models' }))
+    })
+    await screen.findByRole('dialog', { name: 'Settings' })
+    rendered.core.emitState(ready)
+    await waitFor(() => expect(screen.queryByText('Starting the models service…')).not.toBeInTheDocument())
+
+    expect(screen.queryByRole('radiogroup', { name: 'Unload models after' })).not.toBeInTheDocument()
+    release()
+
+    const idle = await screen.findByRole('radiogroup', { name: 'Unload models after' })
+    expect(within(idle).getByRole('radio', { name: '1 hour' })).toBeChecked()
   })
 })

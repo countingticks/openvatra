@@ -262,9 +262,12 @@ describe('the memory bar', () => {
 
     expect(segments()).toHaveLength(2)
     segments().forEach((segment) => expect(segment).not.toHaveAttribute('data-slide'))
+    // The stored numbers may be stale: hidden, their space kept, until the measurement answered.
+    expect(screen.getByRole('img', { name: /^Model / })).toHaveClass('invisible')
     release()
 
     await waitFor(() => segments().forEach((segment) => expect(segment).toHaveAttribute('data-slide')))
+    expect(screen.getByRole('img', { name: /^Model / })).not.toHaveClass('invisible')
   })
 })
 

@@ -10,7 +10,7 @@ import { useGetEnginesQuery } from '@app/core/generated'
 import { usePlatform } from '@app/platform/usePlatform'
 import { useEngineSettings } from '@app/features/models'
 import { useLlamacppSettings } from '@app/features/models'
-import { idleOptions } from '@app/features/models'
+import { idleOptions, useModelSettingsReady } from '@app/features/models'
 import { cn } from '@app/lib/utils'
 import { useAppDispatch, useAppSelector } from '@app/store/hooks'
 import { selectSettings, settingsChanged } from '@app/store/settingsSlice'
@@ -27,6 +27,7 @@ export function ModelsSection(): React.JSX.Element {
   const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
   const { value: llamacpp, update } = useLlamacppSettings()
   const { value: engine, update: updateEngine } = useEngineSettings()
+  const ready = useModelSettingsReady()
   const dispatch = useAppDispatch()
   const { files, core } = usePlatform()
   const idleId = useId()
@@ -57,6 +58,9 @@ export function ModelsSection(): React.JSX.Element {
   }
 
   const idle = idleOptions.find((option) => option.minutes === llamacpp.idleUnloadMinutes) ?? idleOptions[1]
+
+  // Until core has answered, every value here would be a default that then switches.
+  if (!ready) return <div className="flex flex-col" />
 
   return (
     <div className="flex flex-col">

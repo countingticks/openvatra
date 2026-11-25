@@ -144,7 +144,11 @@ export function GpuCard(): React.JSX.Element | null {
         <div
           role="img"
           aria-label={`Model ${gigabytes(memory.modelBytes)}, other apps ${gigabytes(memory.otherBytes)}, free ${gigabytes(memory.freeBytes)} of ${gigabytes(memory.totalBytes)}`}
-          className="flex h-2 overflow-hidden rounded-full bg-[#E9E9EC] dark:bg-border-strong"
+          // Hidden (its space kept) until the mount's measurement answered: the stored numbers may be stale.
+          className={cn(
+            'flex h-2 overflow-hidden rounded-full bg-[#E9E9EC] dark:bg-border-strong',
+            !fresh && 'invisible'
+          )}
         >
           <div
             data-slide={fresh ? '' : undefined}
@@ -160,7 +164,7 @@ export function GpuCard(): React.JSX.Element | null {
 
         <div className="flex min-w-0 items-center gap-4 text-[12.5px]">
           {legend.map(({ label, bytes, swatch }) => (
-            <span key={label} className="flex shrink-0 items-center gap-1.5">
+            <span key={label} className={cn('flex shrink-0 items-center gap-1.5', !fresh && 'invisible')}>
               <span aria-hidden className={`size-2 rounded-full ${swatch}`} />
               {label} · {gigabytes(bytes)}
             </span>
