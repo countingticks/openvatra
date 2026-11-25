@@ -221,6 +221,82 @@ describe('ChatScreen', () => {
   })
 
   it.each([
+    ['big', 'big', 'big'],
+    [null, 'big', 'tiny'],
+    ['big', 'tiny', 'tiny']
+  ])(
+    'shows the fallback for a saved chat whose model is gone (lastModel %s, chat model %s)',
+    async (lastModel, chatModel, expected) => {
+      const { coreHttp } = show({
+        open: {
+          chat: { ...chatBody(), chat: { ...chatBody().chat, model: chatModel === 'tiny' ? 'tiny' : 'gone' } }
+        },
+        models: [model('tiny'), model('big')]
+      })
+      coreHttp.setConfig('chat', { rev: 1, value: { lastModel } })
+
+      expect(
+        await screen.findByRole('button', { name: new RegExp(`^Model: ${expected},`) })
+      ).toBeInTheDocument()
+    }
+  )
+
+  it('keeps a saved chat model when no chat model is installed', async () => {
+    show({
+      open: { chat: { ...chatBody(), chat: { ...chatBody().chat, model: 'gone' } } },
+      models: []
+    })
+
+    expect(await screen.findByRole('button', { name: /^Model: gone,/ })).toBeInTheDocument()
+  })
+
+  it('grows the context while an answer streams, then shows the exact number', async () => {
+    const running = run({ state: 'running' })
+    const { push } = show({
+      open: {
+        transcript: transcript({
+          seq: 3,
+          items: [input(2, 'hi')],
+          runs: [running],
+          activeRun: running,
+          context: {
+            used: 3174,
+            size: 32768,
+            parts: { system: 0, messages: 0, messageCount: 0, search: 0, files: 0 }
+          }
+        })
+      }
+    })
+    await screen.findByText('3.1k / 32k')
+
+    await push(
+      event('run.started', 4, { chatId: 'c1' }),
+      event('message.delta', undefined, { text: 'x'.repeat(35), n: 10 })
+    )
+    await waitFor(() => {
+      nextFrame()
+      expect(
+        screen.getByRole('button', { name: 'Context: 3,184 of 32,768 tokens used. Show details' })
+      ).toBeInTheDocument()
+    })
+
+    await push(
+      event('message.completed', 5, {
+        chatId: 'c1',
+        parts: [{ kind: 'text', text: 'x'.repeat(35) }],
+        stats: { ...stats, promptTokens: 3200, answerTokens: 50, contextSize: 32768 },
+        partial: false
+      })
+    )
+    await waitFor(() => {
+      nextFrame()
+      expect(
+        screen.getByRole('button', { name: 'Context: 3,250 of 32,768 tokens used. Show details' })
+      ).toBeInTheDocument()
+    })
+  })
+
+  it.each([
     ['a new chat', {}, 'Ask anything…'],
     ['a saved chat', { open: {} }, 'Reply…']
   ])('words the message box for %s', async (_case, options, placeholder) => {
