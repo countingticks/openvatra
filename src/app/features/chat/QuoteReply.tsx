@@ -56,7 +56,9 @@ export function QuoteReply({
       style={{ left, top, transform: below ? 'translateX(-50%)' : 'translate(-50%, -100%)' }}
       className="pointer-events-auto absolute flex w-80 flex-col gap-1.5 rounded-xl border bg-popover p-2 shadow-md"
     >
-      <p className="line-clamp-2 px-1 text-sm whitespace-pre-wrap text-muted-foreground">{text}</p>
+      <p className="ml-1 line-clamp-2 border-l-2 border-border pl-3 text-sm whitespace-pre-wrap text-muted-foreground">
+        {text}
+      </p>
       <div className="flex items-end gap-1">
         <textarea
           ref={field}
@@ -88,9 +90,7 @@ export function QuoteReply({
           </button>
         )}
       </div>
-      <p className={tooLong ? 'px-1 text-xs text-destructive' : 'px-1 text-xs text-muted-foreground'}>
-        {tooLong ? 'At most 4,000 characters' : 'Enter to add · Esc to cancel'}
-      </p>
+      {tooLong && <p className="px-1 text-xs text-destructive">At most 4,000 characters</p>}
     </div>
   )
 }
