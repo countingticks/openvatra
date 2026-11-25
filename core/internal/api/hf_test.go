@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/countingticks/openvatra/core/internal/hf"
 )
@@ -66,30 +67,31 @@ func TestHFSearchPassesTheQueryThrough(t *testing.T) {
 }
 
 func TestHFErrors(t *testing.T) {
+	const search, files = "/api/hf/search?q=qwen", "/api/hf/repos/o/m/files"
 	cases := []struct {
 		err    error
 		status int
 		code   string
+		paths  []string
 	}{
-		{hf.ErrBadQuery, http.StatusBadRequest, "bad_request"},
-		{hf.ErrUnreachable, http.StatusBadGateway, "hf_unreachable"},
-		{hf.ErrBadAnswer, http.StatusBadGateway, "hf_bad_answer"},
-		{hf.ErrRepoNotFound, http.StatusNotFound, "hf_repo_not_found"},
-		{hf.ErrGated, http.StatusForbidden, "hf_gated"},
+		{hf.ErrBadQuery, http.StatusBadRequest, "bad_request", []string{search}},
+		{hf.ErrUnreachable, http.StatusBadGateway, "hf_unreachable", []string{search}},
+		{hf.ErrBadAnswer, http.StatusBadGateway, "hf_bad_answer", []string{search}},
+		{hf.ErrRepoNotFound, http.StatusNotFound, "hf_repo_not_found", []string{files}},
+		{hf.ErrGated, http.StatusForbidden, "hf_gated", []string{files}},
+		{&hf.RateLimitedError{Wait: 12 * time.Second}, http.StatusTooManyRequests, "hf_rate_limited", []string{search, files}},
 	}
 	for _, tc := range cases {
-		t.Run(tc.code, func(t *testing.T) {
-			path := "/api/hf/search?q=qwen"
-			if tc.err == hf.ErrRepoNotFound || tc.err == hf.ErrGated {
-				path = "/api/hf/repos/o/m/files"
-			}
-			rec := getHF(t, &stubHF{err: tc.err}, path)
-			var body ErrorBody
-			_ = json.Unmarshal(rec.Body.Bytes(), &body)
-			if rec.Code != tc.status || body.Error != tc.code || body.Message != tc.err.Error() {
-				t.Fatalf("status = %d, body = %s; want %d %s", rec.Code, rec.Body.String(), tc.status, tc.code)
-			}
-		})
+		for _, path := range tc.paths {
+			t.Run(tc.code+" "+path, func(t *testing.T) {
+				rec := getHF(t, &stubHF{err: tc.err}, path)
+				var body ErrorBody
+				_ = json.Unmarshal(rec.Body.Bytes(), &body)
+				if rec.Code != tc.status || body.Error != tc.code || body.Message != tc.err.Error() {
+					t.Fatalf("status = %d, body = %s; want %d %s", rec.Code, rec.Body.String(), tc.status, tc.code)
+				}
+			})
+		}
 	}
 }
 

@@ -43,15 +43,39 @@ func newFakeHF(t *testing.T, routes map[string]http.HandlerFunc) *fakeHF {
 	return f
 }
 
-// client is a Client on this server; cfg's BaseURL and Version are set here.
+// client is a Client on this server; cfg's BaseURL and Version are set here. Its rate limit never runs out, so
+// tests that are not about the limit never wait.
 func (f *fakeHF) client(t *testing.T, cfg Config) *Client {
 	t.Helper()
+	c, _ := f.limitedClient(t, cfg, nil)
+	c.limit.burst, c.limit.tokens = 1e9, 1e9
+	return c
+}
+
+// limitedClient is a Client on this server with the real rate limit. With a clock, the bucket reads it and its
+// sleep records each wait in the returned slice and moves the clock by it instead of waiting.
+func (f *fakeHF) limitedClient(t *testing.T, cfg Config, clock *fakeClock) (*Client, *[]time.Duration) {
+	t.Helper()
 	cfg.BaseURL, cfg.Version = f.srv.URL, "test"
+	if clock != nil {
+		cfg.Now = clock.now
+	}
 	c, err := New(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c
+	waits := &[]time.Duration{}
+	if clock != nil {
+		var mu sync.Mutex
+		c.limit.sleep = func(_ context.Context, d time.Duration) error {
+			mu.Lock()
+			defer mu.Unlock()
+			*waits = append(*waits, d)
+			clock.t = clock.t.Add(d)
+			return nil
+		}
+	}
+	return c, waits
 }
 
 func (f *fakeHF) requests() []*http.Request {
@@ -287,7 +311,6 @@ func TestSearchUnreachable(t *testing.T) {
 	slow := func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() }
 	cases := map[string]http.HandlerFunc{
 		"slower than the timeout": slow,
-		"429":                     serveStatus(http.StatusTooManyRequests),
 		"503":                     serveStatus(http.StatusServiceUnavailable),
 	}
 	for name, h := range cases {

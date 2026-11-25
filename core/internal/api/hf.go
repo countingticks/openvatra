@@ -41,9 +41,9 @@ func hfRoutes(h HF) []Route {
 				}
 				return HFSearchBody{Repos: repos}, nil
 			}).
-			WithErrors("invalid_request", "bad_request", "hf_unreachable", "hf_bad_answer"),
+			WithErrors("invalid_request", "bad_request", "hf_unreachable", "hf_bad_answer", "hf_rate_limited"),
 		JSON(http.MethodGet, "/api/hf/repos/{owner}/{name}/files", UI, "listHfFiles", "A Hugging Face repo's GGUF files for this PC",
 			func(ctx context.Context, in HFRepoPath) (hf.Listing, error) { return h.Files(ctx, in.Owner, in.Name) }).
-			WithErrors("hf_repo_not_found", "hf_gated", "hf_unreachable", "hf_bad_answer"),
+			WithErrors("hf_repo_not_found", "hf_gated", "hf_unreachable", "hf_bad_answer", "hf_rate_limited"),
 	}
 }

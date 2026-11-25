@@ -82,6 +82,7 @@ var errorTable = []mapped{
 	{hf.ErrBadAnswer, http.StatusBadGateway, "hf_bad_answer", ""},
 	{hf.ErrRepoNotFound, http.StatusNotFound, "hf_repo_not_found", ""},
 	{hf.ErrGated, http.StatusForbidden, "hf_gated", "This model needs a Hugging Face account"},
+	{hf.ErrRateLimited, http.StatusTooManyRequests, "hf_rate_limited", ""},
 }
 
 // toError turns any error into the answer the client gets; an error with no mapping is 500 internal.

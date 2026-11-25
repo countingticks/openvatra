@@ -1,6 +1,7 @@
 package hf
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"sync"
@@ -67,6 +68,10 @@ func reason(err error) string {
 		return "not found"
 	case errors.Is(err, ErrGated):
 		return "gated"
+	case errors.Is(err, ErrRateLimited):
+		return "rate limited"
+	case errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded):
+		return "cancelled"
 	default:
 		return "bad answer"
 	}
