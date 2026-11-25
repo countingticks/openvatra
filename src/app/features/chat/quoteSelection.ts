@@ -1,4 +1,5 @@
 export const maxQuoteChars = 4000
+export const maxReplyChars = 4000
 
 const quoteElement = (node: Node | null): Element | null =>
   (node instanceof Element ? node : (node?.parentElement ?? null))?.closest('[data-quote]') ?? null

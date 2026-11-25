@@ -1,12 +1,13 @@
 import { createRef } from 'react'
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { Quote } from '@app/core/generated'
 import { Composer, type ComposerHandle } from '@app/features/chat/Composer'
 import { renderWithStore } from '../../../renderWithStore'
 
 function show(
   storage: Record<string, string> = {},
-  onSend: (text: string, requestId: string, quotes: string[]) => Promise<void> = vi
+  onSend: (text: string, requestId: string, quotes: Quote[]) => Promise<void> = vi
     .fn()
     .mockResolvedValue(undefined)
 ): ReturnType<typeof renderWithStore> & {
@@ -55,65 +56,64 @@ describe('Composer fill', () => {
 })
 
 describe('Composer quote', () => {
-  const chips = (): HTMLElement[] => screen.getAllByRole('group', { name: 'Quote' })
+  const cards = (): HTMLElement[] => screen.getAllByRole('group', { name: 'Quote' })
+  const texts = (): (string | null)[] => cards().map((c) => c.querySelector('span')?.textContent ?? null)
   const stored = (storage: Map<string, string>, key: string): unknown => {
     const raw = storage.get(key)
     return raw === undefined ? undefined : JSON.parse(raw)
   }
 
-  it('quote shows a chip above the box and focuses it', () => {
+  it('quote shows a card above the box and focuses it', () => {
     const { handle, platform } = show()
 
-    act(() => handle.current?.quote('c1', 'some words'))
+    act(() => handle.current?.quote('c1', { text: 'some words' }))
 
-    expect(chips()[0]).toHaveTextContent('some words')
+    expect(cards()[0]).toHaveTextContent('some words')
     expect(box()).toHaveFocus()
-    expect(stored(platform.storage.values, 'chat.quotes:c1')).toEqual(['some words'])
-    expect(handle.current?.quoteCount('c1')).toBe(1)
+    expect(stored(platform.storage.values, 'chat.quotes:c1')).toEqual([{ text: 'some words' }])
   })
 
   it('a second quote is added below the first', () => {
     const { handle } = show()
 
-    act(() => handle.current?.quote('c1', 'one'))
-    act(() => handle.current?.quote('c1', 'two'))
+    act(() => handle.current?.quote('c1', { text: 'one' }))
+    act(() => handle.current?.quote('c1', { text: 'two' }))
 
-    expect(chips().map((c) => c.textContent)).toEqual(['one', 'two'])
+    expect(texts()).toEqual(['“one”', '“two”'])
   })
 
   it('the same text is not added twice', () => {
     const { handle } = show()
 
-    act(() => handle.current?.quote('c1', 'one'))
-    act(() => handle.current?.quote('c1', 'one'))
+    act(() => handle.current?.quote('c1', { text: 'one' }))
+    act(() => handle.current?.quote('c1', { text: 'one' }))
 
-    expect(chips()).toHaveLength(1)
+    expect(cards()).toHaveLength(1)
   })
 
-  it('a sixth quote is not added', () => {
+  it('a sixth quote is added', () => {
     const { handle } = show()
 
-    for (const q of ['1', '2', '3', '4', '5', '6']) act(() => handle.current?.quote('c1', q))
+    for (const q of ['1', '2', '3', '4', '5', '6']) act(() => handle.current?.quote('c1', { text: q }))
 
-    expect(chips().map((c) => c.textContent)).toEqual(['1', '2', '3', '4', '5'])
-    expect(handle.current?.quoteCount('c1')).toBe(5)
+    expect(texts()).toEqual(['“1”', '“2”', '“3”', '“4”', '“5”', '“6”'])
   })
 
   it('x removes only its own chip', () => {
     const { handle, platform } = show()
-    act(() => handle.current?.quote('c1', 'one'))
-    act(() => handle.current?.quote('c1', 'two'))
+    act(() => handle.current?.quote('c1', { text: 'one' }))
+    act(() => handle.current?.quote('c1', { text: 'two' }))
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Remove quote' })[0]!)
 
-    expect(chips().map((c) => c.textContent)).toEqual(['two'])
-    expect(stored(platform.storage.values, 'chat.quotes:c1')).toEqual(['two'])
+    expect(texts()).toEqual(['“two”'])
+    expect(stored(platform.storage.values, 'chat.quotes:c1')).toEqual([{ text: 'two' }])
     expect(box()).toHaveFocus()
   })
 
-  it('Remove quote clears the chip and its storage', () => {
+  it('Remove quote clears the card and its storage', () => {
     const { handle, platform } = show()
-    act(() => handle.current?.quote('c1', 'one'))
+    act(() => handle.current?.quote('c1', { text: 'one' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove quote' }))
 
@@ -121,14 +121,13 @@ describe('Composer quote', () => {
     expect(platform.storage.values.has('chat.quotes:c1')).toBe(false)
   })
 
-  it("the quotes are kept per chat: another chat's storage is written, the shown chips are untouched", () => {
-    const { handle, platform } = show({ 'chat.quotes:c1': JSON.stringify(['mine']) })
+  it("the quotes are kept per chat: another chat's storage is written, the shown cards are untouched", () => {
+    const { handle, platform } = show({ 'chat.quotes:c1': JSON.stringify([{ text: 'mine' }]) })
 
-    act(() => handle.current?.quote('c2', 'theirs'))
+    act(() => handle.current?.quote('c2', { text: 'theirs' }))
 
-    expect(stored(platform.storage.values, 'chat.quotes:c2')).toEqual(['theirs'])
-    expect(handle.current?.quoteCount('c2')).toBe(1)
-    expect(chips().map((c) => c.textContent)).toEqual(['mine'])
+    expect(stored(platform.storage.values, 'chat.quotes:c2')).toEqual([{ text: 'theirs' }])
+    expect(texts()).toEqual(['“mine”'])
   })
 
   it('a stored value that is not a list reads as no quotes', () => {
@@ -137,40 +136,71 @@ describe('Composer quote', () => {
     expect(screen.queryByRole('group', { name: 'Quote' })).toBeNull()
   })
 
+  it('a stored list of strings reads as quotes without replies', () => {
+    show({ 'chat.quotes:c1': JSON.stringify(['one', 'two']) })
+
+    expect(texts()).toEqual(['“one”', '“two”'])
+    expect(screen.queryByText('With reply')).toBeNull()
+  })
+
+  it('a card shows no With reply badge', () => {
+    const { handle } = show()
+
+    act(() => handle.current?.quote('c1', { text: 'one', reply: 'why' }))
+    act(() => handle.current?.quote('c1', { text: 'two' }))
+
+    expect(cards()).toHaveLength(2)
+    expect(screen.queryByText('With reply')).toBeNull()
+    expect(within(cards()[0]!).getByTitle(/why/)).toBeInTheDocument()
+  })
+
+  it('a replied quote with an empty box shows Send and sends', async () => {
+    const onSend = vi.fn<(text: string, requestId: string, quotes: Quote[]) => Promise<void>>()
+    onSend.mockResolvedValue(undefined)
+    const { handle } = show({}, onSend)
+    act(() => handle.current?.quote('c1', { text: 'q', reply: 'why' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send (Enter)' }))
+
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith('', expect.any(String), [{ text: 'q', reply: 'why' }])
+    )
+  })
+
   it('send passes the quotes and clears them once accepted; a failed send keeps them', async () => {
     const onSend = vi
-      .fn<(text: string, requestId: string, quotes: string[]) => Promise<void>>()
+      .fn<(text: string, requestId: string, quotes: Quote[]) => Promise<void>>()
       .mockRejectedValueOnce(new Error('no'))
       .mockResolvedValue(undefined)
     const { handle, platform } = show({}, onSend)
-    act(() => handle.current?.quote('c1', 'q'))
+    act(() => handle.current?.quote('c1', { text: 'q' }))
     fireEvent.change(box(), { target: { value: 'Explain' } })
 
     fireEvent.keyDown(box(), { key: 'Enter' })
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
-    expect(chips()[0]).toHaveTextContent('q')
+    expect(cards()[0]).toHaveTextContent('q')
     expect(box()).toHaveValue('Explain')
 
     fireEvent.keyDown(box(), { key: 'Enter' })
     await waitFor(() => expect(screen.queryByRole('group', { name: 'Quote' })).toBeNull())
-    expect(onSend).toHaveBeenLastCalledWith('Explain', expect.any(String), ['q'])
+    expect(onSend).toHaveBeenLastCalledWith('Explain', expect.any(String), [{ text: 'q' }])
     expect(box()).toHaveValue('')
     expect(platform.storage.values.has('chat.quotes:c1')).toBe(false)
   })
 
-  it('a quote with an empty box shows no Send', () => {
+  it('an unreplied quote with an empty box shows no Send', () => {
     const { handle } = show()
 
-    act(() => handle.current?.quote('c1', 'q'))
+    act(() => handle.current?.quote('c1', { text: 'q' }))
 
     expect(screen.queryByRole('button', { name: 'Send (Enter)' })).toBeNull()
   })
 
   it('fill replaces the quotes, and without any clears them', () => {
-    const { handle } = show({ 'chat.quotes:c1': JSON.stringify(['old']) })
+    const { handle } = show({ 'chat.quotes:c1': JSON.stringify([{ text: 'old' }]) })
 
-    act(() => handle.current?.fill('c1', 'text', ['new', 'newer']))
-    expect(chips().map((c) => c.textContent)).toEqual(['new', 'newer'])
+    act(() => handle.current?.fill('c1', 'text', [{ text: 'new' }, { text: 'newer' }]))
+    expect(texts()).toEqual(['“new”', '“newer”'])
 
     act(() => handle.current?.fill('c1', 'text'))
     expect(screen.queryByRole('group', { name: 'Quote' })).toBeNull()

@@ -2190,7 +2190,7 @@
             "type": "string"
           },
           "quotes": {
-            "description": "what the user quoted, at most 5, each with an optional reply; text may be blank when a quote has a reply",
+            "description": "what the user quoted, each with an optional reply; text may be blank when a quote has a reply",
             "items": {
               "$ref": "#/components/schemas/Quote"
             },

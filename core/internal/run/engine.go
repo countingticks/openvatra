@@ -76,7 +76,6 @@ const (
 	maxInputRunes      = 200_000
 	maxQuoteRunes      = 4_000
 	maxReplyRunes      = 4_000
-	maxQuotes          = 5
 	defaultContextSize = 16_384
 	readPage           = 1000
 	defaultProfile     = "chat"
@@ -142,7 +141,7 @@ func (e *Engine) Start(ctx context.Context, s Spec) (Ref, error) {
 	if s.Profile == "" {
 		s.Profile = defaultProfile
 	}
-	quotesBad, replied := len(s.Quotes) > maxQuotes, false
+	quotesBad, replied := false, false
 	if len(s.Quotes) > 0 {
 		trimmed := make([]event.Quote, len(s.Quotes))
 		for i, q := range s.Quotes {

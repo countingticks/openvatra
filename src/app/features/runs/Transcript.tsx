@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Pencil } from 'lucide-react'
+import type { Quote } from '@app/core/generated'
 import { cn } from '@app/lib/utils'
 import { Button } from '@app/ui/button'
 import { AnswerActions } from './AnswerActions'
@@ -30,7 +31,7 @@ interface TranscriptProps {
    * Sends this run's first message again with this text, removing that run and every later one; rejects when
    * it could not be sent.
    */
-  onEdit(runId: string, text: string, quotes: string[]): Promise<void>
+  onEdit(runId: string, text: string, quotes: Quote[]): Promise<void>
   /** Removes this run and every later one and puts its first message in the box; resolves when that is done or failed. */
   onRewind(runId: string): Promise<void>
 }
@@ -80,13 +81,26 @@ export function Transcript({
               )}
             >
               {entry.quotes.map((quote, index) => (
-                <QuoteBlock key={index} text={quote} />
+                <div key={index}>
+                  <QuoteBlock text={quote.text} />
+                  {quote.reply && <p className="mb-2 whitespace-pre-wrap">{quote.reply}</p>}
+                </div>
               ))}
-              <div data-quote>{entry.text}</div>
+              {entry.text.trim() !== '' && <div data-quote>{entry.text}</div>}
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}
             <MessageActions>
-              <CopyButton text={entry.text} label="Copy message" />
+              <CopyButton
+                text={
+                  entry.text.trim() !== ''
+                    ? entry.text
+                    : entry.quotes
+                        .map((quote) => quote.reply)
+                        .filter(Boolean)
+                        .join('\n\n')
+                }
+                label="Copy message"
+              />
               {starters.has(entry.key) && (
                 <Button
                   variant="ghost"

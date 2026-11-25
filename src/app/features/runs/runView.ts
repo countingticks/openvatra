@@ -3,6 +3,7 @@ import type {
   Event,
   MessagePart,
   MessageStats,
+  Quote,
   RunError,
   RunSnapshot,
   SchedState,
@@ -18,7 +19,7 @@ export type TranscriptEntry =
       seq: number
       time: number
       text: string
-      quotes: string[]
+      quotes: Quote[]
       queued: boolean
     }
   | {
@@ -67,7 +68,7 @@ const inputEntry = (item: TranscriptItem, queued: boolean): TranscriptEntry => (
   seq: item.seq,
   time: item.time,
   text: item.text ?? '',
-  quotes: item.quotes?.map((q) => q.text) ?? [],
+  quotes: item.quotes ?? [],
   queued
 })
 
@@ -207,14 +208,7 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
         ],
         context: {
           ...withMessageCount(next.context, next.context.parts.messageCount + 1),
-          used:
-            next.context.used +
-            estimateTokens(
-              quotedInput(
-                event.data.text,
-                event.data.quotes?.map((q) => q.text)
-              )
-            )
+          used: next.context.used + estimateTokens(quotedInput(event.data.text, event.data.quotes))
         }
       }
     case 'run.started':
@@ -313,20 +307,22 @@ export function estimateTokens(text: string): number {
   return Math.ceil(Array.from(text).length / 3.5)
 }
 
-/** An input as core's prompt writes it: each quote as a "> " blockquote, a blank line apart, a blank line, then the text. */
-export function quotedInput(text: string, quotes: readonly string[] | undefined): string {
+/** An input as core's prompt writes it: each quote as a "> " blockquote, its reply under it, a blank line apart, then the text when not blank. */
+export function quotedInput(text: string, quotes: readonly Quote[] | undefined): string {
   const blocks = (quotes ?? [])
-    .filter((quote) => quote !== '')
-    .map((quote) =>
-      quote
+    .filter((quote) => quote.text !== '')
+    .map((quote) => {
+      const block = quote.text
         .split('\n')
         .map((line) => {
           const bare = line.endsWith('\r') ? line.slice(0, -1) : line
           return bare === '' ? '>' : `> ${bare}`
         })
         .join('\n')
-    )
-  return blocks.length === 0 ? text : `${blocks.join('\n\n')}\n\n${text}`
+      return quote.reply ? `${block}\n\n${quote.reply}` : block
+    })
+  if (blocks.length === 0) return text
+  return text.trim() === '' ? blocks.join('\n\n') : `${blocks.join('\n\n')}\n\n${text}`
 }
 
 /** What Ember shows for the open chat: text streaming, thinking (queued, loading, reasoning) or idle. */
