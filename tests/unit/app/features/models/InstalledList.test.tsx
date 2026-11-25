@@ -108,8 +108,12 @@ describe('the installed list', () => {
       const group = screen.getByRole('group', { name: `Options for ${qwen.name}` })
 
       expect(await within(group).findByText('Slower')).toHaveClass('text-warning')
-      expect(within(group).getByText('CPU only: slower · 6.0 GB RAM')).toBeInTheDocument()
-      expect(within(group).queryByText(/tokens/)).not.toBeInTheDocument()
+      const facts = within(group).getByText('6.0 GB RAM')
+      expect(within(group).queryByText(/tok\/s/)).not.toBeInTheDocument()
+      expect(facts.closest('p')).toHaveAttribute(
+        'title',
+        expect.stringMatching(/^\S+ tokens · CPU only: slower · 6\.0 GB RAM$/)
+      )
     })
 
     it('shows no word for an unknown fit, only the hint', async () => {
@@ -119,9 +123,7 @@ describe('the installed list', () => {
       fireEvent.click(await screen.findByRole('button', { name: `Options for ${qwen.name}` }))
       const group = screen.getByRole('group', { name: `Options for ${qwen.name}` })
 
-      expect(
-        await within(group).findByText("memory use can't be estimated for this model")
-      ).toBeInTheDocument()
+      expect(await within(group).findByText("Memory use can't be estimated")).toBeInTheDocument()
       expect(within(group).queryByText(/^(Fits|Slower|Too big)$/)).not.toBeInTheDocument()
     })
   })
@@ -349,7 +351,7 @@ describe('the installed list', () => {
       it('asks core about Auto and shows the answer, and asks nothing for an embedding model', async () => {
         const { coreHttp, group } = await openOptionsOf(sized)
 
-        expect(await within(group).findByText(/^fits on your GPU \(4\.0 GB of /)).toBeInTheDocument()
+        expect(await within(group).findByText(/^4\.0 of .* GB GPU$/)).toBeInTheDocument()
         expect(fitQueries(coreHttp)).toEqual([{ context: 'auto', placement: 'auto' }])
 
         fireEvent.click(screen.getByRole('button', { name: `Options for ${nomic.name}` }))
@@ -359,7 +361,7 @@ describe('the installed list', () => {
 
       it('asks about a typed size once, 300 ms after the last keystroke', async () => {
         const { coreHttp, group } = await openOptionsOf(sized, { [qwen.id]: { context: 40000 } })
-        await within(group).findByText(/fits on your GPU/)
+        await within(group).findByText(/ GB GPU$/)
         const input = within(group).getByLabelText('Context size in tokens')
         const before = fitQueries(coreHttp).length
 
@@ -381,7 +383,7 @@ describe('the installed list', () => {
 
       it('asks at once when the placement changes', async () => {
         const { coreHttp, group } = await openOptionsOf(sized)
-        await within(group).findByText(/fits on your GPU/)
+        await within(group).findByText(/ GB GPU$/)
 
         fireEvent.click(within(group).getByRole('combobox', { name: 'Placement' }))
         await choose('CPU only')
@@ -393,7 +395,7 @@ describe('the installed list', () => {
 
       it('empties the hint while the new answer is missing, instead of keeping the old one', async () => {
         const { coreHttp, group } = await openOptionsOf(sized)
-        await within(group).findByText(/fits on your GPU/)
+        await within(group).findByText(/ GB GPU$/)
         coreHttp.respond('GET', `/api/models/${qwen.id}/fit`, () => ({
           status: 500,
           body: { error: 'internal', message: 'no answer' }
@@ -403,7 +405,7 @@ describe('the installed list', () => {
         await choose('CPU only')
 
         await waitFor(() => expect(fitQueries(coreHttp).at(-1)?.placement).toBe('cpu'))
-        await waitFor(() => expect(within(group).queryByText(/fits on your GPU/)).not.toBeInTheDocument())
+        await waitFor(() => expect(within(group).queryByText(/ GB GPU$/)).not.toBeInTheDocument())
       })
     })
 

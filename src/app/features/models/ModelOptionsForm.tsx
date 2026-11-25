@@ -3,7 +3,7 @@ import { ArgsField } from './ArgsField'
 import { ContextField } from './ContextField'
 import { PlacementSelect } from './PlacementSelect'
 import { useGetHardwareQuery, useGetModelFitQuery, type ModelOptions } from '@app/core/generated'
-import { fitHint, fitLook, fitWords } from './modelText'
+import { fitFacts, fitLook, fitWords } from './modelText'
 import type { ModelInfo } from '@app/core/types'
 
 interface ModelOptionsFormProps {
@@ -63,21 +63,40 @@ function FitLine({
   )
   const hardware = useGetHardwareQuery()
   const choice = fit.currentData
-  const text = choice ? fitHint(choice, hardware.data?.gpu?.totalBytes ?? null) : ''
-  // fitHint starts with the size ("32K tokens · "); the context control already says it.
-  const detail = text.includes(' · ') ? text.slice(text.indexOf(' · ') + 3) : text
+  const parts = choice ? fitFacts(choice, hardware.data?.gpu?.totalBytes ?? null) : null
   const words = choice ? fitWords(choice.fit) : null
   const look = choice && choice.fit !== 'unknown' ? fitLook[choice.fit] : null
 
   return (
-    <p aria-live="polite" className="col-span-2 flex min-h-4 items-center gap-1.5 text-xs">
+    <p
+      aria-live="polite"
+      title={parts?.detail}
+      className="col-span-2 flex min-h-4 items-center gap-1.5 text-xs"
+    >
       {words && look && (
         <span className={`flex shrink-0 items-center gap-1 font-medium ${look.colour}`}>
           <look.icon aria-hidden className="size-3.5" />
           {words}
         </span>
       )}
-      <span className="text-muted-foreground">{detail}</span>
+      {parts && (
+        <>
+          {words && (
+            <span aria-hidden className="shrink-0 text-muted-foreground">
+              {'·'}
+            </span>
+          )}
+          <span className="min-w-0 truncate text-muted-foreground">{parts.facts}</span>
+          {parts.speed && (
+            <>
+              <span aria-hidden className="shrink-0 text-muted-foreground">
+                {'·'}
+              </span>
+              <span className="shrink-0 text-muted-foreground">{parts.speed}</span>
+            </>
+          )}
+        </>
+      )}
     </p>
   )
 }

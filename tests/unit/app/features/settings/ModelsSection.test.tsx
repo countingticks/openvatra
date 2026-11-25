@@ -256,6 +256,20 @@ describe('Settings → Models', () => {
     })
   })
 
+  it('puts the GPU card first, then the folder, the unload timer and the tabs', async () => {
+    await openModels(chosen, { coreState: ready })
+    const gpu = screen.getByRole('group', { name: 'Graphics card' })
+    const folder = screen.getByText('Models folder')
+    const unload = screen.getByRole('radiogroup', { name: 'Unload models after' })
+    const tabs = screen.getByRole('tablist', { name: 'Models' })
+    const before = (a: Element, b: Element): boolean =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    expect(before(gpu, folder)).toBe(true)
+    expect(before(folder, unload)).toBe(true)
+    expect(before(unload, tabs)).toBe(true)
+  })
+
   it('saves "Unload models after" in core, with Never as null', async () => {
     const { coreHttp } = await openAdvanced(chosen, { coreState: ready })
     const group = screen.getByRole('radiogroup', { name: 'Unload models after' })

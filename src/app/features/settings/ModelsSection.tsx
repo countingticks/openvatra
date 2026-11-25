@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { Button } from '@app/ui/button'
-import { EmbeddingSelect, GpuCard } from '@app/features/models'
+import { DownloadsCard, EmbeddingSelect, GpuCard } from '@app/features/models'
 import { ModelsTabs } from './ModelsTabs'
 import { PathRow } from './PathRow'
 import { SegmentedControl } from '@app/ui/SegmentedControl'
@@ -22,7 +22,7 @@ function run(action: () => Promise<void>): void {
   action().catch((error) => console.error('Models service action failed', error))
 }
 
-/** Settings → Models: folder, unload timer, the GPU, the models themselves, and behind Advanced the engine and service. */
+/** Settings → Models: the GPU, folder, unload timer, the models themselves, and behind Advanced the engine and service. */
 export function ModelsSection(): React.JSX.Element {
   const { showAdvancedModels: showAdvanced } = useAppSelector(selectSettings)
   const { value: llamacpp, update } = useLlamacppSettings()
@@ -64,14 +64,19 @@ export function ModelsSection(): React.JSX.Element {
 
   return (
     <div className="flex flex-col">
-      <PathRow
-        label="Models folder"
-        hint="Where your downloaded models are kept."
-        path={llamacpp.modelsDir}
-        defaultText="The OpenVatra\Models folder in your user folder"
-        browseText="Change…"
-        onBrowse={files && (() => void pick('modelsDir'))}
-      />
+      <GpuCard />
+      <DownloadsCard />
+
+      <div className="pt-4">
+        <PathRow
+          label="Models folder"
+          hint="Where your downloaded models are kept."
+          path={llamacpp.modelsDir}
+          defaultText="The OpenVatra\Models folder in your user folder"
+          browseText="Change…"
+          onBrowse={files && (() => void pick('modelsDir'))}
+        />
+      </div>
       {problem && (
         <p role="alert" className="pt-3 text-destructive">
           {problem}
@@ -89,10 +94,6 @@ export function ModelsSection(): React.JSX.Element {
           }}
         />
       </SettingRow>
-
-      <div className="pt-4">
-        <GpuCard />
-      </div>
 
       <div className="pt-5">
         <ModelsTabs />

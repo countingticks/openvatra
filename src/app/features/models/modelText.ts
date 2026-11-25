@@ -48,8 +48,54 @@ export function fitWords(fit: Choice['fit']): string | null {
   }
 }
 
-/** What a context size and placement would mean for this PC, as one line for the options of a model. */
-export function fitHint(choice: Choice, gpuTotalBytes: number | null): string {
+export interface FitFacts {
+  /** The memory facts, e.g. "6.1 of 12.0 GB GPU"; for unknown "Memory use can't be estimated". */
+  facts: string
+  /** "42 tok/s" (measured) or "~42 tok/s" (estimate); '' when left out. */
+  speed: string
+  /** The full sentence, for the line's title. */
+  detail: string
+}
+
+/** What a context size and placement would mean for this PC, split for one short line plus a full sentence. */
+export function fitFacts(choice: Choice, gpuTotalBytes: number | null): FitFacts {
+  const detail = fitHint(choice, gpuTotalBytes)
+  const vram = formatSize(choice.vramBytes)
+  const ram = formatSize(choice.ramBytes)
+  let facts: string
+  switch (choice.fit) {
+    case 'fits': {
+      if (gpuTotalBytes === null) {
+        facts = `${vram} GPU`
+        break
+      }
+      const total = formatSize(gpuTotalBytes)
+      const shortVram = vram.endsWith(' GB') && total.endsWith(' GB') ? vram.slice(0, -3) : vram
+      facts = `${shortVram} of ${total} GPU`
+      break
+    }
+    case 'slower':
+      facts =
+        choice.placement === 'experts' || choice.placement === 'layers'
+          ? `${vram} GPU + ${ram} RAM`
+          : `${ram} RAM`
+      break
+    case 'tooBig':
+      facts = choice.placement === 'cpu' ? `needs ${ram} RAM` : `needs ${vram} GPU + ${ram} RAM`
+      break
+    case 'unknown':
+      facts = "Memory use can't be estimated"
+      break
+  }
+  const tokens = Math.max(1, Math.round(choice.tokensPerSecond))
+  const speed =
+    choice.fit === 'tooBig' || choice.fit === 'unknown' || choice.tokensPerSecond <= 0
+      ? ''
+      : `${choice.source === 'measured' ? '' : '~'}${tokens} tok/s`
+  return { facts, speed, detail }
+}
+
+function fitHint(choice: Choice, gpuTotalBytes: number | null): string {
   let line = fitLine(choice, gpuTotalBytes)
   if (choice.fit === 'unknown') return line
   const { gpuExpertLayers = 0, expertLayers = 0 } = choice

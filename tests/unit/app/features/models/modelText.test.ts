@@ -3,7 +3,7 @@ import type { Choice } from '@app/core/generated'
 import type { ModelInfo } from '@app/core/types'
 import {
   failureReason,
-  fitHint,
+  fitFacts,
   formatContext,
   modelDetail,
   shortContext,
@@ -53,7 +53,7 @@ describe('shortContext', () => {
   })
 })
 
-describe('fitHint', () => {
+describe('fitFacts', () => {
   const GB = 1024 ** 3
   const choice: Choice = {
     context: 32768,
@@ -159,7 +159,52 @@ describe('fitHint', () => {
       "32K tokens (the model's maximum) · fits on your GPU (6.0 GB of 8.0 GB)"
     ]
   ])('says %s', (_name, change, total, text) => {
-    expect(fitHint({ ...choice, ...change }, total)).toBe(text)
+    expect(fitFacts({ ...choice, ...change }, total).detail).toBe(text)
+  })
+
+  it.each<[string, Partial<Choice>, number | null, string]>([
+    ['fits with a total', { vramBytes: 6.1 * GB }, 12 * GB, '6.1 of 12.0 GB GPU'],
+    ['fits under 1 GB of VRAM', { vramBytes: 512 * 1024 ** 2 }, 12 * GB, '512 MB of 12.0 GB GPU'],
+    ['fits without a total', { vramBytes: 6.1 * GB }, null, '6.1 GB GPU'],
+    [
+      'slower with experts in RAM',
+      { fit: 'slower', placement: 'experts', vramBytes: 4.2 * GB, ramBytes: 3 * GB },
+      12 * GB,
+      '4.2 GB GPU + 3.0 GB RAM'
+    ],
+    [
+      'slower with layers on the GPU',
+      { fit: 'slower', placement: 'layers', vramBytes: 4.2 * GB, ramBytes: 3 * GB },
+      12 * GB,
+      '4.2 GB GPU + 3.0 GB RAM'
+    ],
+    ['slower on the CPU', { fit: 'slower', placement: 'cpu', ramBytes: 3 * GB }, 12 * GB, '3.0 GB RAM'],
+    [
+      'too big',
+      { fit: 'tooBig', vramBytes: 18 * GB, ramBytes: 4 * GB },
+      12 * GB,
+      'needs 18.0 GB GPU + 4.0 GB RAM'
+    ],
+    [
+      'too big on the CPU',
+      { fit: 'tooBig', placement: 'cpu', ramBytes: 4 * GB },
+      12 * GB,
+      'needs 4.0 GB RAM'
+    ],
+    ['unknown', { fit: 'unknown' }, 12 * GB, "Memory use can't be estimated"]
+  ])('puts the facts of %s', (_name, change, total, facts) => {
+    expect(fitFacts({ ...choice, ...change }, total).facts).toBe(facts)
+  })
+
+  it.each<[string, Partial<Choice>, string]>([
+    ['an estimate', { tokensPerSecond: 41.6 }, '~42 tok/s'],
+    ['a measurement', { tokensPerSecond: 42, source: 'measured' }, '42 tok/s'],
+    ['a speed under one', { tokensPerSecond: 0.4 }, '~1 tok/s'],
+    ['no speed', { tokensPerSecond: 0 }, ''],
+    ['too big with a speed', { fit: 'tooBig', tokensPerSecond: 20 }, ''],
+    ['unknown with a speed', { fit: 'unknown', tokensPerSecond: 20 }, '']
+  ])('writes the speed of %s', (_name, change, speed) => {
+    expect(fitFacts({ ...choice, ...change }, 8 * GB).speed).toBe(speed)
   })
 })
 

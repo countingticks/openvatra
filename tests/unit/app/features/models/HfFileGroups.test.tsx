@@ -55,6 +55,9 @@ const fileRequests = (http: FakeCoreHttp): number =>
 const writes = (http: FakeCoreHttp): ReturnType<typeof coreWrites> =>
   coreWrites(http).filter((write) => write.path !== '/api/hardware/refresh')
 
+/** The tab's own content: the Downloading card above the tabs shows the same controls. */
+const panel = (dialog: HTMLElement): Promise<HTMLElement> => within(dialog).findByRole('tabpanel')
+
 /** Get more models with a search for "r" answered, and the files of o/r answered with the listing (or a refusal). */
 async function openRepo(
   answer: Listing | { status: number; body: unknown },
@@ -154,9 +157,11 @@ describe('a Hugging Face repo opened to its quants', () => {
     const { coreHttp, dialog, chevron } = await openRepo(listing([group()]), [item()])
     fireEvent.click(chevron)
 
-    expect(await within(dialog).findByText('38%')).toBeInTheDocument()
-    expect(within(dialog).getByRole('progressbar', { name: 'Download progress' })).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel o/r Q4_K_M' }))
+    expect(await within(await panel(dialog)).findByText('38%')).toBeInTheDocument()
+    expect(
+      within(await panel(dialog)).getByRole('progressbar', { name: 'Download progress' })
+    ).toBeInTheDocument()
+    fireEvent.click(within(await panel(dialog)).getByRole('button', { name: 'Cancel o/r Q4_K_M' }))
 
     await waitFor(() =>
       expect(writes(coreHttp)).toEqual([
