@@ -181,7 +181,7 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
     case 'input.received':
       return {
         ...next,
-        items: [...next.items, { kind: 'input', seq, runId, text: event.data.text }],
+        items: [...next.items, { kind: 'input', seq, runId, time: event.time, text: event.data.text }],
         context: {
           ...withMessageCount(next.context, next.context.parts.messageCount + 1),
           used: next.context.used + estimateTokens(event.data.text)
@@ -194,7 +194,7 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
       return withRunState(next, runId, 'interrupted')
     case 'message.completed': {
       const { parts, stats, partial } = event.data
-      const answer: TranscriptItem = { kind: 'answer', seq, runId, parts, stats, partial }
+      const answer: TranscriptItem = { kind: 'answer', seq, runId, time: event.time, parts, stats, partial }
       return {
         ...next,
         items: [...next.items, answer],
@@ -208,7 +208,7 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
     case 'compaction.completed': {
       const items: TranscriptItem[] = [
         ...next.items,
-        { kind: 'summary', seq, runId, text: event.data.summary }
+        { kind: 'summary', seq, runId, time: event.time, text: event.data.summary }
       ]
       const kept = items.filter((item) => item.seq >= event.data.firstKeptSeq && counted(item)).length
       return {

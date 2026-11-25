@@ -136,10 +136,10 @@ describe('runView', () => {
     const transcript: Transcript = {
       seq: 4,
       items: [
-        { kind: 'input', seq: 1, runId: 'r1', text: 'A' },
-        { kind: 'answer', seq: 2, runId: 'r1', parts: [{ kind: 'text', text: 'a' }] },
-        { kind: 'input', seq: 3, runId: 'r1', text: 'B' },
-        { kind: 'input', seq: 4, runId: 'r1', text: 'C' }
+        { kind: 'input', seq: 1, runId: 'r1', time: 0, text: 'A' },
+        { kind: 'answer', seq: 2, runId: 'r1', time: 0, parts: [{ kind: 'text', text: 'a' }] },
+        { kind: 'input', seq: 3, runId: 'r1', time: 0, text: 'B' },
+        { kind: 'input', seq: 4, runId: 'r1', time: 0, text: 'C' }
       ],
       runs: [run()],
       activeRun: run(),
@@ -179,8 +179,8 @@ describe('applyRunEvent', () => {
   const started: Transcript = {
     seq: 3,
     items: [
-      { kind: 'input', seq: 2, runId: 'r1', text: 'A' },
-      { kind: 'answer', seq: 3, runId: 'r1', parts: [{ kind: 'text', text: 'a' }], partial: false }
+      { kind: 'input', seq: 2, runId: 'r1', time: 0, text: 'A' },
+      { kind: 'answer', seq: 3, runId: 'r1', time: 0, parts: [{ kind: 'text', text: 'a' }], partial: false }
     ],
     runs: [run()],
     activeRun: run(),
@@ -201,6 +201,33 @@ describe('applyRunEvent', () => {
       { kind: 'input' },
       { kind: 'answer', failed: false },
       { kind: 'notice', notice: 'failed' }
+    ])
+  })
+
+  it("items added from events carry the event's time", () => {
+    const at = (type: string, seq: number, time: number, data: object): Event =>
+      ({ type, stream: 'run:r1', seq, v: 1, time, data }) as Event
+    const stats = { promptTokens: 1, answerTokens: 1, contextSize: 0, exact: true }
+
+    const folded = fold(
+      [
+        at('input.received', 4, 1000, { chatId: 'c1', requestId: 'x', text: 'B' }),
+        at('message.completed', 5, 2000, { chatId: 'c1', parts: [], stats, partial: false }),
+        at('compaction.completed', 6, 3000, {
+          chatId: 'c1',
+          firstKeptSeq: 4,
+          summary: 's',
+          tokensBefore: 100,
+          tokensAfter: 20
+        })
+      ],
+      started
+    )
+
+    expect(folded.items.slice(2).map((item) => [item.kind, item.time])).toEqual([
+      ['input', 1000],
+      ['answer', 2000],
+      ['summary', 3000]
     ])
   })
 
@@ -257,7 +284,7 @@ describe('applyRunEvent', () => {
     it('a failed run.finished that marks a partial answer with text takes one off', () => {
       const partial = base(2, [
         started.items[0],
-        { kind: 'answer', seq: 3, runId: 'r1', parts: [{ kind: 'text', text: 'a' }], partial: true }
+        { kind: 'answer', seq: 3, runId: 'r1', time: 0, parts: [{ kind: 'text', text: 'a' }], partial: true }
       ])
 
       const failed = apply(partial, 'run.finished', 4, {
@@ -276,8 +303,14 @@ describe('applyRunEvent', () => {
     it('compaction.completed sets the count to the items kept', () => {
       const items = [
         ...started.items,
-        { kind: 'input' as const, seq: 4, runId: 'r2', text: 'B' },
-        { kind: 'answer' as const, seq: 5, runId: 'r2', parts: [{ kind: 'text' as const, text: 'b' }] }
+        { kind: 'input' as const, seq: 4, runId: 'r2', time: 0, text: 'B' },
+        {
+          kind: 'answer' as const,
+          seq: 5,
+          runId: 'r2',
+          time: 0,
+          parts: [{ kind: 'text' as const, text: 'b' }]
+        }
       ]
 
       const compacted = apply(base(4, items), 'compaction.completed', 6, {
@@ -329,7 +362,10 @@ describe('event routing', () => {
 
 describe('answerState and waitingLine', () => {
   const live = (text: string, reasoning: string): LiveAnswer => ({ text, reasoning, n: 1, reasoningAt: null })
-  const waiting: SchedState = { holder: 'r9', waiting: [{ runId: 'r1', why: 'another chat is answering' }] }
+  const waiting: SchedState = {
+    holder: 'r9',
+    waiting: [{ runId: 'r1', why: 'another chat is answering' }]
+  }
 
   it.each<
     [string, RunSnapshot | null, LiveAnswer | undefined, SchedState | null, boolean, string, string | null]

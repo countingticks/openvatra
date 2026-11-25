@@ -85,6 +85,7 @@ type TranscriptItem struct {
 	Seq     int64               `json:"seq"`
 	Kind    string              `json:"kind" enum:"input,answer,summary"`
 	RunID   string              `json:"runId"`
+	Time    int64               `json:"time" doc:"Unix ms when the message was written"`
 	Text    string              `json:"text,omitempty" doc:"input and summary"`
 	Parts   []event.MessagePart `json:"parts,omitempty" doc:"answer"`
 	Stats   *event.MessageStats `json:"stats,omitempty" doc:"answer"`
@@ -304,7 +305,7 @@ func transcript(msgs []store.MessageRow, runs []store.RunRow, seq int64) (Transc
 		if err := json.Unmarshal(m.Parts, &parts); err != nil {
 			return Transcript{}, fmt.Errorf("message %d: %w", m.Seq, err)
 		}
-		item := TranscriptItem{Seq: m.Seq, RunID: m.RunID}
+		item := TranscriptItem{Seq: m.Seq, RunID: m.RunID, Time: m.CreatedAt}
 		switch m.Role {
 		case "user":
 			item.Kind, item.Text = "input", textOf(parts)

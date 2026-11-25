@@ -44,12 +44,19 @@ function transcript(items: TranscriptItem[], runs: RunSnapshot[] = [run()], acti
   }
 }
 
-const input = (seq: number, text: string): TranscriptItem => ({ kind: 'input', seq, runId: 'r1', text })
+const input = (seq: number, text: string): TranscriptItem => ({
+  kind: 'input',
+  seq,
+  runId: 'r1',
+  time: 0,
+  text
+})
 
 const answer = (seq: number, overrides: Partial<TranscriptItem> = {}): TranscriptItem => ({
   kind: 'answer',
   seq,
   runId: 'r1',
+  time: 0,
   parts: [{ kind: 'text', text: 'An answer' }],
   stats: stats(),
   partial: false,
@@ -165,7 +172,7 @@ describe('Transcript', () => {
     push(
       frame(
         'sched.state',
-        { holder: 'r9', waiting: [{ runId: 'r1', why: 'another chat is answering' }] },
+        { holder: 'r9', waiting: [{ runId: 'r1', time: 0, why: 'another chat is answering' }] },
         'system'
       )
     )
@@ -277,7 +284,7 @@ describe('Transcript', () => {
   })
 
   it('marks where earlier messages were summarised', () => {
-    show(transcript([{ kind: 'summary', seq: 1, runId: 'r1', text: 'SUMMARY' }, input(2, 'Hi')]))
+    show(transcript([{ kind: 'summary', seq: 1, runId: 'r1', time: 0, text: 'SUMMARY' }, input(2, 'Hi')]))
 
     expect(screen.getByText('Earlier messages summarised')).toBeInTheDocument()
   })

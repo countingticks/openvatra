@@ -526,6 +526,8 @@ export type TranscriptItem = {
   stats?: MessageStats | null
   /** input and summary */
   text?: string
+  /** Unix ms when the message was written */
+  time: number
 }
 export type Transcript = {
   activeRun?: RunSnapshot | null

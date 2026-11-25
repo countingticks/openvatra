@@ -53,11 +53,18 @@ const stats: MessageStats = {
   reasoningMs: 0
 }
 
-const input = (seq: number, text: string): TranscriptItem => ({ kind: 'input', seq, runId: 'r1', text })
+const input = (seq: number, text: string): TranscriptItem => ({
+  kind: 'input',
+  seq,
+  runId: 'r1',
+  time: 0,
+  text
+})
 const answer = (seq: number, text: string): TranscriptItem => ({
   kind: 'answer',
   seq,
   runId: 'r1',
+  time: 0,
   parts: [{ kind: 'text', text }],
   stats,
   partial: false
@@ -105,7 +112,7 @@ function show(options: Options = {}): ReturnType<typeof renderWithStore> & {
   coreHttp.answer('/api/chats/c1/messages', options.open?.transcript ?? transcript())
   coreHttp.respond('POST', '/api/runs', () => ({
     status: 202,
-    body: { runId: 'r1', chatId: 'c1', seq: 1 }
+    body: { runId: 'r1', time: 0, chatId: 'c1', seq: 1 }
   }))
   coreHttp.respond('POST', '/api/runs/r1/stop', () => ({ status: 204 }))
   coreHttp.respond('POST', '/api/runs/r1/resume', () => ({ status: 204 }))
