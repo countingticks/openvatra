@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/countingticks/openvatra/core/internal/budget"
 	"github.com/countingticks/openvatra/core/internal/config"
 	"github.com/countingticks/openvatra/core/internal/event"
 	"github.com/countingticks/openvatra/core/internal/provider"
@@ -53,6 +54,7 @@ type SendInput struct {
 	RequestID, ChatID, Model, Text string
 	Replace                        bool
 	ReplaceFrom                    string // a run id: retract it and every later run, then send Text (required) as a new run
+	Quote                          string // text the user quoted, sent above Text; "" = none
 }
 
 // Service is the chats API over the store, the engine and the config.
@@ -64,6 +66,7 @@ type Service struct {
 // The engine checks these too; they are checked here first so a bad send never appends a chat.model.
 const (
 	maxInputRunes = 200_000
+	maxQuoteRunes = 4_000
 	maxTitleRunes = 200
 )
 
@@ -84,10 +87,15 @@ func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
 	if in.ReplaceFrom != "" {
 		bad = strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes || in.ChatID == "" || in.Replace
 	}
+	if in.Quote != "" {
+		n := utf8.RuneCountInString(strings.TrimSpace(in.Quote))
+		bad = bad || n < 1 || n > maxQuoteRunes || strings.TrimSpace(in.Text) == ""
+	}
 	if in.RequestID == "" || bad {
 		return run.Ref{}, run.ErrBadInput
 	}
-	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, RequestID: in.RequestID, Replace: in.Replace, ReplaceFrom: in.ReplaceFrom}
+	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, Quote: in.Quote, RequestID: in.RequestID, Replace: in.Replace,
+		ReplaceFrom: in.ReplaceFrom}
 	if in.ChatID != "" {
 		chat, _, err := s.c.Store.Chat(ctx, in.ChatID)
 		if err != nil {
@@ -269,6 +277,11 @@ func (s *Service) Export(ctx context.Context, id string) (string, error) {
 			heading = "## " + models[m.RunID]
 		}
 		sections = append(sections, heading)
+		if m.Role == "user" {
+			if q := event.QuoteOf(parts); q != "" {
+				sections = append(sections, budget.Blockquote(q))
+			}
+		}
 		if t := strings.TrimRight(text.String(), " \t\r\n"); t != "" {
 			sections = append(sections, t)
 		}

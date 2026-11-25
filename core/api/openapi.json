@@ -1647,6 +1647,10 @@
       },
       "Rewound": {
         "properties": {
+          "quote": {
+            "description": "the first input's quote, for the message box",
+            "type": "string"
+          },
           "seq": {
             "description": "the last turn.retracted's seq",
             "type": "integer"
@@ -2159,6 +2163,10 @@
             "description": "omit for the chat's model, or for a new chat the last one named",
             "type": "string"
           },
+          "quote": {
+            "description": "text the user quoted, 1 to 4,000 characters once trimmed; needs text",
+            "type": "string"
+          },
           "replace": {
             "description": "last: retract the chat's last turn and send it again (with text: edited)",
             "enum": [
@@ -2294,6 +2302,10 @@
               "$ref": "#/components/schemas/MessagePart"
             },
             "type": "array"
+          },
+          "quote": {
+            "description": "input: the text it quoted",
+            "type": "string"
           },
           "runId": {
             "type": "string"
