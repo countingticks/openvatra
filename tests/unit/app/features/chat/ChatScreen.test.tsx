@@ -685,7 +685,7 @@ describe('ChatScreen', () => {
           requestId: expect.any(String),
           chatId: 'c1',
           text: 'hello',
-          replace: 'last'
+          replaceFrom: 'r1'
         })
       )
     })

@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@app/ui/button'
 
-/** The last message edited in place: Enter sends, Shift+Enter breaks the line, Esc cancels. */
-export function LastInputEditor({
+/** A message edited in place: Enter sends, Shift+Enter breaks the line, Esc cancels. */
+export function InputEditor({
   text,
+  after,
   onSend,
   onCancel
 }: {
   text: string
+  /** Messages that sending removes (messagesAfter); 0 shows no hint. */
+  after: number
   onSend(text: string): Promise<void>
   onCancel(): void
 }): React.JSX.Element {
@@ -49,6 +52,13 @@ export function LastInputEditor({
         }}
         className="w-full resize-none rounded-2xl border border-input bg-bubble px-4 py-2.5 text-[15px] leading-[1.55] outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
+      {after > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {after === 1
+            ? 'Sending removes the message after it.'
+            : `Sending removes the ${after} messages after it.`}
+        </p>
+      )}
       <div className="flex gap-2">
         <Button variant="ghost" size="sm" disabled={pending} onClick={onCancel}>
           Cancel

@@ -94,10 +94,12 @@ function ChatView(): React.JSX.Element {
       .catch((error: unknown) => console.error('Could not regenerate the answer', error))
   }
 
-  async function edit(text: string): Promise<void> {
+  async function edit(runId: string, text: string): Promise<void> {
     if (chatId === undefined) return
     try {
-      await startRun({ startRun: { requestId: crypto.randomUUID(), chatId, text, replace: 'last' } }).unwrap()
+      await startRun({
+        startRun: { requestId: crypto.randomUUID(), chatId, text, replaceFrom: runId }
+      }).unwrap()
     } catch (error) {
       console.error('Could not send the edited message', error)
       throw error
