@@ -46,8 +46,7 @@ describe('ui slice', () => {
       tabRoutes: { chat: { tab: 'chat' }, code: { tab: 'code' }, automations: { tab: 'automations' } },
       settingsOpen: false,
       settingsSection: 'general',
-      modelsTab: 'installed',
-      expandModel: null
+      modelsTab: 'installed'
     })
   })
 
@@ -64,14 +63,13 @@ describe('ui slice', () => {
     expect(reduce(onModels, settingsOpened()).settingsSection).toBe('general')
   })
 
-  it('settingsOpened() resets the tab and the expanded model; a target sets all three', () => {
-    const target = reduce(initialUiState, settingsOpened({ section: 'models', tab: 'more', expand: 'x' }))
-    expect(target).toMatchObject({ settingsSection: 'models', modelsTab: 'more', expandModel: 'x' })
+  it('settingsOpened() resets the tab; a target sets section and tab', () => {
+    const target = reduce(initialUiState, settingsOpened({ section: 'models', tab: 'more' }))
+    expect(target).toMatchObject({ settingsSection: 'models', modelsTab: 'more' })
 
     expect(reduce(target, settingsOpened())).toMatchObject({
       settingsSection: 'general',
-      modelsTab: 'installed',
-      expandModel: null
+      modelsTab: 'installed'
     })
     expect(reduce(target, modelsTabSelected('installed')).modelsTab).toBe('installed')
   })

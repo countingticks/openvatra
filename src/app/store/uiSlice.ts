@@ -14,11 +14,10 @@ export type SettingsSection = (typeof settingsSections)[number]
 export const modelsTabs = ['installed', 'more'] as const
 export type ModelsTab = (typeof modelsTabs)[number]
 
-/** Where Settings opens: a section, and for Models its tab and the model whose options start open. */
+/** Where Settings opens: a section, and for Models its tab. */
 export interface SettingsTarget {
   section?: SettingsSection
   tab?: ModelsTab
-  expand?: string
 }
 
 export interface UiState {
@@ -39,7 +38,6 @@ export interface UiState {
   /** Which tab Settings › Models shows. */
   modelsTab: ModelsTab
   /** The model id whose options the Installed list opens when it mounts; null for none. */
-  expandModel: string | null
 }
 
 /** Enough to go back a long way, small enough that the history never grows without bound. */
@@ -53,8 +51,7 @@ export const initialUiState: UiState = {
   tabRoutes: { chat: { tab: 'chat' }, code: { tab: 'code' }, automations: { tab: 'automations' } },
   settingsOpen: false,
   settingsSection: 'general',
-  modelsTab: 'installed',
-  expandModel: null
+  modelsTab: 'installed'
 }
 
 /** Moves to a route: the old one goes on the Back stack, and the tab remembers where it was left. */
@@ -102,12 +99,11 @@ export const uiSlice = createSlice({
     sidebarToggled(state) {
       state.sidebarOpen = !state.sidebarOpen
     },
-    /** Opens on General, the Installed tab and no open model unless a target says otherwise. */
+    /** Opens on General and the Installed tab unless a target says otherwise. */
     settingsOpened(state, action: PayloadAction<SettingsTarget | undefined>) {
       state.settingsOpen = true
       state.settingsSection = action.payload?.section ?? 'general'
       state.modelsTab = action.payload?.tab ?? 'installed'
-      state.expandModel = action.payload?.expand ?? null
     },
     modelsTabSelected(state, action: PayloadAction<ModelsTab>) {
       state.modelsTab = action.payload
@@ -127,8 +123,7 @@ export const uiSlice = createSlice({
     selectCanGoForward: (state) => state.forward.length > 0,
     selectSettingsOpen: (state) => state.settingsOpen,
     selectSettingsSection: (state) => state.settingsSection,
-    selectModelsTab: (state) => state.modelsTab,
-    selectExpandModel: (state) => state.expandModel
+    selectModelsTab: (state) => state.modelsTab
   }
 })
 
@@ -152,6 +147,5 @@ export const {
   selectCanGoForward,
   selectSettingsOpen,
   selectSettingsSection,
-  selectModelsTab,
-  selectExpandModel
+  selectModelsTab
 } = uiSlice.selectors

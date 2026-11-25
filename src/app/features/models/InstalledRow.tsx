@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { ModelOptionsForm } from './ModelOptionsForm'
 import { Button } from '@app/ui/button'
@@ -14,8 +14,6 @@ export interface InstalledRowProps {
   onOptions: (next: ModelOptions | undefined) => Promise<void> | void
   expanded: boolean
   onToggle: () => void
-  /** Scroll the row into view once it is open: the dialog was opened for this model. */
-  reveal?: boolean
 }
 
 const stateWords: Record<ModelInfo['state'], string> = {
@@ -138,21 +136,14 @@ export function InstalledRow({
   options,
   onOptions,
   expanded,
-  onToggle,
-  reveal = false
+  onToggle
 }: InstalledRowProps): React.JSX.Element {
   const optionsId = useId()
   const [problem, setProblem] = useState<string>()
   const [unload, { isLoading: unloading }] = useUnloadModelMutation()
   const remove = useRemove(model)
   const removeButton = useRef<HTMLButtonElement>(null)
-  const row = useRef<HTMLLIElement>(null)
   const loaded = model.state === 'ready' || model.state === 'loading'
-
-  useEffect(() => {
-    // Optional call: jsdom, which the unit tests run in, has no scrollIntoView.
-    if (reveal && expanded) row.current?.scrollIntoView?.({ block: 'nearest' })
-  }, [reveal, expanded])
 
   function save(next: ModelOptions | undefined): void {
     setProblem(undefined)
@@ -167,7 +158,7 @@ export function InstalledRow({
   }
 
   return (
-    <li ref={row} className="flex flex-col border-b border-border px-3 py-2.5 last:border-b-0">
+    <li className="flex flex-col border-b border-border px-3 py-2.5 last:border-b-0">
       <div className="flex items-center gap-2.5">
         <span aria-hidden className={cn('size-2 shrink-0 rounded-full', stateDot(model.state))} />
         <span className="sr-only">{stateWords[model.state]}</span>
