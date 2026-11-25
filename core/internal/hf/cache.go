@@ -60,7 +60,7 @@ func (c *cache) put(key string, value any) {
 // reason is a failure as a log value: never err.Error(), as a url.Error holds the URL and so the query.
 func reason(err error) string {
 	switch {
-	case errors.Is(err, ErrBadQuery):
+	case errors.Is(err, ErrBadQuery) || errors.Is(err, ErrBadPage):
 		return "bad query"
 	case errors.Is(err, ErrUnreachable):
 		return "unreachable"

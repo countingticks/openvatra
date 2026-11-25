@@ -18,7 +18,8 @@ const repo: Repo = {
   tags: ['Code'],
   downloads: 1000,
   likes: 10,
-  updatedAt: '2026-11-10T12:00:00Z'
+  updatedAt: '2026-11-10T12:00:00Z',
+  quants: 1
 }
 
 const group = (patch: Partial<Group> = {}): Group => ({

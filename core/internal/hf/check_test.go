@@ -203,7 +203,7 @@ func TestSearchAndFilesSendNoRange(t *testing.T) {
 	routes["/api/models"] = serveBody("[]")
 	f := newFakeHF(t, routes)
 	c := f.filesClient(t, t.TempDir())
-	if _, err := c.Search(context.Background(), "qwen"); err != nil {
+	if _, err := c.Search(context.Background(), "qwen", 0); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := c.Files(context.Background(), "o", "m"); err != nil {

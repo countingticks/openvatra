@@ -52,7 +52,8 @@ type Client struct {
 	http      *http.Client
 	checkHTTP *http.Client // Check's: a large vocabulary makes a header several MB, so it gets twice the time
 	cache     *cache
-	limit     *bucket // every Hugging Face API request takes a token (decision 18: not the file transfers)
+	limit     *bucket       // every Hugging Face API request takes a token (decision 18: not the file transfers)
+	searchSem chan struct{} // one search at a time
 }
 
 var (
@@ -128,6 +129,7 @@ func New(cfg Config) (*Client, error) {
 	c.checkHTTP = &http.Client{Timeout: 2 * timeout, CheckRedirect: c.checkRedirect}
 	c.cache = newCache(c.now)
 	c.limit = newBucket(c.now)
+	c.searchSem = make(chan struct{}, 1)
 	return c, nil
 }
 

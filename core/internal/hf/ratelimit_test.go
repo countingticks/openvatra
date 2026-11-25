@@ -15,7 +15,7 @@ var limitStart = time.Date(2026, 11, 25, 9, 0, 0, 0, time.UTC)
 
 // searchOnce runs one search for q.
 func searchOnce(c *Client, q string) error {
-	_, err := c.Search(context.Background(), q)
+	_, err := c.Search(context.Background(), q, 0)
 	return err
 }
 
@@ -212,26 +212,30 @@ func TestRateLimitRetryAfterValues(t *testing.T) {
 	}
 }
 
+// Two requests in flight at once both get a 429: the search's 60 s arrives first, then the files' 10 s.
 func TestRateLimitShorterSecond429KeepsTheLaterBlock(t *testing.T) {
-	release := map[string]chan struct{}{"long": make(chan struct{}), "short": make(chan struct{})}
-	retry := map[string]string{"long": "60", "short": "10"}
-	f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": func(w http.ResponseWriter, r *http.Request) {
-		q := r.URL.Query().Get("search")
-		<-release[q]
-		w.Header().Set("Retry-After", retry[q])
-		http.Error(w, "slow down", http.StatusTooManyRequests)
-	}})
+	releaseLong, releaseShort := make(chan struct{}), make(chan struct{})
+	busy := func(release chan struct{}, retry string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			<-release
+			w.Header().Set("Retry-After", retry)
+			http.Error(w, "slow down", http.StatusTooManyRequests)
+		}
+	}
+	f := newFakeHF(t, map[string]http.HandlerFunc{
+		"/api/models":     busy(releaseLong, "60"),
+		"/api/models/o/m": busy(releaseShort, "10"),
+	})
 	c, _ := f.limitedClient(t, Config{}, &fakeClock{t: limitStart})
 
-	done := map[string]chan error{"long": make(chan error, 1), "short": make(chan error, 1)}
-	for q, ch := range done {
-		go func() { ch <- searchOnce(c, q) }()
-	}
+	long, short := make(chan error, 1), make(chan error, 1)
+	go func() { long <- searchOnce(c, "qwen") }()
+	go func() { _, err := c.Files(context.Background(), "o", "m"); short <- err }()
 	waitFor(t, func() bool { return len(f.requests()) == 2 })
-	close(release["long"])
-	rateLimitedWait(t, <-done["long"])
-	close(release["short"])
-	rateLimitedWait(t, <-done["short"])
+	close(releaseLong)
+	rateLimitedWait(t, <-long)
+	close(releaseShort)
+	rateLimitedWait(t, <-short)
 
 	if wait := rateLimitedWait(t, searchOnce(c, "third")); wait != 60*time.Second {
 		t.Fatalf("wait = %v, want 60s", wait)
@@ -245,7 +249,7 @@ func TestRateLimitCancelledWaitSendsNothing(t *testing.T) {
 	searchN(t, c, "q", 5)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := c.Search(ctx, "sixth"); !errors.Is(err, context.Canceled) {
+	if _, err := c.Search(ctx, "sixth", 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
 	if n := len(f.requests()); n != 5 {

@@ -839,6 +839,12 @@
       },
       "HFSearchBody": {
         "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "page": {
+            "type": "integer"
+          },
           "repos": {
             "items": {
               "$ref": "#/components/schemas/Repo"
@@ -847,7 +853,9 @@
           }
         },
         "required": [
-          "repos"
+          "repos",
+          "page",
+          "hasMore"
         ],
         "type": "object"
       },
@@ -1582,6 +1590,9 @@
           "owner": {
             "type": "string"
           },
+          "quants": {
+            "type": "integer"
+          },
           "tags": {
             "items": {
               "type": "string"
@@ -1600,7 +1611,8 @@
           "downloads",
           "likes",
           "updatedAt",
-          "tags"
+          "tags",
+          "quants"
         ],
         "type": "object"
       },
@@ -3513,6 +3525,15 @@
             "schema": {
               "description": "2 to 100 characters after trimming",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "description": "0 to 9; default 0",
+              "type": "integer"
             }
           }
         ],

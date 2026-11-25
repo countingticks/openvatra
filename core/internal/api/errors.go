@@ -78,6 +78,7 @@ var errorTable = []mapped{
 	{store.ErrReadOnly, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available"},
 	{event.ErrUnavailable, http.StatusServiceUnavailable, "chat_unavailable", "chat storage is not available"},
 	{hf.ErrBadQuery, http.StatusBadRequest, "bad_request", ""},
+	{hf.ErrBadPage, http.StatusBadRequest, "bad_request", ""},
 	{hf.ErrUnreachable, http.StatusBadGateway, "hf_unreachable", "Hugging Face couldn't be reached"},
 	{hf.ErrBadAnswer, http.StatusBadGateway, "hf_bad_answer", ""},
 	{hf.ErrRepoNotFound, http.StatusNotFound, "hf_repo_not_found", ""},

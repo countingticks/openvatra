@@ -168,7 +168,8 @@ const injectedRtkApi = api
         query: (queryArg) => ({
           url: `/api/hf/search`,
           params: {
-            q: queryArg.q
+            q: queryArg.q,
+            page: queryArg.page
           }
         }),
         providesTags: ['hf']
@@ -369,6 +370,7 @@ export type ListHfFilesApiArg = {
 export type SearchHfApiResponse = /** status 200 OK */ HfSearchBody
 export type SearchHfApiArg = {
   q?: string
+  page?: number
 }
 export type ListModelsApiResponse = /** status 200 OK */ StateBody
 export type ListModelsApiArg = void
@@ -969,10 +971,13 @@ export type Repo = {
   likes: number
   name: string
   owner: string
+  quants: number
   tags: string[]
   updatedAt: string
 }
 export type HfSearchBody = {
+  hasMore: boolean
+  page: number
   repos: Repo[]
 }
 export type RunRef = {

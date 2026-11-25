@@ -27,13 +27,14 @@ const draftName = 'draft-MTP.BF16.gguf'
 const draftFile = ggufHeader('llama', { blockCount: 49, nextn: 1, blocks: [48] })
 const draftResolve = `/test/draft-GGUF/resolve/${sha}/${draftName}`
 
-const repoHit = (id: string): Record<string, unknown> => ({
+const repoHit = (id: string, file: string): Record<string, unknown> => ({
   id,
   lastModified: new Date().toISOString(),
   likes: 5,
   downloads: 1400,
   tags: ['gguf'],
-  pipeline_tag: 'text-generation'
+  pipeline_tag: 'text-generation',
+  siblings: [{ rfilename: file }]
 })
 const treeEntry = (path: string, file: Buffer): Record<string, unknown> => ({
   type: 'file',
@@ -57,7 +58,7 @@ test.beforeAll(async () => {
       response.end(JSON.stringify(body))
     }
     if (url.pathname === '/api/models') {
-      json([repoHit('test/tiny-GGUF'), repoHit('test/draft-GGUF')])
+      json([repoHit('test/tiny-GGUF', fileName), repoHit('test/draft-GGUF', draftName)])
     } else if (url.pathname === '/api/models/test/tiny-GGUF') {
       json({ id: 'test/tiny-GGUF', private: false, tags: ['gguf'], sha, gated: false })
     } else if (url.pathname === `/api/models/test/tiny-GGUF/tree/${sha}`) {

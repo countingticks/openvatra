@@ -23,15 +23,18 @@ func TestCachedSearchIgnoresCaseUntilTenMinutesPass(t *testing.T) {
 	clock := &fakeClock{t: time.Date(2026, 11, 24, 9, 0, 0, 0, time.UTC)}
 	c := f.client(t, Config{Now: clock.now})
 	for _, q := range []string{"qwen coder", "Qwen Coder"} {
-		if _, err := c.Search(context.Background(), q); err != nil {
+		if _, err := c.Search(context.Background(), q, 0); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := c.Search(context.Background(), "qwen coder", 1); err != nil { // page 1 of a cached query
+		t.Fatal(err)
 	}
 	if n := len(f.requests()); n != 1 {
 		t.Fatalf("%d requests, want 1", n)
 	}
 	clock.t = clock.t.Add(10*time.Minute + time.Second)
-	if _, err := c.Search(context.Background(), "qwen coder"); err != nil {
+	if _, err := c.Search(context.Background(), "qwen coder", 0); err != nil {
 		t.Fatal(err)
 	}
 	if n := len(f.requests()); n != 2 {
@@ -60,17 +63,17 @@ func TestCacheEvictsTheOldestPastFifty(t *testing.T) {
 	f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": serveBody("[]")})
 	c := f.client(t, Config{})
 	for i := range 51 {
-		if _, err := c.Search(context.Background(), fmt.Sprintf("q%02d", i)); err != nil {
+		if _, err := c.Search(context.Background(), fmt.Sprintf("q%02d", i), 0); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := c.Search(context.Background(), "q50"); err != nil { // still cached
+	if _, err := c.Search(context.Background(), "q50", 0); err != nil { // still cached
 		t.Fatal(err)
 	}
 	if n := len(f.requests()); n != 51 {
 		t.Fatalf("%d requests, want 51", n)
 	}
-	if _, err := c.Search(context.Background(), "q00"); err != nil { // evicted
+	if _, err := c.Search(context.Background(), "q00", 0); err != nil { // evicted
 		t.Fatal(err)
 	}
 	if n := len(f.requests()); n != 52 {
@@ -88,10 +91,10 @@ func TestFailedSearchIsNotCached(t *testing.T) {
 		_, _ = w.Write([]byte("[]"))
 	}})
 	c := f.client(t, Config{})
-	if _, err := c.Search(context.Background(), "qwen"); err == nil {
+	if _, err := c.Search(context.Background(), "qwen", 0); err == nil {
 		t.Fatal("the first search should fail")
 	}
-	if _, err := c.Search(context.Background(), "qwen"); err != nil {
+	if _, err := c.Search(context.Background(), "qwen", 0); err != nil {
 		t.Fatalf("second search: %v", err)
 	}
 	if n := calls.Load(); n != 2 {
@@ -102,7 +105,7 @@ func TestFailedSearchIsNotCached(t *testing.T) {
 func TestSearchLogNeverHoldsTheQuery(t *testing.T) {
 	const query = "secret-query-text"
 	cases := map[string]http.HandlerFunc{
-		"success": serveBody(`[{"id":"o/m","tags":["gguf"]}]`),
+		"success": serveBody(`[{"id":"o/m","tags":["gguf"],` + oneQuant + `}]`),
 		// a timeout's url.Error holds the URL, and so the query
 		"unreachable": func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() },
 	}
@@ -111,7 +114,7 @@ func TestSearchLogNeverHoldsTheQuery(t *testing.T) {
 			var buf bytes.Buffer
 			f := newFakeHF(t, map[string]http.HandlerFunc{"/api/models": h})
 			c := f.client(t, Config{Logger: slog.New(slog.NewTextHandler(&buf, nil)), Timeout: 50 * time.Millisecond})
-			_, _ = c.Search(context.Background(), query)
+			_, _ = c.Search(context.Background(), query, 0)
 			log := buf.String()
 			if !strings.Contains(log, "hf search") || strings.Contains(log, query) {
 				t.Fatalf("log = %q", log)

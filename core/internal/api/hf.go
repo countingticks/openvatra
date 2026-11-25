@@ -9,17 +9,20 @@ import (
 
 // HF is what the hf routes need; *hf.Client in production, a stub in tests.
 type HF interface {
-	Search(ctx context.Context, q string) ([]hf.Repo, error)
+	Search(ctx context.Context, q string, page int) (hf.SearchPage, error)
 	Files(ctx context.Context, owner, name string) (hf.Listing, error)
 	Check(ctx context.Context, repo, revision string, f hf.GroupFile) (string, error)
 }
 
 type HFSearchQuery struct {
-	Q string `query:"q" doc:"2 to 100 characters after trimming"`
+	Q    string `query:"q" doc:"2 to 100 characters after trimming"`
+	Page int    `query:"page" doc:"0 to 9; default 0"`
 }
 
 type HFSearchBody struct {
-	Repos []hf.Repo `json:"repos"`
+	Repos   []hf.Repo `json:"repos"`
+	Page    int       `json:"page"`
+	HasMore bool      `json:"hasMore"`
 }
 
 type HFRepoPath struct {
@@ -32,14 +35,14 @@ func hfRoutes(h HF) []Route {
 	return []Route{
 		JSON(http.MethodGet, "/api/hf/search", UI, "searchHf", "Search Hugging Face for GGUF models",
 			func(ctx context.Context, in HFSearchQuery) (HFSearchBody, error) {
-				repos, err := h.Search(ctx, in.Q)
+				p, err := h.Search(ctx, in.Q, in.Page)
 				if err != nil {
 					return HFSearchBody{}, err
 				}
-				if repos == nil {
-					repos = []hf.Repo{}
+				if p.Repos == nil {
+					p.Repos = []hf.Repo{}
 				}
-				return HFSearchBody{Repos: repos}, nil
+				return HFSearchBody{Repos: p.Repos, Page: p.Page, HasMore: p.HasMore}, nil
 			}).
 			WithErrors("invalid_request", "bad_request", "hf_unreachable", "hf_bad_answer", "hf_rate_limited"),
 		JSON(http.MethodGet, "/api/hf/repos/{owner}/{name}/files", UI, "listHfFiles", "A Hugging Face repo's GGUF files for this PC",

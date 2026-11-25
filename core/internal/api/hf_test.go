@@ -15,9 +15,11 @@ import (
 // stubHF answers with its fields and records what it was asked.
 type stubHF struct {
 	repos       []hf.Repo
+	hasMore     bool
 	listing     hf.Listing
 	err         error
 	q           string
+	page        int
 	owner, name string
 	checkText   string
 	checkErr    error
@@ -29,9 +31,9 @@ func (s *stubHF) Check(_ context.Context, _, _ string, f hf.GroupFile) (string, 
 	return s.checkText, s.checkErr
 }
 
-func (s *stubHF) Search(_ context.Context, q string) ([]hf.Repo, error) {
-	s.q = q
-	return s.repos, s.err
+func (s *stubHF) Search(_ context.Context, q string, page int) (hf.SearchPage, error) {
+	s.q, s.page = q, page
+	return hf.SearchPage{Repos: s.repos, Page: page, HasMore: s.hasMore}, s.err
 }
 
 func (s *stubHF) Files(_ context.Context, owner, name string) (hf.Listing, error) {
@@ -50,19 +52,31 @@ func getHF(t *testing.T, stub *stubHF, path string) *httptest.ResponseRecorder {
 }
 
 func TestHFSearchPassesTheQueryThrough(t *testing.T) {
-	stub := &stubHF{repos: []hf.Repo{{ID: "o/m", Owner: "o", Name: "m", Tags: []string{"Code"}}}}
+	stub := &stubHF{repos: []hf.Repo{{ID: "o/m", Owner: "o", Name: "m", Tags: []string{"Code"}, Quants: 3}}, hasMore: true}
 	rec := getHF(t, stub, "/api/hf/search?q=qwen+coder")
-	if rec.Code != http.StatusOK || stub.q != "qwen coder" {
-		t.Fatalf("status = %d, q = %q, body = %s", rec.Code, stub.q, rec.Body.String())
+	if rec.Code != http.StatusOK || stub.q != "qwen coder" || stub.page != 0 {
+		t.Fatalf("status = %d, q = %q, page = %d, body = %s", rec.Code, stub.q, stub.page, rec.Body.String())
 	}
 	var body HFSearchBody
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || len(body.Repos) != 1 || body.Repos[0].ID != "o/m" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || len(body.Repos) != 1 || body.Repos[0].ID != "o/m" ||
+		body.Repos[0].Quants != 3 || body.Page != 0 || !body.HasMore {
 		t.Fatalf("body = %s (%v)", rec.Body.String(), err)
 	}
 
+	stub = &stubHF{}
+	rec = getHF(t, stub, "/api/hf/search?q=qwen&page=3")
+	if rec.Code != http.StatusOK || stub.page != 3 || !strings.Contains(rec.Body.String(), `"page":3`) {
+		t.Fatalf("page 3: status = %d, page = %d, body = %s", rec.Code, stub.page, rec.Body.String())
+	}
+
 	rec = getHF(t, &stubHF{}, "/api/hf/search?q=nothing")
-	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"repos":[]}` {
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"repos":[],"page":0,"hasMore":false}` {
 		t.Fatalf("empty result: status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	rec = getHF(t, &stubHF{}, "/api/hf/search?q=qwen&page=x")
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"error":"invalid_request"`) {
+		t.Fatalf("page=x: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -75,6 +89,7 @@ func TestHFErrors(t *testing.T) {
 		paths  []string
 	}{
 		{hf.ErrBadQuery, http.StatusBadRequest, "bad_request", []string{search}},
+		{hf.ErrBadPage, http.StatusBadRequest, "bad_request", []string{search}},
 		{hf.ErrUnreachable, http.StatusBadGateway, "hf_unreachable", []string{search}},
 		{hf.ErrBadAnswer, http.StatusBadGateway, "hf_bad_answer", []string{search}},
 		{hf.ErrRepoNotFound, http.StatusNotFound, "hf_repo_not_found", []string{files}},
