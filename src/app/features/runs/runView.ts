@@ -11,7 +11,16 @@ import type {
 } from '@app/core/generated'
 
 export type TranscriptEntry =
-  | { kind: 'input'; key: string; runId: string; seq: number; time: number; text: string; queued: boolean }
+  | {
+      kind: 'input'
+      key: string
+      runId: string
+      seq: number
+      time: number
+      text: string
+      quote: string | null
+      queued: boolean
+    }
   | {
       kind: 'answer'
       key: string
@@ -58,6 +67,7 @@ const inputEntry = (item: TranscriptItem, queued: boolean): TranscriptEntry => (
   seq: item.seq,
   time: item.time,
   text: item.text ?? '',
+  quote: item.quote || null,
   queued
 })
 
@@ -184,10 +194,20 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
     case 'input.received':
       return {
         ...next,
-        items: [...next.items, { kind: 'input', seq, runId, time: event.time, text: event.data.text }],
+        items: [
+          ...next.items,
+          {
+            kind: 'input',
+            seq,
+            runId,
+            time: event.time,
+            text: event.data.text,
+            ...(event.data.quote ? { quote: event.data.quote } : {})
+          }
+        ],
         context: {
           ...withMessageCount(next.context, next.context.parts.messageCount + 1),
-          used: next.context.used + estimateTokens(event.data.text)
+          used: next.context.used + estimateTokens(quotedInput(event.data.text, event.data.quote))
         }
       }
     case 'run.started':
@@ -284,6 +304,19 @@ export function chatIdOf(event: Event): string | null {
 /** Tokens a text costs, roughly, the way core's budget.EstimateTokens counts them. */
 export function estimateTokens(text: string): number {
   return Math.ceil(Array.from(text).length / 3.5)
+}
+
+/** An input as core's prompt writes it: the quote as a "> " blockquote, a blank line, then the text. */
+export function quotedInput(text: string, quote: string | null | undefined): string {
+  if (!quote) return text
+  const block = quote
+    .split('\n')
+    .map((line) => {
+      const bare = line.endsWith('\r') ? line.slice(0, -1) : line
+      return bare === '' ? '>' : `> ${bare}`
+    })
+    .join('\n')
+  return `${block}\n\n${text}`
 }
 
 /** What Ember shows for the open chat: text streaming, thinking (queued, loading, reasoning) or idle. */

@@ -10,6 +10,7 @@ import { LiveEntry } from './LiveEntry'
 import { CopyButton } from '@app/ui/CopyButton'
 import { MessageActions } from './MessageActions'
 import { MessageTime } from './MessageTime'
+import { QuoteBlock } from './QuoteBlock'
 import { RewindButton } from './RewindButton'
 import { firstInputs, messagesAfter, type RunView, type TranscriptEntry } from './runView'
 
@@ -29,7 +30,7 @@ interface TranscriptProps {
    * Sends this run's first message again with this text, removing that run and every later one; rejects when
    * it could not be sent.
    */
-  onEdit(runId: string, text: string): Promise<void>
+  onEdit(runId: string, text: string, quote: string | null): Promise<void>
   /** Removes this run and every later one and puts its first message in the box; resolves when that is done or failed. */
   onRewind(runId: string): Promise<void>
 }
@@ -63,8 +64,9 @@ export function Transcript({
           return (
             <InputEditor
               text={entry.text}
+              quote={entry.quote}
               after={messagesAfter(view.entries, entry.key)}
-              onSend={(text) => onEdit(entry.runId, text).then(() => setEditing(null))}
+              onSend={(text, quote) => onEdit(entry.runId, text, quote).then(() => setEditing(null))}
               onCancel={() => setEditing(null)}
             />
           )
@@ -77,6 +79,7 @@ export function Transcript({
                 entry.queued && 'opacity-60'
               )}
             >
+              {entry.quote && <QuoteBlock text={entry.quote} />}
               {entry.text}
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}

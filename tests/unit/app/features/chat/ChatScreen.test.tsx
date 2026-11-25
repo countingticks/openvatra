@@ -690,6 +690,30 @@ describe('ChatScreen', () => {
       )
     })
 
+    it('Edit of a quoted message posts replaceFrom with its quote', async () => {
+      const { coreHttp } = show({
+        open: {
+          transcript: transcript({
+            seq: 3,
+            items: [{ ...input(2, 'hi'), quote: 'q' }, answer(3, 'old answer')],
+            runs: [run()]
+          })
+        }
+      })
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit message' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      await waitFor(() =>
+        expect(runPosts(coreHttp)).toContainEqual({
+          requestId: expect.any(String),
+          chatId: 'c1',
+          text: 'hi',
+          replaceFrom: 'r1',
+          quote: 'q'
+        })
+      )
+    })
+
     it('Rewind posts the run at once and puts its text in the message box, replacing the draft', async () => {
       const { coreHttp } = show({ open: { transcript: done() } })
       coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({ status: 200, body: { seq: 4, text: 'hi' } }))

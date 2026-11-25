@@ -1,20 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
+import { X } from 'lucide-react'
 import { Button } from '@app/ui/button'
+import { QuoteBlock } from './QuoteBlock'
 
 /** A message edited in place: Enter sends, Shift+Enter breaks the line, Esc cancels. */
 export function InputEditor({
   text,
+  quote,
   after,
   onSend,
   onCancel
 }: {
   text: string
+  quote: string | null
   /** Messages that sending removes (messagesAfter); 0 shows no hint. */
   after: number
-  onSend(text: string): Promise<void>
+  onSend(text: string, quote: string | null): Promise<void>
   onCancel(): void
 }): React.JSX.Element {
   const [value, setValue] = useState(text)
+  const [kept, setKept] = useState(quote)
   const [pending, setPending] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
 
@@ -29,11 +34,27 @@ export function InputEditor({
     if (pending || value.trim() === '') return
     setPending(true)
     // On failure the editor stays open with its text; the caller has logged the error.
-    onSend(value).catch(() => setPending(false))
+    onSend(value, kept).catch(() => setPending(false))
   }
 
   return (
     <div className="flex w-full max-w-[80%] flex-col items-end gap-2 self-end">
+      {kept !== null && (
+        <div className="flex w-full items-start gap-1">
+          <div className="min-w-0 flex-1 [&_button]:line-clamp-2 [&_button]:mb-0">
+            <QuoteBlock text={kept} />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Remove quote"
+            disabled={pending}
+            onClick={() => setKept(null)}
+          >
+            <X aria-hidden className="size-3.5" />
+          </Button>
+        </div>
+      )}
       <textarea
         ref={field}
         aria-label="Edit message"

@@ -6,6 +6,7 @@ export {
   estimateTokens,
   firstInputs,
   messagesAfter,
+  quotedInput,
   runIdOf,
   runView,
   waitingLine,
