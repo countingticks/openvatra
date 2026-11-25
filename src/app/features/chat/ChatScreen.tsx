@@ -83,7 +83,7 @@ function ChatView(): React.JSX.Element {
         requestId,
         text,
         ...(chatId ? { chatId } : model ? { model } : {}),
-        ...(quote ? { quote } : {})
+        ...(quote ? { quotes: [quote] } : {})
       }
     }).unwrap()
     if (chatId === undefined) dispatch(routeReplaced({ tab: 'chat', chatId: ref.chatId }))
@@ -112,7 +112,7 @@ function ChatView(): React.JSX.Element {
           chatId,
           text,
           replaceFrom: runId,
-          ...(quote ? { quote } : {})
+          ...(quote ? { quotes: [quote] } : {})
         }
       }).unwrap()
     } catch (error) {
@@ -125,7 +125,7 @@ function ChatView(): React.JSX.Element {
     if (chatId === undefined) return
     try {
       const result = await rewindChat({ id: chatId, body: { runId } }).unwrap()
-      composer.current?.fill(chatId, result.text, result.quote)
+      composer.current?.fill(chatId, result.text, result.quotes?.[0])
     } catch (error) {
       console.error('Could not rewind the chat', error)
     }

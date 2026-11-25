@@ -67,7 +67,7 @@ const inputEntry = (item: TranscriptItem, queued: boolean): TranscriptEntry => (
   seq: item.seq,
   time: item.time,
   text: item.text ?? '',
-  quote: item.quote || null,
+  quote: item.quotes?.[0] || null,
   queued
 })
 
@@ -202,12 +202,12 @@ export function applyRunEvent(transcript: Transcript, event: Event): Transcript 
             runId,
             time: event.time,
             text: event.data.text,
-            ...(event.data.quote ? { quote: event.data.quote } : {})
+            ...(event.data.quotes?.length ? { quotes: event.data.quotes } : {})
           }
         ],
         context: {
           ...withMessageCount(next.context, next.context.parts.messageCount + 1),
-          used: next.context.used + estimateTokens(quotedInput(event.data.text, event.data.quote))
+          used: next.context.used + estimateTokens(quotedInput(event.data.text, event.data.quotes?.[0]))
         }
       }
     case 'run.started':
