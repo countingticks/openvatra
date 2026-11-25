@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -361,7 +362,6 @@ func TestABadQuoteIsCheckedBeforeAnythingIsWritten(t *testing.T) {
 
 	for name, quotes := range map[string][]event.Quote{
 		"a blank quote":          {{Text: "ok"}, {Text: "  \n "}},
-		"6 quotes":               {{Text: "1"}, {Text: "2"}, {Text: "3"}, {Text: "4"}, {Text: "5"}, {Text: "6"}},
 		"a reply of 4,001 runes": {{Text: "ok", Reply: strings.Repeat("a", 4_001)}},
 	} {
 		_, err := f.svc.Send(bg, SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again", Quotes: quotes})
@@ -372,6 +372,17 @@ func TestABadQuoteIsCheckedBeforeAnythingIsWritten(t *testing.T) {
 	if after := f.chatModelEvents(first.ChatID); len(after) != len(before) {
 		t.Errorf("chat.model events grew from %d to %d", len(before), len(after))
 	}
+}
+
+func TestSevenQuotesAreAccepted(t *testing.T) {
+	f := newFixture(t, installed, answer, answer)
+	first := f.firstOnM1()
+	quotes := make([]event.Quote, 7)
+	for i := range quotes {
+		quotes[i] = event.Quote{Text: strconv.Itoa(i + 1)}
+	}
+
+	f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Text: "again", Quotes: quotes})
 }
 
 func TestRemovedModelFallsBackOnTheNextSend(t *testing.T) {

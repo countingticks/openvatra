@@ -71,7 +71,6 @@ describe('Composer quote', () => {
     expect(cards()[0]).toHaveTextContent('some words')
     expect(box()).toHaveFocus()
     expect(stored(platform.storage.values, 'chat.quotes:c1')).toEqual([{ text: 'some words' }])
-    expect(handle.current?.quoteCount('c1')).toBe(1)
   })
 
   it('a second quote is added below the first', () => {
@@ -92,13 +91,12 @@ describe('Composer quote', () => {
     expect(cards()).toHaveLength(1)
   })
 
-  it('a sixth quote is not added', () => {
+  it('a sixth quote is added', () => {
     const { handle } = show()
 
     for (const q of ['1', '2', '3', '4', '5', '6']) act(() => handle.current?.quote('c1', { text: q }))
 
-    expect(texts()).toEqual(['“1”', '“2”', '“3”', '“4”', '“5”'])
-    expect(handle.current?.quoteCount('c1')).toBe(5)
+    expect(texts()).toEqual(['“1”', '“2”', '“3”', '“4”', '“5”', '“6”'])
   })
 
   it('x removes only its own chip', () => {
@@ -129,7 +127,6 @@ describe('Composer quote', () => {
     act(() => handle.current?.quote('c2', { text: 'theirs' }))
 
     expect(stored(platform.storage.values, 'chat.quotes:c2')).toEqual([{ text: 'theirs' }])
-    expect(handle.current?.quoteCount('c2')).toBe(1)
     expect(texts()).toEqual(['“mine”'])
   })
 

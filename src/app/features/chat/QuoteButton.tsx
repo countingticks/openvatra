@@ -19,8 +19,6 @@ interface Spot {
 
 interface Placed {
   text: string
-  /** The draft already holds the most quotes, as of the selection change. */
-  full: boolean
   button: Spot
   card: Spot
 }
@@ -28,24 +26,19 @@ interface Placed {
 /** The floating Quote button for the conversation's selection, and the reply card it opens in its place. */
 export function QuoteButton({
   container,
-  onQuote,
-  full
+  onQuote
 }: {
   /** The conversation's scroller; the button is placed inside the area that holds it. */
   container: React.RefObject<HTMLElement | null>
   onQuote(quote: Quote): void
-  /** Whether the message box holds the most quotes; read on each selection change. */
-  full(): boolean
 }): React.JSX.Element | null {
   const [placed, setPlaced] = useState<Placed | null>(null)
   const [replying, setReplying] = useState(false)
   // The button is placed against this layer, which covers the screen's positioned root.
   const layer = useRef<HTMLDivElement>(null)
-  // Read from the listeners, which are not re-registered when the caller's function or state changes.
-  const isFull = useRef(full)
+  // Read from the listeners, which are not re-registered when the state changes.
   const card = useRef(false)
   useEffect(() => {
-    isFull.current = full
     card.current = replying
   })
 
@@ -76,7 +69,6 @@ export function QuoteButton({
       const area = scroller.getBoundingClientRect()
       setPlaced({
         text,
-        full: isFull.current(),
         button: spot(rect, box, area, buttonHalfWidth, buttonHeight),
         card: spot(rect, box, area, cardHalfWidth, cardHeight)
       })
@@ -100,8 +92,8 @@ export function QuoteButton({
   }, [container])
 
   const tooLong = placed !== null && Array.from(placed.text).length > maxQuoteChars
-  const blocked = tooLong || placed?.full === true
-  const reason = tooLong ? 'Select at most 4,000 characters to quote' : 'At most 5 quotes per message'
+  const blocked = tooLong
+  const reason = 'Select at most 4,000 characters to quote'
   return (
     <div ref={layer} className="pointer-events-none absolute inset-0 z-10">
       {placed !== null && !replying && (

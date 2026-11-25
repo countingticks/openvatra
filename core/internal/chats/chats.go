@@ -68,7 +68,6 @@ const (
 	maxInputRunes = 200_000
 	maxQuoteRunes = 4_000
 	maxReplyRunes = 4_000
-	maxQuotes     = 5
 	maxTitleRunes = 200
 )
 
@@ -82,7 +81,7 @@ func New(c Config) *Service {
 
 // Send starts a run for the input, or adds it to the chat's active run.
 func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
-	quotesBad, replied := len(in.Quotes) > maxQuotes, false
+	quotesBad, replied := false, false
 	for _, q := range in.Quotes {
 		n := utf8.RuneCountInString(strings.TrimSpace(q.Text))
 		quotesBad = quotesBad || n < 1 || n > maxQuoteRunes ||

@@ -505,7 +505,6 @@ func TestStart(t *testing.T) {
 		}{
 			{"only spaces", Spec{ChatID: first.ChatID, Text: "t", Quotes: qs("   ")}},
 			{"4,001 runes", Spec{ChatID: first.ChatID, Text: "t", Quotes: qs(strings.Repeat("ă", 4_001))}},
-			{"6 quotes", Spec{ChatID: first.ChatID, Text: "t", Quotes: qs("1", "2", "3", "4", "5", "6")}},
 			{"one of two quotes blank", Spec{ChatID: first.ChatID, Text: "t", Quotes: qs("q", " ")}},
 			{"a blank text with quotes but no reply", Spec{ChatID: first.ChatID, Text: " ", Quotes: qs("q")}},
 			{"a reply of 4,001 runes", Spec{ChatID: first.ChatID, Text: "t", Quotes: []event.Quote{{Text: "q", Reply: strings.Repeat("ă", 4_001)}}}},
@@ -526,6 +525,12 @@ func TestStart(t *testing.T) {
 		f.finished(ok.RunID)
 		long := f.start(Spec{ChatID: first.ChatID, Text: "t", Quotes: []event.Quote{{Text: "q", Reply: strings.Repeat("ă", 4_000)}}, RequestID: "ok-reply"})
 		f.finished(long.RunID)
+	})
+
+	t.Run("7 quotes are accepted", func(t *testing.T) {
+		f := newFixture(t, answer("a"))
+		ref := f.start(Spec{Model: "m1", Text: "t", Quotes: qs("1", "2", "3", "4", "5", "6", "7"), RequestID: "req-7"})
+		f.finished(ref.RunID)
 	})
 
 	t.Run("a blank text is accepted when a quote has a reply", func(t *testing.T) {

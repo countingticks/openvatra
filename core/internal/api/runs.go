@@ -22,7 +22,7 @@ type StartRun struct {
 	Text        string        `json:"text,omitempty"`
 	Replace     string        `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
 	ReplaceFrom string        `json:"replaceFrom,omitempty" doc:"a run id: retract that run and every later one, then send text as a new run"`
-	Quotes      []event.Quote `json:"quotes,omitempty" doc:"what the user quoted, at most 5, each with an optional reply; text may be blank when a quote has a reply"`
+	Quotes      []event.Quote `json:"quotes,omitempty" doc:"what the user quoted, each with an optional reply; text may be blank when a quote has a reply"`
 }
 
 type RewindChat struct {

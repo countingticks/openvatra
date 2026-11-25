@@ -972,21 +972,5 @@ describe('ChatScreen', () => {
 
       expect(reply.style.left).toBe(`${(wide.left + wide.right) / 2 - layerLeft}px`)
     })
-
-    it('with five quotes in the box Quote is aria-disabled with its title', async () => {
-      show({
-        open: { transcript: answered('Some answer words') },
-        storage: { 'chat.quotes:c1': JSON.stringify(['1', '2', '3', '4', '5']) }
-      })
-      const words = await screen.findByText('Some answer words')
-
-      select(textOf(words), 0, 4)
-      const reply = await screen.findByRole('button', { name: 'Quote' })
-      expect(reply).toHaveAttribute('aria-disabled', 'true')
-      expect(reply).toHaveAttribute('title', 'At most 5 quotes per message')
-      fireEvent.click(reply)
-
-      expect(screen.getAllByRole('group', { name: 'Quote' })).toHaveLength(5)
-    })
   })
 })

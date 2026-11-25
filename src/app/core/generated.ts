@@ -1026,7 +1026,7 @@ export type StartRun = {
   chatId?: string
   /** omit for the chat's model, or for a new chat the last one named */
   model?: string
-  /** what the user quoted, at most 5, each with an optional reply; text may be blank when a quote has a reply */
+  /** what the user quoted, each with an optional reply; text may be blank when a quote has a reply */
   quotes?: Quote[]
   /** last: retract the chat's last turn and send it again (with text: edited) */
   replace?: 'last'

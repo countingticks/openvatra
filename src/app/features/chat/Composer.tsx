@@ -7,8 +7,6 @@ import { composerReducer, sendErrorMessage, type ComposerEvent, type ComposerSta
 
 const draftKey = (chatId: string | undefined): string => `chat.draft:${chatId || 'new'}`
 
-export const maxQuotes = 5
-
 const quotesKey = (chatId: string | undefined): string => `chat.quotes:${chatId || 'new'}`
 
 /** One stored item: a quote, or a plain string (the first shape stored) read as a quote without a reply. */
@@ -48,10 +46,8 @@ interface KeyedState {
 export interface ComposerHandle {
   /** Replaces chatId's draft text and quotes with these, discarding what was there (decision 25). */
   fill(chatId: string, text: string, quotes?: Quote[]): void
-  /** Adds a quote (not when its text equals one there, nor past maxQuotes) and focuses the box at the end. */
+  /** Adds a quote (not when its text equals one there) and focuses the box at the end. */
   quote(chatId: string | undefined, quote: Quote): void
-  /** How many quotes chatId's draft holds now. */
-  quoteCount(chatId: string | undefined): number
 }
 
 interface ComposerProps {
@@ -151,12 +147,11 @@ export function Composer({
     },
     quote(forChatId, quoted) {
       const held = storedQuotes(forChatId)
-      if (held.length < maxQuotes && !held.some((q) => q.text === quoted.text)) {
+      if (!held.some((q) => q.text === quoted.text)) {
         changeQuotes(forChatId, [...held, quoted])
       }
       if (draftKey(forChatId) === shownNow.current) setFocusEnd((n) => n + 1)
-    },
-    quoteCount: (forChatId) => storedQuotes(forChatId).length
+    }
   }))
 
   // A replied quote is a message on its own.

@@ -216,6 +216,12 @@ func TestStartRunWithABlankTextAndAReplyListsTheQuoteWithItsReply(t *testing.T) 
 	t.Fatal("no input in the transcript")
 }
 
+func TestStartRunAccepts7Quotes(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn)
+	ref := f.start(`{"requestId":"r1","text":"hi","quotes":[{"text":"1"},{"text":"2"},{"text":"3"},{"text":"4"},{"text":"5"},{"text":"6"},{"text":"7"}]}`)
+	f.waitFor("run.finished", ref.RunID)
+}
+
 func TestStartRunErrors(t *testing.T) {
 	f := newRunsFixture(t, chatModels)
 	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r1","text":"  "}`), 400, "bad_request")
@@ -229,7 +235,6 @@ func TestStartRunErrors(t *testing.T) {
 		"a quote without text":             `{"requestId":"r1","quotes":[{"text":"q"}]}`,
 		"a blank text, an unreplied quote": `{"requestId":"r1","text":"","quotes":[{"text":"q"}]}`,
 		"a reply too long":                 `{"requestId":"r1","text":"hi","quotes":[{"text":"q","reply":"` + strings.Repeat("a", 4001) + `"}]}`,
-		"6 quotes":                         `{"requestId":"r1","text":"hi","quotes":[{"text":"1"},{"text":"2"},{"text":"3"},{"text":"4"},{"text":"5"},{"text":"6"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) { wantErrorCode(t, f.call(http.MethodPost, "/api/runs", body), 400, "bad_request") })
 	}
