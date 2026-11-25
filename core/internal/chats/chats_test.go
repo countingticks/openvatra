@@ -294,6 +294,31 @@ func TestReplaceNeedsAChatAndAppendsANewModelBeforeTheRun(t *testing.T) {
 	}
 }
 
+func TestReplaceFromIsCheckedBeforeAnythingIsWritten(t *testing.T) {
+	f := newFixture(t, installed, answer)
+	first := f.firstOnM1()
+	before, err := f.store.Log().Read(bg, 0, event.Filter{}, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, in := range []SendInput{
+		{RequestID: "x", ReplaceFrom: "x", Text: "t"},
+		{RequestID: "x", ChatID: first.ChatID, ReplaceFrom: first.RunID, Text: " "},
+		{RequestID: "x", ChatID: first.ChatID, ReplaceFrom: first.RunID, Replace: true, Text: "t", Model: "m2"},
+	} {
+		if _, err := f.svc.Send(bg, in); !errors.Is(err, run.ErrBadInput) {
+			t.Errorf("Send(%+v) = %v, want ErrBadInput", in, err)
+		}
+	}
+	after, err := f.store.Log().Read(bg, 0, event.Filter{}, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Errorf("%d events appended", len(after)-len(before))
+	}
+}
+
 // chatModelEvents is the payloads of the chat.model events after the one that created the chat, in log order.
 func (f *fixture) chatModelEvents(chatID string) []string {
 	f.t.Helper()
@@ -387,6 +412,22 @@ func TestRemovedModelFallsBackOnTheNextSend(t *testing.T) {
 		f.setLastModel("m2")
 
 		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, Replace: true})
+
+		if got, want := f.chatModelEvents(first.ChatID), []string{`{"model":"m2"}`}; !slices.Equal(got, want) {
+			t.Fatalf("chat.model events %v, want %v", got, want)
+		}
+		if got := f.runModel(second.RunID); got != "m2" {
+			t.Errorf("run model = %q, want m2", got)
+		}
+	})
+
+	t.Run("replace from on a chat whose model is gone switches too", func(t *testing.T) {
+		f := newFixture(t, installed, answer, answer)
+		first := f.firstOnM1()
+		f.setModels([]provider.Model{e1, m3, m2})
+		f.setLastModel("m2")
+
+		second := f.send(SendInput{RequestID: "r2", ChatID: first.ChatID, ReplaceFrom: first.RunID, Text: "again"})
 
 		if got, want := f.chatModelEvents(first.ChatID), []string{`{"model":"m2"}`}; !slices.Equal(got, want) {
 			t.Fatalf("chat.model events %v, want %v", got, want)

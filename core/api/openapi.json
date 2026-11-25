@@ -1641,6 +1641,23 @@
         ],
         "type": "object"
       },
+      "Rewound": {
+        "properties": {
+          "seq": {
+            "description": "the last turn.retracted's seq",
+            "type": "integer"
+          },
+          "text": {
+            "description": "the run's first input, for the message box",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "text"
+        ],
+        "type": "object"
+      },
       "RunError": {
         "properties": {
           "code": {
@@ -2143,6 +2160,10 @@
             "enum": [
               "last"
             ],
+            "type": "string"
+          },
+          "replaceFrom": {
+            "description": "a run id: retract that run and every later one, then send text as a new run",
             "type": "string"
           },
           "requestId": {
@@ -2728,6 +2749,67 @@
           }
         },
         "summary": "A chat's messages and runs, oldest first",
+        "tags": [
+          "chats"
+        ],
+        "x-scope": "ui"
+      }
+    },
+    "/api/chats/{id}/rewind": {
+      "post": {
+        "operationId": "rewindChat",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "runId": {
+                    "description": "the run to go back to; it and every later run are retracted",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "runId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rewound"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            },
+            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, run_not_found, chat_busy, chat_unavailable."
+          }
+        },
+        "summary": "Go back to a run: retract it and every later run, and answer its first input",
         "tags": [
           "chats"
         ],
@@ -3869,7 +3951,7 @@
                 }
               }
             },
-            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, model_not_found, no_chat_model, chat_busy, chat_unavailable."
+            "description": "Error. Codes: invalid_request, bad_request, chat_not_found, run_not_found, model_not_found, no_chat_model, chat_busy, chat_unavailable."
           }
         },
         "summary": "Send a message: to a new chat, or to a chat by id",

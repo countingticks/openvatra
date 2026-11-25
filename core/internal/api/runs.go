@@ -16,11 +16,22 @@ import (
 )
 
 type StartRun struct {
-	RequestID string `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
-	ChatID    string `json:"chatId,omitempty" doc:"omit to start a new chat"`
-	Model     string `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
-	Text      string `json:"text,omitempty"`
-	Replace   string `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
+	RequestID   string `json:"requestId" doc:"the client's id for this send; the same id again answers the same run"`
+	ChatID      string `json:"chatId,omitempty" doc:"omit to start a new chat"`
+	Model       string `json:"model,omitempty" doc:"omit for the chat's model, or for a new chat the last one named"`
+	Text        string `json:"text,omitempty"`
+	Replace     string `json:"replace,omitempty" enum:"last" doc:"last: retract the chat's last turn and send it again (with text: edited)"`
+	ReplaceFrom string `json:"replaceFrom,omitempty" doc:"a run id: retract that run and every later one, then send text as a new run"`
+}
+
+type RewindChat struct {
+	ID    string `path:"id"`
+	RunID string `json:"runId" doc:"the run to go back to; it and every later run are retracted"`
+}
+
+type Rewound struct {
+	Seq  int64  `json:"seq" doc:"the last turn.retracted's seq"`
+	Text string `json:"text" doc:"the run's first input, for the message box"`
 }
 
 type RunRef struct {
@@ -137,12 +148,12 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 					return RunRef{}, err
 				}
 				ref, err := svc.Send(ctx, chats.SendInput{RequestID: in.RequestID, ChatID: in.ChatID, Model: in.Model,
-					Text: in.Text, Replace: in.Replace == "last"})
+					Text: in.Text, Replace: in.Replace == "last", ReplaceFrom: in.ReplaceFrom})
 				return RunRef{RunID: ref.RunID, ChatID: ref.ChatID, Seq: ref.Seq}, err
 			}).
 			WithStatus(http.StatusAccepted).
-			WithErrors("invalid_request", "bad_request", "chat_not_found", "model_not_found", "no_chat_model",
-				"chat_busy", "chat_unavailable"),
+			WithErrors("invalid_request", "bad_request", "chat_not_found", "run_not_found", "model_not_found",
+				"no_chat_model", "chat_busy", "chat_unavailable"),
 		JSON(http.MethodGet, "/api/runs/{id}", UI, "getRun", "One run's state",
 			func(ctx context.Context, in RunPath) (RunSnapshot, error) {
 				if err := ready(); err != nil {
@@ -169,6 +180,17 @@ func runRoutes(svc *chats.Service, engine *run.Engine) []Route {
 			}).
 			WithErrors("run_not_found", "run_not_interrupted", "chat_unavailable"),
 
+		JSON(http.MethodPost, "/api/chats/{id}/rewind", UI, "rewindChat",
+			"Go back to a run: retract it and every later run, and answer its first input",
+			func(ctx context.Context, in RewindChat) (Rewound, error) {
+				if err := ready(); err != nil {
+					return Rewound{}, err
+				}
+				r, err := engine.Rewind(ctx, in.ID, in.RunID)
+				return Rewound{Seq: r.Seq, Text: r.Text}, err
+			}).
+			WithErrors("invalid_request", "bad_request", "chat_not_found", "run_not_found", "chat_busy",
+				"chat_unavailable"),
 		JSON(http.MethodGet, "/api/chats", UI, "listChats",
 			"List the chats, most recently updated first; with q, the ones that match it",
 			func(ctx context.Context, in ListChatsQuery) (ChatList, error) {

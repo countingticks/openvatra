@@ -349,6 +349,73 @@ func TestStartRunWithReplaceErrors(t *testing.T) {
 	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r3","chatId":"`+ref.ChatID+`","replace":"last"}`),
 		409, "chat_busy")
 	wantErrorCode(t, f.call(http.MethodPost, "/api/runs", `{"requestId":"r4","replace":"last"}`), 400, "bad_request")
+	wantErrorCode(t, f.call(http.MethodPost, "/api/runs",
+		`{"requestId":"r5","chatId":"`+ref.ChatID+`","replace":"last","replaceFrom":"x","text":"t"}`), 400, "bad_request")
+	wantErrorCode(t, f.call(http.MethodPost, "/api/runs",
+		`{"requestId":"r6","chatId":"`+ref.ChatID+`","replaceFrom":"x"}`), 400, "bad_request")
+
+	idle := newRunsFixture(t, chatModels, hiTurn)
+	done := idle.start(`{"requestId":"r1","text":"hello"}`)
+	idle.waitFor("run.finished", done.RunID)
+	wantErrorCode(t, idle.call(http.MethodPost, "/api/runs",
+		`{"requestId":"r2","chatId":"`+done.ChatID+`","replaceFrom":"missing","text":"t"}`), 404, "run_not_found")
+}
+
+func TestStartRunWithReplaceFromSendsTheEditedText(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn, hiTurn, hiTurn)
+	first := f.start(`{"requestId":"r1","text":"hello"}`)
+	f.waitFor("run.finished", first.RunID)
+	second := f.start(`{"requestId":"r2","chatId":"` + first.ChatID + `","text":"again"}`)
+	f.waitFor("run.finished", second.RunID)
+
+	edit := f.start(`{"requestId":"r3","chatId":"` + first.ChatID + `","replaceFrom":"` + first.RunID + `","text":"edited"}`)
+	if edit.RunID == first.RunID || edit.RunID == second.RunID {
+		t.Fatalf("edit = %+v, want a new run", edit)
+	}
+	f.waitFor("run.finished", edit.RunID)
+	if got := f.inputs(first.ChatID); len(got) != 1 || got[0] != "edited" {
+		t.Errorf("inputs after edit = %v, want [edited]", got)
+	}
+}
+
+func TestRewindChatAnswersTheFirstInputAndRetractsTheRest(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn, hiTurn, hiTurn)
+	first := f.start(`{"requestId":"r1","text":"one"}`)
+	f.waitFor("run.finished", first.RunID)
+	second := f.start(`{"requestId":"r2","chatId":"` + first.ChatID + `","text":"two"}`)
+	f.waitFor("run.finished", second.RunID)
+	third := f.start(`{"requestId":"r3","chatId":"` + first.ChatID + `","text":"three"}`)
+	f.waitFor("run.finished", third.RunID)
+
+	rec := f.call(http.MethodPost, "/api/chats/"+first.ChatID+"/rewind", `{"runId":"`+second.RunID+`"}`)
+	var got Rewound
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &got) != nil {
+		t.Fatalf("rewind = %d %s", rec.Code, rec.Body)
+	}
+	if got.Text != "two" || got.Seq <= 0 {
+		t.Errorf("rewound = %+v, want text two and a seq", got)
+	}
+	if in := f.inputs(first.ChatID); len(in) != 1 || in[0] != "one" {
+		t.Errorf("inputs after rewind = %v, want [one]", in)
+	}
+}
+
+func TestRewindChatErrors(t *testing.T) {
+	f := newRunsFixture(t, chatModels, hiTurn, providertest.Turn{Text: []string{"so far"}, Hang: true})
+	first := f.start(`{"requestId":"r1","text":"one"}`)
+	f.waitFor("run.finished", first.RunID)
+	path := "/api/chats/" + first.ChatID + "/rewind"
+
+	wantErrorCode(t, f.call(http.MethodPost, "/api/chats/missing/rewind", `{"runId":"`+first.RunID+`"}`), 404, "chat_not_found")
+	wantErrorCode(t, f.call(http.MethodPost, path, `{"runId":""}`), 400, "bad_request")
+	if rec := f.call(http.MethodPost, path, `{"runId":"`+first.RunID+`"}`); rec.Code != http.StatusOK {
+		t.Fatalf("rewind = %d %s", rec.Code, rec.Body)
+	}
+	wantErrorCode(t, f.call(http.MethodPost, path, `{"runId":"`+first.RunID+`"}`), 404, "run_not_found")
+
+	f.start(`{"requestId":"r2","chatId":"` + first.ChatID + `","text":"two"}`)
+	f.answering()
+	wantErrorCode(t, f.call(http.MethodPost, path, `{"runId":"`+first.RunID+`"}`), 409, "chat_busy")
 }
 
 func TestListChatsWithQFindsMatchingChatsWithASnippet(t *testing.T) {
