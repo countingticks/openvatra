@@ -30,7 +30,7 @@ interface TranscriptProps {
    * Sends this run's first message again with this text, removing that run and every later one; rejects when
    * it could not be sent.
    */
-  onEdit(runId: string, text: string, quote: string | null): Promise<void>
+  onEdit(runId: string, text: string, quotes: string[]): Promise<void>
   /** Removes this run and every later one and puts its first message in the box; resolves when that is done or failed. */
   onRewind(runId: string): Promise<void>
 }
@@ -64,9 +64,9 @@ export function Transcript({
           return (
             <InputEditor
               text={entry.text}
-              quote={entry.quote}
+              quotes={entry.quotes}
               after={messagesAfter(view.entries, entry.key)}
-              onSend={(text, quote) => onEdit(entry.runId, text, quote).then(() => setEditing(null))}
+              onSend={(text, quotes) => onEdit(entry.runId, text, quotes).then(() => setEditing(null))}
               onCancel={() => setEditing(null)}
             />
           )
@@ -79,7 +79,9 @@ export function Transcript({
                 entry.queued && 'opacity-60'
               )}
             >
-              {entry.quote && <QuoteBlock text={entry.quote} />}
+              {entry.quotes.map((quote, index) => (
+                <QuoteBlock key={index} text={quote} />
+              ))}
               <div data-quote>{entry.text}</div>
             </div>
             {entry.queued && <span className="text-xs text-muted-foreground">Queued</span>}

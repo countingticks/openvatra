@@ -71,7 +71,7 @@ interface Shown extends ReturnType<typeof renderWithStore> {
   onContinue: Mock<(runId: string) => void>
   onOpenModelSettings: Mock<() => void>
   onRegenerate: Mock<() => void>
-  onEdit: Mock<(runId: string, text: string, quote: string | null) => Promise<void>>
+  onEdit: Mock<(runId: string, text: string, quotes: string[]) => Promise<void>>
   onRewind: Mock<(runId: string) => Promise<void>>
   /** Dispatches a core event and lets the next animation frame render it. */
   push(event: Event): void
@@ -81,7 +81,7 @@ function show(
   wire: Wire,
   options: {
     modelLoading?: boolean
-    onEdit?: Mock<(runId: string, text: string, quote: string | null) => Promise<void>>
+    onEdit?: Mock<(runId: string, text: string, quotes: string[]) => Promise<void>>
     onRewind?: Mock<(runId: string) => Promise<void>>
   } = {}
 ): Shown {
@@ -90,7 +90,7 @@ function show(
   const onRegenerate = vi.fn<() => void>()
   const onEdit =
     options.onEdit ??
-    vi.fn<(runId: string, text: string, quote: string | null) => Promise<void>>().mockResolvedValue(undefined)
+    vi.fn<(runId: string, text: string, quotes: string[]) => Promise<void>>().mockResolvedValue(undefined)
   const onRewind = options.onRewind ?? vi.fn<(runId: string) => Promise<void>>().mockResolvedValue(undefined)
   const rendered = renderWithStore(
     <Transcript
@@ -425,7 +425,7 @@ describe('Transcript', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       expect(screen.getByRole('button', { name: 'Remove quote' })).toBeInTheDocument()
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', 'line one\nline two')
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', ['line one\nline two'])
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
 
@@ -434,7 +434,26 @@ describe('Transcript', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
       fireEvent.click(screen.getByRole('button', { name: 'Remove quote' }))
       fireEvent.click(screen.getByRole('button', { name: 'Send' }))
-      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', null)
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', [])
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
+    })
+  })
+
+  describe('a message with two quotes', () => {
+    const two = (): Wire => transcript([{ ...input(1, 'Explain'), quotes: ['first', 'second'] }, answer(2)])
+
+    it('two quotes in a bubble are two blocks, in order', () => {
+      show(two())
+      const blocks = screen.getAllByRole('button', { name: /first|second/ })
+      expect(blocks.map((b) => b.textContent)).toEqual(['first', 'second'])
+    })
+
+    it('removing one of two quotes in the editor sends the other', async () => {
+      const shown = show(two())
+      fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
+      fireEvent.click(screen.getAllByRole('button', { name: 'Remove quote' })[0]!)
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'Explain', ['second'])
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
   })
@@ -467,13 +486,13 @@ describe('Transcript', () => {
       expect(shown.onEdit).not.toHaveBeenCalled()
       fireEvent.keyDown(editor(), { key: 'Enter' })
 
-      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'B2', null)
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'B2', [])
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
 
     it('stays open with its text when sending fails', async () => {
       const onEdit = vi
-        .fn<(runId: string, text: string, quote: string | null) => Promise<void>>()
+        .fn<(runId: string, text: string, quotes: string[]) => Promise<void>>()
         .mockRejectedValue(new Error('no'))
       show(two(), { onEdit })
       fireEvent.click(screen.getByRole('button', { name: 'Edit message' }))
@@ -502,7 +521,7 @@ describe('Transcript', () => {
       fireEvent.change(editor(), { target: { value: 'A2' } })
       fireEvent.keyDown(editor(), { key: 'Enter' })
 
-      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'A2', null)
+      expect(shown.onEdit).toHaveBeenCalledWith('r1', 'A2', [])
       await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Edit message' })).toBeNull())
     })
 

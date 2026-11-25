@@ -103,7 +103,7 @@ function ChatView(): React.JSX.Element {
       .catch((error: unknown) => console.error('Could not regenerate the answer', error))
   }
 
-  async function edit(runId: string, text: string, quote: string | null): Promise<void> {
+  async function edit(runId: string, text: string, quotes: string[]): Promise<void> {
     if (chatId === undefined) return
     try {
       await startRun({
@@ -112,7 +112,7 @@ function ChatView(): React.JSX.Element {
           chatId,
           text,
           replaceFrom: runId,
-          ...(quote ? { quotes: [quote] } : {})
+          ...(quotes.length > 0 ? { quotes } : {})
         }
       }).unwrap()
     } catch (error) {

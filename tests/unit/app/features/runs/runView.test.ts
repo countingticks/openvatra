@@ -285,13 +285,12 @@ describe('applyRunEvent', () => {
     const item = { kind: 'input', seq: 1, runId: 'r1', time: 0, text: 'A' } as const
     const quote = (t: Transcript): unknown => {
       const found = runView(t).entries.find((e) => e.kind === 'input')
-      return found?.kind === 'input' ? found.quote : undefined
+      return found?.kind === 'input' ? found.quotes : undefined
     }
-    expect(quote({ ...emptyTranscript, items: [{ ...item, quotes: ['q'] }] })).toBe('q')
-    expect(quote({ ...emptyTranscript, items: [{ ...item, quotes: [''] }] })).toBeNull()
-    expect(quote({ ...emptyTranscript, items: [item] })).toBeNull()
-    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: ['q2'] })]))).toBe('q2')
-    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]))).toBeNull()
+    expect(quote({ ...emptyTranscript, items: [{ ...item, quotes: ['q', 'r'] }] })).toEqual(['q', 'r'])
+    expect(quote({ ...emptyTranscript, items: [item] })).toEqual([])
+    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: ['q2'] })]))).toEqual(['q2'])
+    expect(quote(fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]))).toEqual([])
   })
 
   it("a quoted input.received adds the blockquote's tokens to the live estimate", () => {
@@ -301,7 +300,7 @@ describe('applyRunEvent', () => {
     const plain = fold([at({ chatId: 'c1', requestId: 'x', text: 'B' })]).context.used
     const quoted = fold([at({ chatId: 'c1', requestId: 'x', text: 'B', quotes: [long] })]).context.used
     expect(plain).toBe(estimateTokens('B'))
-    expect(quoted).toBe(estimateTokens(quotedInput('B', long)))
+    expect(quoted).toBe(estimateTokens(quotedInput('B', [long])))
     expect(quoted).toBeGreaterThan(plain)
   })
 
@@ -498,8 +497,12 @@ describe('answerState and waitingLine', () => {
 
 describe('quotedInput', () => {
   it('writes each line as a blockquote, an empty line as >, then the text', () => {
-    expect(quotedInput('Explain', 'one\n\ntwo\r\nthree')).toBe('> one\n>\n> two\n> three\n\nExplain')
-    expect(quotedInput('Explain', null)).toBe('Explain')
-    expect(quotedInput('Explain', '')).toBe('Explain')
+    expect(quotedInput('Explain', ['one\n\ntwo\r\nthree'])).toBe('> one\n>\n> two\n> three\n\nExplain')
+    expect(quotedInput('Explain', undefined)).toBe('Explain')
+    expect(quotedInput('Explain', [])).toBe('Explain')
+  })
+
+  it('writes two quotes a blank line apart, then the text', () => {
+    expect(quotedInput('Explain', ['a\nb', 'c'])).toBe('> a\n> b\n\n> c\n\nExplain')
   })
 })
