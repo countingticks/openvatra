@@ -500,80 +500,42 @@ describe('Transcript', () => {
         [run(), run({ id: 'r2' })]
       )
     const rewinds = (): HTMLElement[] => screen.getAllByRole('button', { name: 'Rewind message' })
-    const confirm = (): HTMLElement => screen.getByRole('button', { name: 'Rewind' })
 
-    it('asks first and counts what goes', async () => {
-      show(twoRuns())
-
-      fireEvent.click(rewinds()[0])
-      expect(
-        await screen.findByText(
-          'Remove this message and the 3 after it? Its text goes back in the message box.'
-        )
-      ).toBeInTheDocument()
-      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
-
-      fireEvent.click(rewinds()[1])
-      expect(
-        await screen.findByText(
-          'Remove this message and the one after it? Its text goes back in the message box.'
-        )
-      ).toBeInTheDocument()
-    })
-
-    it('says a message with nothing after it goes alone', async () => {
-      show(
-        transcript(
-          [input(1, 'A')],
-          [run({ state: 'failed', error: { code: 'backend_failed', message: 'It stopped.' } })]
-        )
-      )
-
-      fireEvent.click(rewinds()[0])
-
-      expect(
-        await screen.findByText('Remove this message? Its text goes back in the message box.')
-      ).toBeInTheDocument()
-    })
-
-    it('calls back with the run and closes; Cancel calls nothing', async () => {
+    it('rewinds on the click, with no confirm', async () => {
       const shown = show(twoRuns())
 
       fireEvent.click(rewinds()[1])
-      fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-      expect(shown.onRewind).not.toHaveBeenCalled()
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
 
-      fireEvent.click(rewinds()[1])
-      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
       expect(shown.onRewind).toHaveBeenCalledWith('r2')
-      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(screen.queryByRole('dialog')).toBeNull()
+      await waitFor(() => expect(rewinds()[1]).not.toBeDisabled())
     })
 
-    it('a refused rewind keeps the popover open with the reason', async () => {
-      const onRewind = vi
-        .fn<(runId: string) => Promise<void>>()
-        .mockRejectedValue(new Error('the chat is answering; stop it first'))
+    it('is disabled while its rewind is pending', async () => {
+      let finish = (): void => undefined
+      const onRewind = vi.fn<(runId: string) => Promise<void>>(
+        () => new Promise<void>((resolve) => (finish = resolve))
+      )
       show(twoRuns(), { onRewind })
 
       fireEvent.click(rewinds()[0])
-      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
+      expect(rewinds()[0]).toBeDisabled()
+      fireEvent.click(rewinds()[0])
+      expect(onRewind).toHaveBeenCalledTimes(1)
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('the chat is answering; stop it first')
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-      expect(confirm()).not.toBeDisabled()
+      finish()
+      await waitFor(() => expect(rewinds()[0]).not.toBeDisabled())
     })
 
     it('waits while the chat answers', () => {
       const running = run({ state: 'running' })
-      show(transcript([input(1, 'A'), input(2, 'B')], [running], running))
+      const shown = show(transcript([input(1, 'A'), input(2, 'B')], [running], running))
 
       const rewind = screen.getByRole('button', { name: 'Rewind message' })
       expect(rewind).toHaveAttribute('aria-disabled', 'true')
       expect(rewind).toHaveAttribute('title', 'Stop the answer first')
       fireEvent.click(rewind)
-      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(shown.onRewind).not.toHaveBeenCalled()
     })
 
     it('an input queued into a run has no Rewind', () => {

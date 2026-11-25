@@ -30,7 +30,7 @@ interface TranscriptProps {
    * it could not be sent.
    */
   onEdit(runId: string, text: string): Promise<void>
-  /** Removes this run and every later one and puts its first message in the box; rejects with an Error whose message is shown. */
+  /** Removes this run and every later one and puts its first message in the box; resolves when that is done or failed. */
   onRewind(runId: string): Promise<void>
 }
 
@@ -97,11 +97,7 @@ export function Transcript({
                 </Button>
               )}
               {starters.has(entry.key) && (
-                <RewindButton
-                  after={messagesAfter(view.entries, entry.key)}
-                  blocked={!idle}
-                  onRewind={() => onRewind(entry.runId)}
-                />
+                <RewindButton blocked={!idle} onRewind={() => onRewind(entry.runId)} />
               )}
               <MessageTime time={entry.time} />
             </MessageActions>

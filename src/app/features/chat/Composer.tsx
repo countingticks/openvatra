@@ -16,7 +16,7 @@ interface KeyedState {
 }
 
 export interface ComposerHandle {
-  /** Puts text in chatId's draft, above what is there (decision 25). */
+  /** Replaces chatId's draft with text, discarding what was there (decision 25). */
   fill(chatId: string, text: string): void
 }
 
@@ -95,12 +95,11 @@ export function Composer({
   useImperativeHandle(ref, () => ({
     fill(forChatId, filled) {
       const forKey = draftKey(forChatId)
-      const merge = (draft: string): string => (hasText(draft) ? `${filled}\n\n${draft}` : filled)
       if (forKey !== shownNow.current) {
-        storage.set(forKey, merge(storage.get(forKey) ?? ''))
+        storage.set(forKey, filled)
         return
       }
-      change(merge(storage.get(forKey) ?? ''))
+      change(filled)
       setFocusEnd((n) => n + 1)
     }
   }))

@@ -37,13 +37,13 @@ describe('Composer fill', () => {
     expect(box().selectionEnd).toBe('earlier'.length)
   })
 
-  it('puts the text above a draft, with a blank line', () => {
+  it('replaces a draft, discarding it', () => {
     const { handle, platform } = show({ 'chat.draft:c1': 'later' })
 
     act(() => handle.current?.fill('c1', 'earlier'))
 
-    expect(box()).toHaveValue('earlier\n\nlater')
-    expect(platform.storage.values.get('chat.draft:c1')).toBe('earlier\n\nlater')
+    expect(box()).toHaveValue('earlier')
+    expect(platform.storage.values.get('chat.draft:c1')).toBe('earlier')
   })
 
   it("for another chat changes only that chat's stored draft", () => {
@@ -51,7 +51,7 @@ describe('Composer fill', () => {
 
     act(() => handle.current?.fill('c2', 'x'))
 
-    expect(platform.storage.values.get('chat.draft:c2')).toBe('x\n\ny')
+    expect(platform.storage.values.get('chat.draft:c2')).toBe('x')
     expect(box()).toHaveValue('')
   })
 })

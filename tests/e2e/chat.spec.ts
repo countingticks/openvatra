@@ -133,7 +133,7 @@ test('Copy puts the answer on the clipboard, and deleting the open chat opens a 
   await expect(mainWindow.getByRole('textbox', { name: 'Message' })).toBeFocused()
 })
 
-test('Rewind removes the second turn and puts its text back in the message box', async () => {
+test('Rewind removes the second turn and puts its text in the message box in place of the draft', async () => {
   const box = mainWindow.getByRole('textbox', { name: 'Message' })
   const conversation = mainWindow.getByRole('log', { name: 'Conversation' })
   const copies = conversation.getByRole('button', { name: 'Copy answer' })
@@ -151,8 +151,8 @@ test('Rewind removes the second turn and puts its text back in the message box',
   await box.press('Enter')
   await expect(copies).toHaveCount(2, { timeout: 20_000 })
 
+  await box.fill('half typed')
   await conversation.getByRole('button', { name: 'Rewind message' }).nth(1).click()
-  await mainWindow.getByRole('dialog').getByRole('button', { name: 'Rewind', exact: true }).click()
 
   await expect(conversation.getByText('Second', { exact: true })).toHaveCount(0)
   await expect(copies).toHaveCount(1)

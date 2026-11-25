@@ -690,12 +690,12 @@ describe('ChatScreen', () => {
       )
     })
 
-    it('Rewind posts the run and puts its text in the message box', async () => {
+    it('Rewind posts the run at once and puts its text in the message box, replacing the draft', async () => {
       const { coreHttp } = show({ open: { transcript: done() } })
       coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({ status: 200, body: { seq: 4, text: 'hi' } }))
+      fireEvent.change(message(), { target: { value: 'half typed' } })
 
       fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))
-      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
 
       await waitFor(() =>
         expect(coreWrites(coreHttp)).toContainEqual({
@@ -708,19 +708,19 @@ describe('ChatScreen', () => {
       expect(message()).toHaveFocus()
     })
 
-    it("a refused rewind shows core's message", async () => {
+    it('a refused rewind is logged and leaves the box as it was', async () => {
       const { coreHttp } = show({ open: { transcript: done() } })
       coreHttp.respond('POST', '/api/chats/c1/rewind', () => ({
         status: 409,
         body: { error: 'chat_busy', message: 'the chat is answering; stop it first' }
       }))
-      vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+      fireEvent.change(message(), { target: { value: 'half typed' } })
 
       fireEvent.click(await screen.findByRole('button', { name: 'Rewind message' }))
-      fireEvent.click(await screen.findByRole('button', { name: 'Rewind' }))
 
-      expect(await screen.findByRole('alert')).toHaveTextContent('the chat is answering; stop it first')
-      expect(message()).toHaveValue('')
+      await waitFor(() => expect(logged).toHaveBeenCalledWith('Could not rewind the chat', expect.anything()))
+      expect(message()).toHaveValue('half typed')
     })
 
     it('swaps the old turn for the new one as the events arrive', async () => {

@@ -16,7 +16,6 @@ import { Ember } from '@app/ui/Ember'
 import { OverlayScroll } from '@app/ui/OverlayScroll'
 import { PixelBackdrop } from '@app/ui/PixelBackdrop'
 import { Composer, type ComposerHandle } from './Composer'
-import { sendErrorMessage } from './composerMachine'
 import { ContextPopover } from './ContextPopover'
 import { withLive } from './contextRows'
 import { useAnnouncer } from './useAnnouncer'
@@ -117,7 +116,6 @@ function ChatView(): React.JSX.Element {
       composer.current?.fill(chatId, result.text)
     } catch (error) {
       console.error('Could not rewind the chat', error)
-      throw new Error(sendErrorMessage(error), { cause: error })
     }
   }
 
