@@ -52,6 +52,7 @@ type Config struct {
 type SendInput struct {
 	RequestID, ChatID, Model, Text string
 	Replace                        bool
+	ReplaceFrom                    string // a run id: retract it and every later run, then send Text (required) as a new run
 }
 
 // Service is the chats API over the store, the engine and the config.
@@ -80,10 +81,13 @@ func (s *Service) Send(ctx context.Context, in SendInput) (run.Ref, error) {
 	if in.Replace {
 		bad = (in.Text != "" && bad) || in.ChatID == ""
 	}
+	if in.ReplaceFrom != "" {
+		bad = strings.TrimSpace(in.Text) == "" || utf8.RuneCountInString(in.Text) > maxInputRunes || in.ChatID == "" || in.Replace
+	}
 	if in.RequestID == "" || bad {
 		return run.Ref{}, run.ErrBadInput
 	}
-	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, RequestID: in.RequestID, Replace: in.Replace}
+	spec := run.Spec{ChatID: in.ChatID, Text: in.Text, RequestID: in.RequestID, Replace: in.Replace, ReplaceFrom: in.ReplaceFrom}
 	if in.ChatID != "" {
 		chat, _, err := s.c.Store.Chat(ctx, in.ChatID)
 		if err != nil {

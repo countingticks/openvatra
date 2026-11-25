@@ -70,7 +70,7 @@ var errorTable = []mapped{
 	{provider.ErrNoEmbeddingModel, http.StatusConflict, "no_embedding_model", "no embedding model has been chosen"},
 	{store.ErrNotFound, http.StatusNotFound, "chat_not_found", "no chat with that id"},
 	{run.ErrBadInput, http.StatusBadRequest, "bad_request",
-		"the request id is required; the text 1 to 200,000 characters (optional with replace); a title 1 to 200"},
+		"the request id is required; the text 1 to 200,000 characters (optional with replace); replace and replaceFrom not together; a title 1 to 200"},
 	{run.ErrRunNotFound, http.StatusNotFound, "run_not_found", "no run with that id"},
 	{run.ErrChatBusy, http.StatusConflict, "chat_busy", "the chat is answering; stop it first"},
 	{run.ErrNotInterrupted, http.StatusConflict, "run_not_interrupted", "only a run a restart cut off can be resumed"},

@@ -66,6 +66,14 @@ const injectedRtkApi = api
         query: (queryArg) => ({ url: `/api/chats/${encodeURIComponent(String(queryArg.id))}/messages` }),
         providesTags: ['chats']
       }),
+      rewindChat: build.mutation<RewindChatApiResponse, RewindChatApiArg>({
+        query: (queryArg) => ({
+          url: `/api/chats/${encodeURIComponent(String(queryArg.id))}/rewind`,
+          method: 'POST',
+          body: queryArg.body
+        }),
+        invalidatesTags: ['chats']
+      }),
       getConfig: build.query<GetConfigApiResponse, GetConfigApiArg>({
         query: () => ({ url: `/api/config` }),
         providesTags: ['config']
@@ -280,6 +288,14 @@ export type ExportChatApiArg = {
 export type GetTranscriptApiResponse = /** status 200 OK */ Transcript
 export type GetTranscriptApiArg = {
   id: string
+}
+export type RewindChatApiResponse = /** status 200 OK */ Rewound
+export type RewindChatApiArg = {
+  id: string
+  body: {
+    /** the run to go back to; it and every later run are retracted */
+    runId: string
+  }
 }
 export type GetConfigApiResponse = /** status 200 OK */ ConfigAll
 export type GetConfigApiArg = void
@@ -537,6 +553,12 @@ export type Transcript = {
   items: TranscriptItem[]
   runs: RunSnapshot[]
   seq: number
+}
+export type Rewound = {
+  /** the last turn.retracted's seq */
+  seq: number
+  /** the run's first input, for the message box */
+  text: string
 }
 export type SectionEntry = {
   effective?: any
@@ -993,6 +1015,8 @@ export type StartRun = {
   model?: string
   /** last: retract the chat's last turn and send it again (with text: edited) */
   replace?: 'last'
+  /** a run id: retract that run and every later one, then send text as a new run */
+  replaceFrom?: string
   /** the client's id for this send; the same id again answers the same run */
   requestId: string
   text?: string
@@ -1010,6 +1034,7 @@ export const {
   useUpdateChatMutation,
   useExportChatQuery,
   useGetTranscriptQuery,
+  useRewindChatMutation,
   useGetConfigQuery,
   useGetConfigChatQuery,
   usePutConfigChatMutation,
