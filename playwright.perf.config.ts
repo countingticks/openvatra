@@ -13,5 +13,5 @@ export default defineConfig({
   fullyParallel: false,
   retries: 0,
   outputDir: 'test-results/perf-artifacts',
-  reporter: 'list'
+  reporter: [['list'], ['./tests/perf/reporter.ts']]
 })
