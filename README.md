@@ -43,6 +43,12 @@ The Code and Automations tabs are still placeholders.
 - An NVIDIA GPU with 8 GB+ of VRAM is recommended; 12 GB+ for the larger models
 - 16 GB+ RAM (32 GB recommended) and free disk space for models (10–25 GB each)
 
+## Troubleshooting
+
+- If animations stutter, quit OpenVatra from the tray (a running copy would take over the new start), then start it
+  from PowerShell after `$env:OPENVATRA_PERF = '1'`. Every 30 s `main.log` (Settings → General → Logs) gets a `perf:`
+  line to attach to the bug report.
+
 ## Privacy
 
 Everything runs locally. The only things that reach the internet are web searches you enable and model downloads.
