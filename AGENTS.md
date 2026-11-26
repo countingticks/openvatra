@@ -42,6 +42,7 @@ npm test             # unit and component tests (Vitest)
 npm run check        # format check, typecheck, lint, unit tests, gofmt/go vet/go test; prints only failures
                      # (-- <paths> limits the JS tests; -- --e2e also builds and runs the e2e tests)
 npm run inspect      # print element boxes in the built app as text: npm run inspect -- "<selector>" [--shot]
+npm run perf         # build unminified, run the perf scenarios (tests/perf), print frame times and load as a table
 npm run fetch:llama  # download the pinned llama.cpp build (resources/llama/llama.json) into resources/llama/bin
 npm run build:core   # stop a core running on the default data folder, then go build -C core → resources/core/core.exe
                      # (dev and build run it; needs Go, see core/go.mod)
@@ -84,6 +85,7 @@ tests/unit/      Vitest + Testing Library in jsdom (config: vitest.config.mts, s
                  query by role or label, the way a user finds things — not by class names;
                  tests/unit/app/ mirrors src/app
 tests/e2e/       Playwright; each run gets a temporary user-data folder (testProfile.ts), never the real one
+tests/perf/      perf scenarios run by `npm run perf` (Playwright, own config); they measure and print, never assert
 resources/llama/ pinned llama.cpp release (llama.json, licence); the Vulkan build is fetched into bin/ (git-ignored)
 vendor/          git submodules (Open WebUI); never edit files here
 ```

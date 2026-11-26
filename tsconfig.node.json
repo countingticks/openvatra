@@ -4,10 +4,12 @@
     "electron.vite.config.*",
     "vitest.config.*",
     "playwright.config.*",
+    "playwright.perf.config.*",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*",
     "tests/e2e/**/*",
+    "tests/perf/**/*",
     "tests/unit/main/**/*"
   ],
   "compilerOptions": {
