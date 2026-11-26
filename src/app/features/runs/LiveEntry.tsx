@@ -35,6 +35,7 @@ export function LiveEntry({
   return (
     <AnswerBlock
       text={live.text}
+      live
       reasoning={live.reasoning}
       thinkingLabel={live.text === '' ? 'Thinking…' : thoughtLabel(Math.max(1, thoughtMs ?? 0))}
     />
