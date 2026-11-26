@@ -10,6 +10,7 @@ import { createConfigClient } from './core/configClient'
 import { createHost, type Host } from './core/host'
 import { registerIpc } from './ipc'
 import { log, logsFolder, setUpLogging } from './logger'
+import { startPerfLog } from './perfLog'
 import { applySecurityPolicy } from './security'
 import { loadSettings, logLoadOutcome } from './settings'
 import { createSettingsService } from './settingsService'
@@ -187,7 +188,22 @@ function start(): void {
     })
 
     mainWindow = createMainWindow(appUrl, store, !wasStartedAtLogin(process.argv))
-    mainWindow.on('closed', () => (mainWindow = null))
+    const webContents = mainWindow.webContents
+    // Before core.start(): the listener must exist before the first load finishes.
+    const stopPerfLog = startPerfLog({
+      env: process.env,
+      page: {
+        run: (code) => webContents.executeJavaScript(code),
+        onLoad: (listener) => webContents.on('did-finish-load', listener),
+        isDestroyed: () => webContents.isDestroyed()
+      },
+      appMetrics: () => app.getAppMetrics(),
+      log
+    })
+    mainWindow.on('closed', () => {
+      mainWindow = null
+      stopPerfLog()
+    })
 
     core.start()
 
