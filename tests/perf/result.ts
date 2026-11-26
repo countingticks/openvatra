@@ -1,7 +1,7 @@
 import type { PerfSnapshot } from '../../src/shared/perfProbe'
 
 export type ScenarioName =
-  'idle' | 'stream' | 'stream-cpu' | 'stream-nogpu' | 'stream-still' | 'real' | 'real-nogpu'
+  'idle' | 'stream' | 'stream-cpu' | 'stream-nogpu' | 'stream-still' | 'stream-long' | 'real' | 'real-nogpu'
 
 export interface Averages {
   renderer: number // % of one core, Electron 'Tab' processes summed
