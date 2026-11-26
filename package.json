@@ -34,7 +34,8 @@
     "test:e2e": "npm run fetch:llama && electron-vite build && playwright test",
     "postinstall": "install-electron && electron-builder install-app-deps",
     "check": "node scripts/check.mjs",
-    "inspect": "node scripts/inspect.mjs"
+    "inspect": "node scripts/inspect.mjs",
+    "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
     "@electron-toolkit/utils": "^4.0.0",

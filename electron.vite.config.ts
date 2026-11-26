@@ -13,6 +13,8 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [react(), tailwindcss()]
+    plugins: [react(), tailwindcss()],
+    // `npm run perf` reads function names in the profiler's output; a minified bundle has none.
+    ...(process.env.PERF_BUILD === '1' ? { build: { minify: false } } : {})
   }
 })
