@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode"
 )
 
 func main() {
@@ -37,6 +38,7 @@ func main() {
 	exitCode := flag.Int("exit", -1, "exit immediately with this code (>= 0)")
 	// Chat answers; the environment variables let e2e set them through core, which starts us without cmd.Env.
 	reply := flag.String("reply", envOr("FAKE_SERVER_REPLY", "Hello from the fake model."), "the answer to a chat")
+	replyFile := flag.String("reply-file", os.Getenv("FAKE_SERVER_REPLY_FILE"), "read the answer from this file (wins over --reply)")
 	reasoning := flag.String("reasoning", os.Getenv("FAKE_SERVER_REASONING"), "thinking sent before the answer")
 	delayText := flag.String("token-delay", envOr("FAKE_SERVER_TOKEN_DELAY", "0"), "wait before every chunk (a Go duration)")
 	flag.Parse()
@@ -44,6 +46,15 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fake-server: bad --token-delay %q: %v\n", *delayText, err)
 		os.Exit(2)
+	}
+
+	if *replyFile != "" {
+		data, err := os.ReadFile(*replyFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fake-server: reading --reply-file: %v\n", err)
+			os.Exit(2)
+		}
+		*reply = string(data)
 	}
 
 	if *exitCode >= 0 {
@@ -93,14 +104,11 @@ func main() {
 			return true
 		}
 		words := func(field, text string, limit int) (int, bool) {
-			ws := strings.Fields(text)
+			ws := chunks(text)
 			if limit > 0 && len(ws) > limit {
 				ws = ws[:limit]
 			}
-			for i, word := range ws {
-				if i < len(ws)-1 {
-					word += " "
-				}
+			for _, word := range ws {
 				b, _ := json.Marshal(word)
 				if !frame(fmt.Sprintf(`{"choices":[{"delta":{%q:%s}}]}`, field, b)) {
 					return 0, false
@@ -142,4 +150,26 @@ func envOr(name, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// chunks splits text into runs of non-whitespace, each with the whitespace right after it; whitespace before the
+// first word leads the first chunk. Joined, they give the text back byte for byte.
+func chunks(text string) []string {
+	var out []string
+	start, seenWord, prevSpace := 0, false, false
+	for i, r := range text {
+		space := unicode.IsSpace(r)
+		if !space && prevSpace && seenWord {
+			out = append(out, text[start:i])
+			start = i
+		}
+		if !space {
+			seenWord = true
+		}
+		prevSpace = space
+	}
+	if seenWord {
+		out = append(out, text[start:])
+	}
+	return out
 }

@@ -2,6 +2,7 @@ package llamacpp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -144,8 +145,54 @@ func TestFakeServerStreamsAnswers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !slices.Equal(text, []string{"a ", "b"}) || len(reasoning) != 3 {
+		if !slices.Equal(text, []string{"a ", "b "}) || len(reasoning) != 3 {
 			t.Fatalf("text %q, reasoning %q", text, reasoning)
+		}
+	})
+
+	t.Run("the reply keeps its newlines and spaces", func(t *testing.T) {
+		reply := "  # T\n\n- a\n- b\n\n```go\nx := 1\n```\n"
+		base := startFake(t, "--reply", reply)
+		var got []string
+		s, err := readFake(context.Background(), t, base, func(d provider.Delta) { got = append(got, d.Text) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(got, "") != reply {
+			t.Fatalf("joined %q, want %q", strings.Join(got, ""), reply)
+		}
+		if s.usage == nil || s.usage.CompletionTokens != len(got) {
+			t.Fatalf("usage %+v for %d deltas", s.usage, len(got))
+		}
+	})
+
+	t.Run("a reply file is streamed as written", func(t *testing.T) {
+		text := "First paragraph,\n  indented line.\n\nSecond paragraph.\n"
+		path := filepath.Join(t.TempDir(), "reply.md")
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		base := startFake(t, "--reply-file", path, "--reply", "other")
+		var got []string
+		if _, err := readFake(context.Background(), t, base, func(d provider.Delta) { got = append(got, d.Text) }); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(got, "") != text {
+			t.Fatalf("joined %q, want %q", strings.Join(got, ""), text)
+		}
+	})
+
+	t.Run("an unreadable reply file exits with 2", func(t *testing.T) {
+		cmd := exec.Command(builtFake(t), "--reply-file", filepath.Join(t.TempDir(), "missing.md"))
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+			t.Fatalf("err %v", err)
+		}
+		if !strings.Contains(stderr.String(), "reading --reply-file") {
+			t.Fatalf("stderr %q", stderr.String())
 		}
 	})
 
