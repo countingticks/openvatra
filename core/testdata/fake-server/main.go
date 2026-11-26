@@ -9,7 +9,11 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unicode"
 )
@@ -41,7 +45,21 @@ func main() {
 	replyFile := flag.String("reply-file", os.Getenv("FAKE_SERVER_REPLY_FILE"), "read the answer from this file (wins over --reply)")
 	reasoning := flag.String("reasoning", os.Getenv("FAKE_SERVER_REASONING"), "thinking sent before the answer")
 	delayText := flag.String("token-delay", envOr("FAKE_SERVER_TOKEN_DELAY", "0"), "wait before every chunk (a Go duration)")
+	burnDefault, burnErr := burnEnv()
+	burnCPU := flag.Int("burn-cpu", burnDefault, "spin this many cores while a chat streams (-1 = every logical CPU, 0 = off)")
 	flag.Parse()
+	if burnErr != nil || *burnCPU < -1 {
+		value := fmt.Sprint(*burnCPU)
+		if burnErr != nil {
+			value = os.Getenv("FAKE_SERVER_BURN_CPU")
+		}
+		fmt.Fprintf(os.Stderr, "fake-server: bad --burn-cpu %s\n", value)
+		os.Exit(2)
+	}
+	if *burnCPU == -1 {
+		*burnCPU = runtime.NumCPU()
+	}
+	burn := &burner{n: *burnCPU}
 	tokenDelay, err := time.ParseDuration(*delayText)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fake-server: bad --token-delay %q: %v\n", *delayText, err)
@@ -70,6 +88,9 @@ func main() {
 		}
 		fmt.Fprint(w, `{"status":"ok"}`)
 	})
+	mux.HandleFunc("GET /debug/burn", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"workers":%d}`, burn.workers.Load())
+	})
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"object":"list","data":[]}`)
 	})
@@ -79,6 +100,8 @@ func main() {
 			http.Error(w, `{"error":{"message":"body is not JSON"}}`, http.StatusBadRequest)
 			return
 		}
+		burn.enter()
+		defer burn.leave()
 		// Like a real server, max_tokens caps the answer; thinking doesn't count here, so a title call stays short.
 		var opts struct {
 			MaxTokens int `json:"max_tokens"`
@@ -172,4 +195,65 @@ func chunks(text string) []string {
 		out = append(out, text[start:])
 	}
 	return out
+}
+
+// burnEnv reads FAKE_SERVER_BURN_CPU: unset or empty is 0.
+func burnEnv() (int, error) {
+	v := os.Getenv("FAKE_SERVER_BURN_CPU")
+	if v == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(v)
+}
+
+// burner keeps n cores busy while at least one chat stream is active, to measure the UI on a loaded machine.
+type burner struct {
+	n       int
+	workers atomic.Int32 // spinning right now; reads 0 only once every worker has really returned
+	mu      sync.Mutex
+	active  int
+	stop    chan struct{}
+}
+
+func (b *burner) enter() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.active++
+	if b.active != 1 || b.n == 0 {
+		return
+	}
+	b.stop = make(chan struct{})
+	for range b.n {
+		go b.spin(b.stop)
+	}
+}
+
+func (b *burner) leave() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.active--
+	if b.active == 0 && b.stop != nil {
+		close(b.stop)
+		b.stop = nil
+	}
+}
+
+func (b *burner) spin(stop chan struct{}) {
+	runtime.LockOSThread()
+	b.workers.Add(1)
+	defer b.workers.Add(-1)
+	x := uint64(1)
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		for range 100000 {
+			x = x*6364136223846793005 + 1442695040888963407
+		}
+		if x == 0 {
+			return // keeps the loop from being optimised away
+		}
+	}
 }
