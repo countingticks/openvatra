@@ -86,33 +86,38 @@ describe('installPerfProbe', () => {
     })
   })
 
-  it('sums long-frame blocking time and groups scripts by file and function', () => {
+  it('long frames sum their blocking time and group scripts by file and function', () => {
     const browser = stubBrowser()
     installPerfProbe()
-    const script = (name: string, ms: number, sourceURL = 'http://x/app.js'): object => ({
-      sourceFunctionName: name,
-      sourceURL,
-      duration: ms
-    })
     browser.emit('long-animation-frame', [
-      loaf(60.4, [script('render', 30, 'http://x/app.js?v=2#h'), script('render', 20)]),
-      loaf(40.4, [{ invoker: 'IMG#logo.onload', duration: 5 }, { duration: 1 }]),
-      loaf(
-        0,
-        Array.from({ length: 10 }, (_, i) => script(`f${i}`, 100 + i))
-      )
+      loaf(60.4, [
+        { sourceFunctionName: 'render', sourceURL: 'http://x/app.js?v=2#h', duration: 30 },
+        { sourceFunctionName: 'render', sourceURL: 'http://x/app.js', duration: 20 }
+      ]),
+      loaf(40.4, [{ invoker: 'IMG#logo.onload', duration: 5 }, { duration: 1 }])
     ])
     const { loaf: result } = window.__perf!.snapshot()
-    expect(result.count).toBe(3)
+    expect(result.count).toBe(2)
     expect(result.blockingMs).toBe(101)
-    expect(result.top).toHaveLength(8)
-    expect(result.top.map((t) => t.source)).toEqual(
+    expect(result.top).toEqual([
+      { source: 'app.js:render', ms: 50, count: 2 },
+      { source: 'IMG#logo.onload', ms: 5, count: 1 },
+      { source: '(anonymous)', ms: 1, count: 1 }
+    ])
+  })
+
+  it('keeps the 8 slowest labels in order', () => {
+    const browser = stubBrowser()
+    installPerfProbe()
+    const scripts = Array.from({ length: 10 }, (_, i) => ({
+      sourceFunctionName: `f${i}`,
+      sourceURL: 'http://x/app.js',
+      duration: 100 + i
+    }))
+    browser.emit('long-animation-frame', [loaf(0, scripts)])
+    expect(window.__perf!.snapshot().loaf.top.map((t) => t.source)).toEqual(
       ['f9', 'f8', 'f7', 'f6', 'f5', 'f4', 'f3', 'f2'].map((n) => `app.js:${n}`)
     )
-    const grouped = installAndGroup()
-    expect(grouped).toContainEqual({ source: 'app.js:render', ms: 50, count: 2 })
-    expect(grouped).toContainEqual({ source: 'IMG#logo.onload', ms: 5, count: 1 })
-    expect(grouped).toContainEqual({ source: '(anonymous)', ms: 1, count: 1 })
   })
 
   it('counts long tasks and keeps loaf at zero when only longtask is supported', () => {
@@ -155,19 +160,3 @@ describe('installPerfProbe', () => {
     expect(window.__perf!.snapshot().frames.count).toBe(2)
   })
 })
-
-// The "top 8" cut hides small groups, so the grouping check reads a fresh probe with only a few labels.
-function installAndGroup(): { source: string; ms: number; count: number }[] {
-  delete window.__perf
-  const browser = stubBrowser()
-  installPerfProbe()
-  browser.emit('long-animation-frame', [
-    loaf(0, [
-      { sourceFunctionName: 'render', sourceURL: 'http://x/app.js?v=2#h', duration: 30 },
-      { sourceFunctionName: 'render', sourceURL: 'http://x/app.js', duration: 20 },
-      { invoker: 'IMG#logo.onload', duration: 5 },
-      { duration: 1 }
-    ])
-  ])
-  return window.__perf!.snapshot().loaf.top
-}
