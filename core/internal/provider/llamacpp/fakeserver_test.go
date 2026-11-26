@@ -2,6 +2,8 @@ package llamacpp
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -144,8 +146,54 @@ func TestFakeServerStreamsAnswers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !slices.Equal(text, []string{"a ", "b"}) || len(reasoning) != 3 {
+		if !slices.Equal(text, []string{"a ", "b "}) || len(reasoning) != 3 {
 			t.Fatalf("text %q, reasoning %q", text, reasoning)
+		}
+	})
+
+	t.Run("the reply keeps its newlines and spaces", func(t *testing.T) {
+		reply := "  # T\n\n- a\n- b\n\n```go\nx := 1\n```\n"
+		base := startFake(t, "--reply", reply)
+		var got []string
+		s, err := readFake(context.Background(), t, base, func(d provider.Delta) { got = append(got, d.Text) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(got, "") != reply {
+			t.Fatalf("joined %q, want %q", strings.Join(got, ""), reply)
+		}
+		if s.usage == nil || s.usage.CompletionTokens != len(got) {
+			t.Fatalf("usage %+v for %d deltas", s.usage, len(got))
+		}
+	})
+
+	t.Run("a reply file is streamed as written", func(t *testing.T) {
+		text := "First paragraph,\n  indented line.\n\nSecond paragraph.\n"
+		path := filepath.Join(t.TempDir(), "reply.md")
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		base := startFake(t, "--reply-file", path, "--reply", "other")
+		var got []string
+		if _, err := readFake(context.Background(), t, base, func(d provider.Delta) { got = append(got, d.Text) }); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Join(got, "") != text {
+			t.Fatalf("joined %q, want %q", strings.Join(got, ""), text)
+		}
+	})
+
+	t.Run("an unreadable reply file exits with 2", func(t *testing.T) {
+		cmd := exec.Command(builtFake(t), "--reply-file", filepath.Join(t.TempDir(), "missing.md"))
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		err := cmd.Run()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+			t.Fatalf("err %v", err)
+		}
+		if !strings.Contains(stderr.String(), "reading --reply-file") {
+			t.Fatalf("stderr %q", stderr.String())
 		}
 	})
 
@@ -174,6 +222,112 @@ func TestFakeServerStreamsAnswers(t *testing.T) {
 		case <-done:
 		case <-time.After(time.Second):
 			t.Fatal("read did not return after the context was cancelled")
+		}
+	})
+}
+
+// burnWorkers asks the fake how many burn workers are spinning right now.
+func burnWorkers(t *testing.T, base string) int {
+	t.Helper()
+	resp, err := http.Get(base + "/debug/burn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Workers int `json:"workers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	return out.Workers
+}
+
+// waitWorkers polls until the worker count is want, or fails after 3 s.
+func waitWorkers(t *testing.T, base string, want int) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		got := burnWorkers(t, base)
+		if got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("workers %d, want %d", got, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestFakeServerBurnsCPU(t *testing.T) {
+	streamInBackground := func(base string) (done chan struct{}) {
+		done = make(chan struct{})
+		go func() {
+			defer close(done)
+			readFake(context.Background(), t, base, func(provider.Delta) {})
+		}()
+		return done
+	}
+
+	t.Run("-burn-cpu 2 runs two workers while it streams and none after", func(t *testing.T) {
+		base := startFake(t, "--burn-cpu", "2", "--token-delay", "100ms", "--reply", "a b c d e f")
+		done := streamInBackground(base)
+		waitWorkers(t, base, 2)
+		<-done
+		waitWorkers(t, base, 0)
+	})
+
+	t.Run("-1 runs one worker per logical CPU", func(t *testing.T) {
+		base := startFake(t, "--burn-cpu", "-1", "--token-delay", "100ms", "--reply", "a b c d e f")
+		done := streamInBackground(base)
+		waitWorkers(t, base, runtime.NumCPU())
+		<-done
+	})
+
+	t.Run("0 never burns", func(t *testing.T) {
+		base := startFake(t, "--burn-cpu", "0", "--token-delay", "50ms", "--reply", "a b c d")
+		first := make(chan struct{}, 1)
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			readFake(context.Background(), t, base, func(provider.Delta) {
+				select {
+				case first <- struct{}{}:
+				default:
+				}
+			})
+		}()
+		<-first
+		if got := burnWorkers(t, base); got != 0 {
+			t.Fatalf("workers %d mid-stream", got)
+		}
+		<-done
+		if got := burnWorkers(t, base); got != 0 {
+			t.Fatalf("workers %d after", got)
+		}
+	})
+
+	t.Run("a cancelled stream stops the burn", func(t *testing.T) {
+		base := startFake(t, "--burn-cpu", "2", "--token-delay", "100ms", "--reply", "a b c d e f g h")
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		readFake(ctx, t, base, func(provider.Delta) { cancel() })
+		waitWorkers(t, base, 0)
+	})
+
+	t.Run("FAKE_SERVER_BURN_CPU sets the default", func(t *testing.T) {
+		t.Setenv("FAKE_SERVER_BURN_CPU", "1")
+		base := startFake(t, "--token-delay", "100ms", "--reply", "a b c d e f")
+		done := streamInBackground(base)
+		waitWorkers(t, base, 1)
+		<-done
+	})
+
+	t.Run("a bad value exits with 2", func(t *testing.T) {
+		err := exec.Command(builtFake(t), "--burn-cpu", "-2").Run()
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+			t.Fatalf("err %v", err)
 		}
 	})
 }

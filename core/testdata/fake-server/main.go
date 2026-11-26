@@ -9,8 +9,13 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
+	"unicode"
 )
 
 func main() {
@@ -37,13 +42,37 @@ func main() {
 	exitCode := flag.Int("exit", -1, "exit immediately with this code (>= 0)")
 	// Chat answers; the environment variables let e2e set them through core, which starts us without cmd.Env.
 	reply := flag.String("reply", envOr("FAKE_SERVER_REPLY", "Hello from the fake model."), "the answer to a chat")
+	replyFile := flag.String("reply-file", os.Getenv("FAKE_SERVER_REPLY_FILE"), "read the answer from this file (wins over --reply)")
 	reasoning := flag.String("reasoning", os.Getenv("FAKE_SERVER_REASONING"), "thinking sent before the answer")
 	delayText := flag.String("token-delay", envOr("FAKE_SERVER_TOKEN_DELAY", "0"), "wait before every chunk (a Go duration)")
+	burnDefault, burnErr := burnEnv()
+	burnCPU := flag.Int("burn-cpu", burnDefault, "spin this many cores while a chat streams (-1 = every logical CPU, 0 = off)")
 	flag.Parse()
+	if burnErr != nil || *burnCPU < -1 {
+		value := fmt.Sprint(*burnCPU)
+		if burnErr != nil {
+			value = os.Getenv("FAKE_SERVER_BURN_CPU")
+		}
+		fmt.Fprintf(os.Stderr, "fake-server: bad --burn-cpu %s\n", value)
+		os.Exit(2)
+	}
+	if *burnCPU == -1 {
+		*burnCPU = runtime.NumCPU()
+	}
+	burn := &burner{n: *burnCPU}
 	tokenDelay, err := time.ParseDuration(*delayText)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "fake-server: bad --token-delay %q: %v\n", *delayText, err)
 		os.Exit(2)
+	}
+
+	if *replyFile != "" {
+		data, err := os.ReadFile(*replyFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fake-server: reading --reply-file: %v\n", err)
+			os.Exit(2)
+		}
+		*reply = string(data)
 	}
 
 	if *exitCode >= 0 {
@@ -59,6 +88,9 @@ func main() {
 		}
 		fmt.Fprint(w, `{"status":"ok"}`)
 	})
+	mux.HandleFunc("GET /debug/burn", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"workers":%d}`, burn.workers.Load())
+	})
 	mux.HandleFunc("GET /v1/models", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"object":"list","data":[]}`)
 	})
@@ -68,6 +100,8 @@ func main() {
 			http.Error(w, `{"error":{"message":"body is not JSON"}}`, http.StatusBadRequest)
 			return
 		}
+		burn.enter()
+		defer burn.leave()
 		// Like a real server, max_tokens caps the answer; thinking doesn't count here, so a title call stays short.
 		var opts struct {
 			MaxTokens int `json:"max_tokens"`
@@ -93,14 +127,11 @@ func main() {
 			return true
 		}
 		words := func(field, text string, limit int) (int, bool) {
-			ws := strings.Fields(text)
+			ws := chunks(text)
 			if limit > 0 && len(ws) > limit {
 				ws = ws[:limit]
 			}
-			for i, word := range ws {
-				if i < len(ws)-1 {
-					word += " "
-				}
+			for _, word := range ws {
 				b, _ := json.Marshal(word)
 				if !frame(fmt.Sprintf(`{"choices":[{"delta":{%q:%s}}]}`, field, b)) {
 					return 0, false
@@ -142,4 +173,87 @@ func envOr(name, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// chunks splits text into runs of non-whitespace, each with the whitespace right after it; whitespace before the
+// first word leads the first chunk. Joined, they give the text back byte for byte.
+func chunks(text string) []string {
+	var out []string
+	start, seenWord, prevSpace := 0, false, false
+	for i, r := range text {
+		space := unicode.IsSpace(r)
+		if !space && prevSpace && seenWord {
+			out = append(out, text[start:i])
+			start = i
+		}
+		if !space {
+			seenWord = true
+		}
+		prevSpace = space
+	}
+	if seenWord {
+		out = append(out, text[start:])
+	}
+	return out
+}
+
+// burnEnv reads FAKE_SERVER_BURN_CPU: unset or empty is 0.
+func burnEnv() (int, error) {
+	v := os.Getenv("FAKE_SERVER_BURN_CPU")
+	if v == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(v)
+}
+
+// burner keeps n cores busy while at least one chat stream is active, to measure the UI on a loaded machine.
+type burner struct {
+	n       int
+	workers atomic.Int32 // spinning right now; reads 0 only once every worker has really returned
+	mu      sync.Mutex
+	active  int
+	stop    chan struct{}
+}
+
+func (b *burner) enter() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.active++
+	if b.active != 1 || b.n == 0 {
+		return
+	}
+	b.stop = make(chan struct{})
+	for range b.n {
+		go b.spin(b.stop)
+	}
+}
+
+func (b *burner) leave() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.active--
+	if b.active == 0 && b.stop != nil {
+		close(b.stop)
+		b.stop = nil
+	}
+}
+
+func (b *burner) spin(stop chan struct{}) {
+	runtime.LockOSThread()
+	b.workers.Add(1)
+	defer b.workers.Add(-1)
+	x := uint64(1)
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		for range 100000 {
+			x = x*6364136223846793005 + 1442695040888963407
+		}
+		if x == 0 {
+			return // keeps the loop from being optimised away
+		}
+	}
 }
