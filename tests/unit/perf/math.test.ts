@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { averageOf, cpuBusyPercent, parseTypeperf, type CpuTimes } from '../../perf/math'
+import { averageOf, cpuBusyPercent, modelIdOf, parseTypeperf, type CpuTimes } from '../../perf/math'
 import type { Averages } from '../../perf/result'
 
 const times = (busy: number, idle: number): CpuTimes => ({ user: busy, nice: 0, sys: 0, idle, irq: 0 })
@@ -78,5 +78,18 @@ describe('averageOf', () => {
       gpu3d: null,
       compute: null
     })
+  })
+})
+
+describe('modelIdOf', () => {
+  it('drops the folder and the .gguf extension', () => {
+    expect(modelIdOf('D:\\m\\Qwen3-8B-Q4_K_M.gguf')).toBe('Qwen3-8B-Q4_K_M')
+  })
+
+  it.each([
+    ['D:\\m\\Qwen3-8B-Q4_K_M-00001-of-00003.gguf', 'Qwen3-8B-Q4_K_M'],
+    ['/models/Model-Q8_0.GGUF', 'Model-Q8_0']
+  ])('gives the bare stem for %s', (path, id) => {
+    expect(modelIdOf(path)).toBe(id)
   })
 })

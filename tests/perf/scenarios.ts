@@ -86,3 +86,10 @@ export function selectScenarios(names: string[]): Scenario[] {
   }
   return names.length === 0 ? [...scenarios] : scenarios.filter((s) => names.includes(s.name))
 }
+
+/** What the real-model scenarios send: asks for a long, markdown-heavy answer to stream for the whole window. */
+export const realPrompt =
+  'Write a detailed guide of about 1,500 words on keeping a small web service fast and reliable. ' +
+  'Use several headings, a numbered list of steps with sub-points, a table comparing at least five techniques ' +
+  '(columns: technique, benefit, cost), and two short code blocks, one in TypeScript and one in Go. ' +
+  'Do not stop early and do not ask questions; write the whole guide.'

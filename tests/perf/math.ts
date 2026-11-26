@@ -74,3 +74,9 @@ export function averageOf(samples: Averages[]): Averages {
     compute: meanOrNull((s) => s.compute)
   }
 }
+
+/** core's model id for a GGUF path: the file stem without .gguf (any case) and without a -NNNNN-of-NNNNN part. */
+export function modelIdOf(path: string): string {
+  const file = path.split(/[\\/]/).pop() ?? path
+  return file.replace(/\.gguf$/i, '').replace(/-\d{5}-of-\d{5}$/, '')
+}
