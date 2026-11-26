@@ -5,6 +5,7 @@ import { join, resolve } from 'path'
 import { promisify } from 'util'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { installPerfProbe } from '../../src/shared/perfProbe'
+import { settingsSchemaVersion } from '../../src/shared/settings'
 import { ggufHeader } from '../e2e/ggufHeader'
 import { appArgs, createUserDataDir, removeUserDataDir, seedCoreModels } from '../e2e/testProfile'
 import type { ScenarioResult } from './result'
@@ -41,7 +42,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 /** "The answer has started": the conversation grew by at least 20 characters past the user's message. */
 async function waitForAnswerStart(page: Page, timeoutMs: number): Promise<void> {
   const conversation = page.getByRole('log', { name: 'Conversation' })
-  await expect(conversation.getByText('Hello', { exact: true })).toBeVisible()
+  await expect(conversation.getByText('Hello', { exact: true })).toBeVisible({ timeout: timeoutMs })
   const base = (await conversation.innerText()).length
   try {
     await expect
@@ -54,8 +55,14 @@ async function waitForAnswerStart(page: Page, timeoutMs: number): Promise<void> 
 
 async function runFake(scenario: Scenario): Promise<ScenarioResult> {
   const dir = await createUserDataDir()
+  if (scenario.motionOff) {
+    await writeFile(
+      join(dir, 'settings.json'),
+      JSON.stringify({ schemaVersion: settingsSchemaVersion, motion: 'off' })
+    )
+  }
   const app = await electron.launch({
-    args: appArgs(dir),
+    args: scenario.disableGpu ? ['--disable-gpu', ...appArgs(dir)] : appArgs(dir),
     env: {
       ...process.env,
       FAKE_SERVER_REPLY_FILE: answerFile,
@@ -65,7 +72,7 @@ async function runFake(scenario: Scenario): Promise<ScenarioResult> {
   })
   try {
     const page = await app.firstWindow()
-    await seedCoreModels(dir, { llamaServerPath: fakeServer, modelsDir })
+    await seedCoreModels(dir, { llamaServerPath: fakeServer, modelsDir, lastModel: 'tiny' })
     await expect
       .poll(
         () =>
@@ -73,6 +80,9 @@ async function runFake(scenario: Scenario): Promise<ScenarioResult> {
         { timeout: 20_000 }
       )
       .toBe('ready')
+    // The chat reads the model list and last model once at start: reload so it sees what was seeded.
+    await page.reload()
+    await page.getByRole('textbox', { name: 'Message' }).waitFor()
     await page.evaluate(installPerfProbe)
 
     const message = page.getByRole('textbox', { name: 'Message' })
@@ -109,7 +119,7 @@ async function runFake(scenario: Scenario): Promise<ScenarioResult> {
 
 for (const scenario of selected) {
   test(scenario.name, async () => {
-    test.skip(scenario.name !== 'idle', 'not implemented yet')
+    test.skip(scenario.model === 'real', 'real-model scenarios are not implemented yet')
     test.setTimeout((60 + durationS) * 1000)
     const result = await runFake(scenario)
     await mkdir(resultsDir, { recursive: true })

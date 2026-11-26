@@ -20,14 +20,10 @@ export async function removeUserDataDir(userDataDir: string): Promise<void> {
 }
 
 /**
- * Points core at a fake llama-server and / or a models folder: settings.json no longer carries model settings, and the
- * engine path can only be set with the shell token, so this reads it from the test's own (temporary) core.json and
- * waits for core to be up. Never use it on a real profile.
+ * Waits (30 s) for core.json and a 200 from core, and returns the shell's port and token. Reads the test's own
+ * (temporary) core.json: never use it on a real profile.
  */
-export async function seedCoreModels(
-  userDataDir: string,
-  seed: { llamaServerPath?: string; modelsDir?: string }
-): Promise<void> {
+export async function waitForCore(userDataDir: string): Promise<{ port: number; token: string }> {
   const deadline = Date.now() + 30_000
   let discovery: { port: number; token: string } | undefined
   while (!discovery) {
@@ -48,9 +44,26 @@ export async function seedCoreModels(
       await new Promise((resolve) => setTimeout(resolve, 200))
     }
   }
-  const { port, token } = discovery
+  return discovery
+}
+
+/**
+ * Points core at a fake llama-server and / or a models folder: settings.json no longer carries model settings, and the
+ * engine path can only be set with the shell token, so this reads it from the test's own (temporary) core.json and
+ * waits for core to be up. Never use it on a real profile.
+ */
+export async function seedCoreModels(
+  userDataDir: string,
+  seed: {
+    llamaServerPath?: string
+    modelsDir?: string
+    lastModel?: string
+    placement?: { model: string; placement: string }
+  }
+): Promise<void> {
+  const { port, token } = await waitForCore(userDataDir)
   const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
-  const set = async (section: string, change: Record<string, string>): Promise<void> => {
+  const set = async (section: string, change: Record<string, unknown>): Promise<void> => {
     const url = `http://127.0.0.1:${port}/api/config/${section}`
     const current = (await (await fetch(url, { headers })).json()) as { rev: number; value: object }
     const body = JSON.stringify({ rev: current.rev, value: { ...current.value, ...change } })
@@ -58,5 +71,13 @@ export async function seedCoreModels(
     if (!response.ok) throw new Error(`${section} was refused: ${await response.text()}`)
   }
   if (seed.llamaServerPath) await set('engine.llamaserver', { path: seed.llamaServerPath })
-  if (seed.modelsDir) await set('provider.llamacpp', { modelsDir: seed.modelsDir })
+  if (seed.modelsDir || seed.placement) {
+    await set('provider.llamacpp', {
+      ...(seed.modelsDir ? { modelsDir: seed.modelsDir } : {}),
+      ...(seed.placement
+        ? { options: { [seed.placement.model]: { placement: seed.placement.placement } } }
+        : {})
+    })
+  }
+  if (seed.lastModel) await set('chat', { lastModel: seed.lastModel })
 }
