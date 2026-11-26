@@ -13,7 +13,7 @@ export interface Scenario {
 export const scenarios: readonly Scenario[] = [
   {
     name: 'idle',
-    isolates: 'the app at rest: backdrop and compositing only',
+    isolates: 'Backdrop and Ember alone',
     model: 'fake',
     tokenDelay: '0',
     burnCpu: 0,
@@ -22,7 +22,7 @@ export const scenarios: readonly Scenario[] = [
   },
   {
     name: 'stream',
-    isolates: 'rendering a streamed markdown answer',
+    isolates: 'Renderer cost (suspect 1)',
     model: 'fake',
     tokenDelay: '20ms',
     burnCpu: 0,
@@ -31,7 +31,7 @@ export const scenarios: readonly Scenario[] = [
   },
   {
     name: 'stream-cpu',
-    isolates: 'streaming while the machine is busy (CPU contention)',
+    isolates: 'CPU contention (suspect 2)',
     model: 'fake',
     tokenDelay: '20ms',
     burnCpu: -1,
@@ -40,7 +40,7 @@ export const scenarios: readonly Scenario[] = [
   },
   {
     name: 'stream-nogpu',
-    isolates: 'streaming under load with software compositing',
+    isolates: 'Whether software compositing helps',
     model: 'fake',
     tokenDelay: '20ms',
     burnCpu: -1,
@@ -49,7 +49,7 @@ export const scenarios: readonly Scenario[] = [
   },
   {
     name: 'stream-still',
-    isolates: 'streaming with motion off (no backdrop animation)',
+    isolates: 'Renderer cost without backdrop and Ember',
     model: 'fake',
     tokenDelay: '20ms',
     burnCpu: 0,
@@ -58,7 +58,7 @@ export const scenarios: readonly Scenario[] = [
   },
   {
     name: 'real',
-    isolates: 'a real model streaming (GPU and CPU shared with llama-server)',
+    isolates: 'All suspects, as the owner sees it',
     model: 'real',
     tokenDelay: '0',
     burnCpu: 0,
@@ -67,7 +67,7 @@ export const scenarios: readonly Scenario[] = [
   },
   {
     name: 'real-nogpu',
-    isolates: 'a real model with software compositing',
+    isolates: 'GPU contention (suspect 3)',
     model: 'real',
     tokenDelay: '0',
     burnCpu: 0,

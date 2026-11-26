@@ -18,6 +18,7 @@ let placement = ''
 let duration = 15
 let trace = false
 let build = true
+let matrix = false
 let problem = ''
 for (let i = 0; i < args.length && !problem; i++) {
   const arg = args[i]
@@ -26,7 +27,7 @@ for (let i = 0; i < args.length && !problem; i++) {
     process.exit(0)
   } else if (arg === '--trace') trace = true
   else if (arg === '--no-build') build = false
-  else if (arg === '--matrix') names.length = 0
+  else if (arg === '--matrix') matrix = true
   else if (['--scenario', '--model', '--placement', '--duration'].includes(arg)) {
     const value = args[++i]
     if (value === undefined || value.startsWith('--')) problem = `${arg} needs a value`
@@ -68,7 +69,7 @@ const run = spawnSync('npx playwright test -c playwright.perf.config.ts', {
   stdio: 'inherit',
   env: {
     ...process.env,
-    PERF_SCENARIOS: names.join(','),
+    PERF_SCENARIOS: matrix ? '' : names.join(','),
     PERF_MODEL: model,
     PERF_PLACEMENT: placement,
     PERF_DURATION: String(duration),
