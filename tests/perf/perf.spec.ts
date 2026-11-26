@@ -8,7 +8,9 @@ import { installPerfProbe } from '../../src/shared/perfProbe'
 import { settingsSchemaVersion } from '../../src/shared/settings'
 import { ggufHeader } from '../e2e/ggufHeader'
 import { appArgs, createUserDataDir, removeUserDataDir, seedCoreModels } from '../e2e/testProfile'
-import type { ScenarioResult } from './result'
+import { averageOf } from './math'
+import type { Averages, ScenarioResult } from './result'
+import { sampleApp, sampleCpu, sampleGpu, type Sampler } from './samplers'
 import { selectScenarios, type Scenario } from './scenarios'
 
 const run = promisify(execFile)
@@ -53,6 +55,25 @@ async function waitForAnswerStart(page: Page, timeoutMs: number): Promise<void> 
   }
 }
 
+type AppLoad = Pick<Averages, 'renderer' | 'gpuProcess' | 'browser'>
+type GpuLoad = { gpu3d: number; compute: number }
+
+/** One sample per tick index, as long as the shortest series; GPU fields are null when typeperf gave nothing. */
+function zipSamples(
+  appSeries: AppLoad[],
+  cpuSeries: number[],
+  gpuSeries: GpuLoad[]
+): ScenarioResult['samples'] {
+  const length = Math.min(appSeries.length, cpuSeries.length, gpuSeries.length || Infinity)
+  return Array.from({ length }, (_, t) => ({
+    t: t + 1,
+    ...appSeries[t],
+    cpu: cpuSeries[t],
+    gpu3d: gpuSeries.length ? gpuSeries[t].gpu3d : null,
+    compute: gpuSeries.length ? gpuSeries[t].compute : null
+  }))
+}
+
 async function runFake(scenario: Scenario): Promise<ScenarioResult> {
   const dir = await createUserDataDir()
   if (scenario.motionOff) {
@@ -70,6 +91,7 @@ async function runFake(scenario: Scenario): Promise<ScenarioResult> {
       FAKE_SERVER_BURN_CPU: String(scenario.burnCpu)
     }
   })
+  let samplers: { app: Sampler<AppLoad>; cpu: Sampler<number>; gpu: Sampler<GpuLoad> } | undefined
   try {
     const page = await app.firstWindow()
     await seedCoreModels(dir, { llamaServerPath: fakeServer, modelsDir, lastModel: 'tiny' })
@@ -96,8 +118,17 @@ async function runFake(scenario: Scenario): Promise<ScenarioResult> {
     await sleep(2000)
 
     await page.evaluate(() => window.__perf?.reset())
+    samplers = { app: sampleApp(app), cpu: sampleCpu(), gpu: sampleGpu() }
     await sleep(durationS * 1000)
     const probe = await page.evaluate(() => window.__perf!.snapshot())
+    const stopped = samplers
+    samplers = undefined
+    const [appSeries, cpuSeries, gpuSeries] = await Promise.all([
+      stopped.app.stop(),
+      stopped.cpu.stop(),
+      stopped.gpu.stop()
+    ])
+    const samples = zipSamples(appSeries, cpuSeries, gpuSeries)
     const streamEnded = (await page.getByRole('button', { name: 'Copy answer' }).count()) > 0
     const gpuCompositing = await app.evaluate(({ app: electronApp }) => {
       return String(electronApp.getGPUFeatureStatus().gpu_compositing)
@@ -106,12 +137,14 @@ async function runFake(scenario: Scenario): Promise<ScenarioResult> {
       scenario: scenario.name,
       durationS,
       probe,
-      averages: null,
-      samples: [],
+      averages: averageOf(samples),
+      samples,
       streamEnded,
       gpuCompositing
     }
   } finally {
+    // A failed scenario must not leave typeperf running.
+    if (samplers) await Promise.all([samplers.app.stop(), samplers.cpu.stop(), samplers.gpu.stop()])
     await app.close().catch(() => undefined)
     await removeUserDataDir(dir)
   }
