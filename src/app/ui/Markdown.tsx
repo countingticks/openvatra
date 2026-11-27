@@ -89,6 +89,26 @@ const rehypePlugins = [rehypeHighlight]
 // Stable identity so a memoized chunk with an open fence still skips re-renders.
 const noPlugins: NonNullable<Options['rehypePlugins']> = []
 
+// The parsed output of recent finished answers. Parsing a long answer takes hundreds of milliseconds; the output is
+// a pure function of the text (plugins and components never change), so reopening a chat reuses it.
+const parsedLimit = 32
+const parsed = new Map<string, ReactElement>()
+
+function parsedAnswer(text: string): ReactElement {
+  const hit = parsed.get(text)
+  if (hit) {
+    // Most recently used goes last, so the oldest is first to go.
+    parsed.delete(text)
+    parsed.set(text, hit)
+    return hit
+  }
+  // react-markdown's sync Markdown is a plain function (no hooks), so its element tree can be kept and reused.
+  const element = ReactMarkdown({ children: text, remarkPlugins, rehypePlugins, components })
+  parsed.set(text, element)
+  if (parsed.size > parsedLimit) parsed.delete(parsed.keys().next().value as string)
+  return element
+}
+
 /** One live chunk: finished chunks keep their props, so memo skips them. */
 const Chunk = memo(function Chunk({
   text,
@@ -122,13 +142,7 @@ export const Markdown = memo(function Markdown({
   live?: boolean
 }): React.JSX.Element {
   if (!live) {
-    return (
-      <div className="break-words">
-        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-          {text}
-        </ReactMarkdown>
-      </div>
-    )
+    return <div className="break-words">{parsedAnswer(text)}</div>
   }
   const chunks = splitLive(text)
   const last = chunks.length - 1

@@ -84,6 +84,7 @@ function show(
     modelLoading?: boolean
     onEdit?: Mock<(runId: string, text: string, quotes: Quote[]) => Promise<void>>
     onRewind?: Mock<(runId: string) => Promise<void>>
+    scroller?: React.RefObject<HTMLElement | null>
   } = {}
 ): Shown {
   const onContinue = vi.fn<(runId: string) => void>()
@@ -103,6 +104,7 @@ function show(
       onRegenerate={onRegenerate}
       onEdit={onEdit}
       onRewind={onRewind}
+      scroller={options.scroller}
     />
   )
   const push = (event: Event): void => {
@@ -647,5 +649,85 @@ describe('Transcript', () => {
 
       expect(rewinds()).toHaveLength(1)
     })
+  })
+})
+
+describe('Transcript of a long chat', () => {
+  // Eight turns of about 3,000 characters each: the window holds three of them.
+  const turns = Array.from({ length: 8 }, (_, index) => index + 1)
+  const long = transcript(
+    turns.flatMap((n) => [
+      input(n * 2 - 1, `Question ${n}`, `r${n}`),
+      answer(n * 2, { parts: [{ kind: 'text', text: `Answer ${n} ` + 'word '.repeat(600) }] }, `r${n}`)
+    ]),
+    turns.map((n) => run({ id: `r${n}`, seq: n * 2 }))
+  )
+  const questions = (): string[] =>
+    screen.queryAllByText(/^Question \d$/).map((bubble) => bubble.textContent ?? '')
+
+  let nearTop = (): void => {}
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(private readonly callback: IntersectionObserverCallback) {}
+        observe(): void {
+          nearTop = () =>
+            act(() => this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as never))
+        }
+        disconnect = vi.fn()
+        unobserve = vi.fn()
+        takeRecords(): IntersectionObserverEntry[] {
+          return []
+        }
+      }
+    )
+  })
+
+  it('renders only its latest turns at first', () => {
+    show(long)
+
+    expect(questions()).toEqual(['Question 6', 'Question 7', 'Question 8'])
+  })
+
+  it('mounts the turns before them near the top, keeping the distance from the end', () => {
+    // Each rendered turn is 500px tall; the reader is 300px down from the top.
+    const box = document.createElement('div')
+    let top = 300
+    Object.defineProperty(box, 'scrollHeight', { get: () => questions().length * 500 })
+    Object.defineProperty(box, 'scrollTop', { get: () => top, set: (value: number) => (top = value) })
+    show(long, { scroller: { current: box } })
+
+    nearTop()
+
+    expect(questions()).toEqual([
+      'Question 3',
+      'Question 4',
+      'Question 5',
+      'Question 6',
+      'Question 7',
+      'Question 8'
+    ])
+    // 1,200px from the end before, so 1,800px down in the taller content.
+    expect(top).toBe(1800)
+    nearTop()
+    expect(questions()).toHaveLength(8)
+  })
+
+  it('edits an earlier message once it is shown', () => {
+    show(long)
+    nearTop()
+
+    const bubble = screen.getByText('Question 4').closest('.flex-col') as HTMLElement
+    fireEvent.click(within(bubble).getByRole('button', { name: 'Edit message' }))
+
+    expect(screen.getByRole('textbox', { name: 'Edit message' })).toHaveValue('Question 4')
+  })
+
+  it('renders everything where nothing could load more', () => {
+    vi.stubGlobal('IntersectionObserver', undefined)
+    show(long)
+
+    expect(questions()).toHaveLength(8)
   })
 })

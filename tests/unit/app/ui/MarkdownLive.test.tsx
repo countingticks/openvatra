@@ -11,7 +11,7 @@ vi.mock('react-markdown', async (importOriginal) => {
     ...real,
     default: (props: React.ComponentProps<typeof Real>) => {
       seen.children.push(String(props.children))
-      return <Real {...props} />
+      return Real(props)
     }
   }
 })
@@ -24,5 +24,13 @@ describe('Markdown live', () => {
     rerender(<Markdown live text={'one\n\ntwo\n\nthree\nmore'} />)
 
     expect(seen.children).toEqual(['three\nmore'])
+  })
+
+  it('parses a finished answer once, even when it mounts again', () => {
+    seen.children.length = 0
+    render(<Markdown text="Reopened answer" />).unmount()
+    render(<Markdown text="Reopened answer" />)
+
+    expect(seen.children).toEqual(['Reopened answer'])
   })
 })
