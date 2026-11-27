@@ -1,6 +1,6 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { dirname, join, resolve } from 'path'
 import { promisify } from 'util'
@@ -18,7 +18,7 @@ import {
 import { averageOf, modelIdOf } from './math'
 import type { Averages, ScenarioResult } from './result'
 import { sampleApp, sampleCpu, sampleGpu, type Sampler } from './samplers'
-import { realPrompt, selectScenarios, type Scenario } from './scenarios'
+import { longReply, realPrompt, selectScenarios, type Scenario } from './scenarios'
 
 const run = promisify(execFile)
 
@@ -32,6 +32,7 @@ const answerFile = resolve('tests', 'perf', 'fixtures', 'answer.md')
 const bundledLlamaServer = resolve('resources', 'llama', 'bin', 'llama-server.exe')
 
 let workDir: string
+let longAnswerFile: string
 let fakeServer: string
 let modelsDir: string
 
@@ -42,6 +43,8 @@ test.beforeAll(async () => {
   modelsDir = join(workDir, 'models')
   await mkdir(modelsDir)
   await writeFile(join(modelsDir, 'tiny.gguf'), ggufHeader('llama'))
+  longAnswerFile = join(workDir, 'answer-long.md')
+  await writeFile(longAnswerFile, longReply(await readFile(answerFile, 'utf8')))
 })
 
 test.afterAll(async () => {
@@ -145,7 +148,7 @@ async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
       ? undefined
       : {
           ...(process.env as Record<string, string>),
-          FAKE_SERVER_REPLY_FILE: answerFile,
+          FAKE_SERVER_REPLY_FILE: scenario.reply === 'long' ? longAnswerFile : answerFile,
           FAKE_SERVER_TOKEN_DELAY: scenario.tokenDelay,
           FAKE_SERVER_BURN_CPU: String(scenario.burnCpu)
         }
@@ -219,7 +222,7 @@ async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
         cause: error
       })
     }
-    await sleep(2000)
+    await sleep(scenario.warmupS * 1000)
 
     const tracePath = join(resultsDir, `${scenario.name}.trace.json`)
     if (trace) {

@@ -8,6 +8,8 @@ export interface Scenario {
   burnCpu: number // FAKE_SERVER_BURN_CPU
   disableGpu: boolean
   motionOff: boolean
+  reply: 'answer' | 'long' // which fixture the fake server streams
+  warmupS: number // seconds between the answer starting and the measured window
 }
 
 export const scenarios: readonly Scenario[] = [
@@ -18,7 +20,9 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '0',
     burnCpu: 0,
     disableGpu: false,
-    motionOff: false
+    motionOff: false,
+    reply: 'answer',
+    warmupS: 2
   },
   {
     name: 'stream',
@@ -27,7 +31,9 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '20ms',
     burnCpu: 0,
     disableGpu: false,
-    motionOff: false
+    motionOff: false,
+    reply: 'answer',
+    warmupS: 2
   },
   {
     name: 'stream-cpu',
@@ -36,7 +42,9 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '20ms',
     burnCpu: -1,
     disableGpu: false,
-    motionOff: false
+    motionOff: false,
+    reply: 'answer',
+    warmupS: 2
   },
   {
     name: 'stream-nogpu',
@@ -45,7 +53,9 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '20ms',
     burnCpu: -1,
     disableGpu: true,
-    motionOff: false
+    motionOff: false,
+    reply: 'answer',
+    warmupS: 2
   },
   {
     name: 'stream-still',
@@ -54,7 +64,20 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '20ms',
     burnCpu: 0,
     disableGpu: false,
-    motionOff: true
+    motionOff: true,
+    reply: 'answer',
+    warmupS: 2
+  },
+  {
+    name: 'stream-long',
+    isolates: 'Renderer cost late in a long answer (suspect 1)',
+    model: 'fake',
+    tokenDelay: '1ms',
+    burnCpu: 0,
+    disableGpu: false,
+    motionOff: false,
+    reply: 'long',
+    warmupS: 10
   },
   {
     name: 'real',
@@ -63,7 +86,9 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '0',
     burnCpu: 0,
     disableGpu: false,
-    motionOff: false
+    motionOff: false,
+    reply: 'answer',
+    warmupS: 2
   },
   {
     name: 'real-nogpu',
@@ -72,7 +97,9 @@ export const scenarios: readonly Scenario[] = [
     tokenDelay: '0',
     burnCpu: 0,
     disableGpu: true,
-    motionOff: false
+    motionOff: false,
+    reply: 'answer',
+    warmupS: 2
   }
 ]
 
@@ -93,3 +120,8 @@ export const realPrompt =
   'Use several headings, a numbered list of steps with sub-points, a table comparing at least five techniques ' +
   '(columns: technique, benefit, cost), and two short code blocks, one in TypeScript and one in Go. ' +
   'Do not stop early and do not ask questions; write the whole guide.'
+
+/** The answer fixture repeated 20 times, so the window measures a long answer. */
+export function longReply(text: string): string {
+  return Array<string>(20).fill(text).join('\n\n')
+}

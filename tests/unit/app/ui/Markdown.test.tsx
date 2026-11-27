@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Markdown } from '@app/ui/Markdown'
@@ -64,5 +65,33 @@ describe('Markdown', () => {
 
     expect(screen.getByRole('link', { name: 'cat' })).toHaveAttribute('href', 'https://example.com/c.png')
     expect(container.querySelector('img')).toBeNull()
+  })
+
+  describe('live', () => {
+    it('shows an open code fence as plain text, still labelled and copyable', () => {
+      render(<Markdown live text={'```ts\nconst a = 1\n'} />)
+
+      expect(screen.getByText('const a = 1')).toBeInTheDocument()
+      expect(screen.getByText('ts')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Copy code' })).toBeInTheDocument()
+    })
+
+    it('highlights the fence once it is closed', () => {
+      render(<Markdown live text={'```ts\nconst a = 1\n```\n'} />)
+
+      expect(screen.queryByText('const a = 1')).toBeNull()
+      expect(screen.getByText('const')).toBeInTheDocument()
+    })
+
+    it('renders the same HTML as the full render for a finished answer', () => {
+      const text = readFileSync('tests/perf/fixtures/answer.md', 'utf8')
+      const flat = (html: string): string => html.replace(/>\n</g, '><')
+      const full = render(<Markdown text={text} />)
+      const fullHtml = flat(full.container.innerHTML)
+      full.unmount()
+      const live = render(<Markdown live text={text} />)
+
+      expect(flat(live.container.innerHTML)).toBe(fullHtml)
+    })
   })
 })

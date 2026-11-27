@@ -6,7 +6,9 @@ import {
   useRewindChatMutation,
   useStartRunMutation,
   useStopRunMutation,
-  type Quote
+  type ContextUse,
+  type Quote,
+  type RunSnapshot
 } from '@app/core/generated'
 import { ModelButton, WelcomeCard } from '@app/features/models'
 import { answerState, Transcript, useLiveAnswer, useRunView, type RunView } from '@app/features/runs'
@@ -37,6 +39,31 @@ function Announcer({ view }: { view: RunView | null }): React.JSX.Element {
   )
 }
 
+// The live answer changes every frame: only these two read it, so the transcript does not re-render with it.
+function LiveEmber({
+  activeRun,
+  hasLiveEntry
+}: {
+  activeRun: RunSnapshot | null
+  hasLiveEntry: boolean
+}): React.JSX.Element {
+  const live = useLiveAnswer(activeRun?.id)
+  return <Ember state={answerState(activeRun, live, hasLiveEntry)} scale={2} />
+}
+
+function LiveContextPopover({
+  context,
+  activeRun
+}: {
+  context: ContextUse | null
+  activeRun: RunSnapshot | null
+}): React.JSX.Element {
+  const live = useLiveAnswer(activeRun?.id)
+  return (
+    <ContextPopover context={context && activeRun?.state === 'running' ? withLive(context, live) : context} />
+  )
+}
+
 /** The Chat tab: one chat's transcript and its message box. The welcome card replaces it while no chat model is installed. */
 export function ChatScreen({ showWelcome }: { showWelcome: boolean }): React.JSX.Element {
   const dispatch = useAppDispatch()
@@ -62,7 +89,6 @@ function ChatView(): React.JSX.Element {
   const { currentData: chat } = useGetChatQuery({ id: chatId ?? '' }, { skip: chatId === undefined })
   const { model, loading, pick } = useChatModel(chatId)
   const activeRun = view?.activeRun ?? null
-  const live = useLiveAnswer(activeRun?.id)
   const answering = activeRun !== null && (activeRun.state === 'queued' || activeRun.state === 'running')
   const hasLiveEntry = view?.entries.some((entry) => entry.kind === 'live') ?? false
   const [startRun] = useStartRunMutation()
@@ -199,7 +225,7 @@ function ChatView(): React.JSX.Element {
         <div className="px-7 pb-4">
           <div className="relative mx-auto w-full max-w-[720px]">
             <div className="absolute -top-[30px] left-[18px]">
-              <Ember state={answerState(activeRun, live, hasLiveEntry)} scale={2} />
+              <LiveEmber activeRun={activeRun} hasLiveEntry={hasLiveEntry} />
             </div>
             <Composer
               ref={composer}
@@ -210,9 +236,7 @@ function ChatView(): React.JSX.Element {
               footer={
                 <div className="flex items-center justify-end gap-1 px-1.5">
                   <ModelButton model={model} onPick={pick} />
-                  <ContextPopover
-                    context={context && activeRun?.state === 'running' ? withLive(context, live) : context}
-                  />
+                  <LiveContextPopover context={context} activeRun={activeRun} />
                 </div>
               }
             />

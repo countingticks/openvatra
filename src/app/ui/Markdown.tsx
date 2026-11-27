@@ -1,8 +1,9 @@
-import { useRef, type ComponentProps, type ReactElement, type ReactNode } from 'react'
-import ReactMarkdown, { type Components } from 'react-markdown'
+import { memo, useRef, type ComponentProps, type ReactElement, type ReactNode } from 'react'
+import ReactMarkdown, { type Components, type Options } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import { CopyButton } from '@app/ui/CopyButton'
+import { endsInOpenFence, splitLive } from '@app/ui/splitLive'
 
 // Only http(s) leaves the app (main enforces the same); anything else is shown as plain text.
 const isWebUrl = (url: string | undefined): url is string => !!url && /^https?:\/\//i.test(url)
@@ -85,14 +86,57 @@ const components: Components = {
 const remarkPlugins = [remarkGfm]
 // Raw HTML is deliberately not enabled (no rehype-raw): react-markdown then shows `<script>` as plain text.
 const rehypePlugins = [rehypeHighlight]
+// Stable identity so a memoized chunk with an open fence still skips re-renders.
+const noPlugins: NonNullable<Options['rehypePlugins']> = []
 
-/** Renders an answer's markdown. Untrusted model text in, safe React elements out; typography is the caller's. */
-export function Markdown({ text }: { text: string }): React.JSX.Element {
+/** One live chunk: finished chunks keep their props, so memo skips them. */
+const Chunk = memo(function Chunk({
+  text,
+  highlight
+}: {
+  text: string
+  highlight: boolean
+}): React.JSX.Element {
+  return (
+    <ReactMarkdown
+      remarkPlugins={remarkPlugins}
+      rehypePlugins={highlight ? rehypePlugins : noPlugins}
+      components={components}
+    >
+      {text}
+    </ReactMarkdown>
+  )
+})
+
+/**
+ * Renders an answer's markdown. Untrusted model text in, safe React elements out; typography is the caller's.
+ * `live` is for a growing answer: it is cut at safe breaks so only the last chunk re-parses, and a code fence
+ * is highlighted once it closes.
+ */
+// Memoized: a finished answer re-parses only when its text changes, not when the chat around it re-renders.
+export const Markdown = memo(function Markdown({
+  text,
+  live = false
+}: {
+  text: string
+  live?: boolean
+}): React.JSX.Element {
+  if (!live) {
+    return (
+      <div className="break-words">
+        <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
+          {text}
+        </ReactMarkdown>
+      </div>
+    )
+  }
+  const chunks = splitLive(text)
+  const last = chunks.length - 1
   return (
     <div className="break-words">
-      <ReactMarkdown remarkPlugins={remarkPlugins} rehypePlugins={rehypePlugins} components={components}>
-        {text}
-      </ReactMarkdown>
+      {chunks.map((chunk, i) => (
+        <Chunk key={i} text={chunk} highlight={!(i === last && endsInOpenFence(chunk))} />
+      ))}
     </div>
   )
-}
+})

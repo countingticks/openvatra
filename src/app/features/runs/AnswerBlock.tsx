@@ -8,6 +8,7 @@ export function AnswerBlock({
   reasoning,
   thinkingLabel,
   quotable = false,
+  live = false,
   children
 }: {
   text: string
@@ -15,6 +16,8 @@ export function AnswerBlock({
   thinkingLabel: string
   /** The text can be quoted from a selection (a finished answer; the live one cannot). */
   quotable?: boolean
+  /** The text is still growing: render it in memoized chunks. Never set together with `quotable`. */
+  live?: boolean
   children?: ReactNode
 }): React.JSX.Element {
   return (
@@ -26,7 +29,7 @@ export function AnswerBlock({
             <Markdown text={text} />
           </div>
         ) : (
-          <Markdown text={text} />
+          <Markdown text={text} live={live} />
         ))}
       {children}
     </div>

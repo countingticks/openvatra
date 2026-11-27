@@ -177,6 +177,20 @@ describe('Transcript', () => {
     expect(screen.getByText('Hello there')).toBeInTheDocument()
   })
 
+  it('renders a live answer with its list in one piece and an open code block as plain text', () => {
+    const { push } = show(
+      transcript([input(1, 'Hi')], [run({ state: 'running' })], run({ state: 'running' }))
+    )
+
+    push(frame('message.delta', { text: '## Steps\n\n1. one\n\n2. two\n\n', n: 1 }))
+    push(frame('message.delta', { text: '```ts\nconst a = 1\n', n: 2 }))
+
+    expect(screen.getByRole('heading', { name: 'Steps' })).toBeInTheDocument()
+    expect(screen.getAllByRole('list')).toHaveLength(1)
+    expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByText('const a = 1')).toBeInTheDocument()
+  })
+
   it('says why a live answer has not started: the lease, or the model loading', () => {
     const active = run({ state: 'queued' })
     const { push, unmount } = show(transcript([input(1, 'Hi')], [active], active))
