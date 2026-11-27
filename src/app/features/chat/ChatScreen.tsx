@@ -208,7 +208,10 @@ function ChatView(): React.JSX.Element {
           {/* Always there: useFollowEnd watches this one element grow. */}
           <div>
             {view !== null && (
+              // Keyed by chat: another chat opens at its latest messages again.
               <Transcript
+                key={chatId ?? 'new'}
+                scroller={scroller}
                 view={view}
                 model={model ?? ''}
                 modelLoading={loading}

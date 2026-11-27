@@ -25,7 +25,7 @@ vi.mock('react-markdown', async (importOriginal) => {
     ...real,
     default: (props: React.ComponentProps<typeof Real>) => {
       parsed.texts.push(String(props.children))
-      return <Real {...props} />
+      return Real(props)
     }
   }
 })
@@ -1030,5 +1030,64 @@ describe('ChatScreen', () => {
 
       expect(reply.style.left).toBe(`${(wide.left + wide.right) / 2 - layerLeft}px`)
     })
+  })
+})
+
+describe('ChatScreen with a long chat', () => {
+  let nearTop = (): void => {}
+  beforeEach(() => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(private readonly callback: IntersectionObserverCallback) {}
+        observe(): void {
+          nearTop = () =>
+            act(() => this.callback([{ isIntersecting: true } as IntersectionObserverEntry], this as never))
+        }
+        disconnect = vi.fn()
+        unobserve = vi.fn()
+        takeRecords(): IntersectionObserverEntry[] {
+          return []
+        }
+      }
+    )
+  })
+
+  it('opens another chat, and this one again, at its latest turns', async () => {
+    // Eight turns of about 3,000 characters each: the window holds the last three.
+    const turns = Array.from({ length: 8 }, (_, index) => index + 1)
+    const { coreHttp, store } = show({
+      open: {
+        transcript: transcript({
+          seq: 16,
+          items: turns.flatMap((n) => [
+            { ...input(n * 2 - 1, `Question ${n}`), runId: `r${n}` },
+            { ...answer(n * 2, `Answer ${n} ` + 'word '.repeat(600)), runId: `r${n}` }
+          ]),
+          runs: turns.map((n) => run({ id: `r${n}`, seq: n * 2 }))
+        })
+      }
+    })
+    await within(conversation()).findByText('Question 8')
+    expect(screen.queryByText('Question 5')).not.toBeInTheDocument()
+    nearTop()
+    expect(screen.getByText('Question 3')).toBeInTheDocument()
+
+    coreHttp.answer('/api/chats/c2', {
+      seq: 0,
+      chat: { id: 'c2', title: 'Second chat', titleSource: 'auto', model: 'tiny', updatedAt: 0 }
+    })
+    coreHttp.answer('/api/chats/c2/messages', transcript({ seq: 1, items: [input(1, 'other question')] }))
+    act(() => {
+      store.dispatch(navigated({ tab: 'chat', chatId: 'c2' }))
+    })
+    await within(conversation()).findByText('other question')
+    act(() => {
+      store.dispatch(navigated({ tab: 'chat', chatId: 'c1' }))
+    })
+
+    await within(conversation()).findByText('Question 8')
+    expect(screen.getByText('Question 6')).toBeInTheDocument()
+    expect(screen.queryByText('Question 5')).not.toBeInTheDocument()
   })
 })
