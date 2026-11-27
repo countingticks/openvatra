@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Pencil } from 'lucide-react'
 import type { Quote } from '@app/core/generated'
 import { cn } from '@app/lib/utils'
@@ -14,6 +14,7 @@ import { MessageTime } from './MessageTime'
 import { QuoteBlock } from './QuoteBlock'
 import { RewindButton } from './RewindButton'
 import { firstInputs, messagesAfter, type RunView, type TranscriptEntry } from './runView'
+import { batchStart } from './transcriptWindow'
 
 // Failures the model settings can fix (decision 20).
 const settingsFixes = new Set(['model_not_found', 'model_load_failed', 'context_too_small'])
@@ -34,7 +35,12 @@ interface TranscriptProps {
   onEdit(runId: string, text: string, quotes: Quote[]): Promise<void>
   /** Removes this run and every later one and puts its first message in the box; resolves when that is done or failed. */
   onRewind(runId: string): Promise<void>
+  /** The element the transcript scrolls in: earlier entries mount as it nears the top, keeping the reader's place. */
+  scroller?: React.RefObject<HTMLElement | null>
 }
+
+/** How far above the view the first rendered entry may be before the batch before it mounts. */
+const preload = '1200px 0px 0px 0px'
 
 const joined = (entry: Extract<TranscriptEntry, { kind: 'answer' }>, kind: 'text' | 'reasoning'): string =>
   entry.parts
@@ -51,9 +57,11 @@ export function Transcript({
   onOpenModelSettings,
   onRegenerate,
   onEdit,
-  onRewind
+  onRewind,
+  scroller
 }: TranscriptProps): React.JSX.Element {
   const [editing, setEditing] = useState<string | null>(null)
+  const { start, sentinel } = useWindow(view.entries, scroller)
   // Only the last turn can be regenerated, and nothing is redone while a run is at work.
   const last = view.entries.at(-1)
   const idle = view.activeRun === null
@@ -185,10 +193,65 @@ export function Transcript({
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6">
-      {view.entries.map((entry) => (
-        <div key={entry.key}>{render(entry)}</div>
-      ))}
-    </div>
+    <>
+      {start > 0 && <div ref={sentinel} aria-hidden />}
+      <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6">
+        {view.entries.slice(start).map((entry) => (
+          <div key={entry.key}>{render(entry)}</div>
+        ))}
+      </div>
+    </>
   )
+}
+
+// Outside the hook: the element is the caller's, the hook only scrolls it.
+function keepFromEnd(el: HTMLElement, distance: number): void {
+  el.scrollTop = el.scrollHeight - distance
+}
+
+/**
+ * Renders a long chat from its end: the latest batch first, the one before it each time the reader scrolls near
+ * the top. The first rendered entry is kept by key, so new turns and edits at the end leave the window's top
+ * where it is. Without IntersectionObserver nothing could load more, so everything renders.
+ */
+function useWindow(
+  entries: TranscriptEntry[],
+  scroller: React.RefObject<HTMLElement | null> | undefined
+): { start: number; sentinel: React.RefObject<HTMLDivElement | null> } {
+  const windowed = typeof IntersectionObserver !== 'undefined'
+  const [firstKey, setFirstKey] = useState<string | null>(null)
+  const found = firstKey === null ? -1 : entries.findIndex((entry) => entry.key === firstKey)
+  // Not set yet, or its entry is gone (rewound): start from the latest batch again.
+  const start = !windowed ? 0 : found >= 0 ? found : batchStart(entries, entries.length)
+  const startKey = entries[start]?.key ?? null
+  if (windowed && startKey !== firstKey) setFirstKey(startKey)
+
+  const sentinel = useRef<HTMLDivElement>(null)
+  // The distance from the content's end to the view's top, taken before a batch mounts above, restored after.
+  const fromEnd = useRef<number | null>(null)
+
+  useLayoutEffect(() => {
+    const el = scroller?.current
+    if (fromEnd.current === null || !el) return
+    keepFromEnd(el, fromEnd.current)
+    fromEnd.current = null
+  }, [start, scroller])
+
+  useEffect(() => {
+    const target = sentinel.current
+    if (!target || !windowed) return
+    const observer = new IntersectionObserver(
+      (seen) => {
+        if (!seen.some((entry) => entry.isIntersecting)) return
+        const el = scroller?.current
+        if (el) fromEnd.current = el.scrollHeight - el.scrollTop
+        setFirstKey(entries[batchStart(entries, start)].key)
+      },
+      { root: scroller?.current ?? null, rootMargin: preload }
+    )
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [entries, start, scroller, windowed])
+
+  return { start, sentinel }
 }
