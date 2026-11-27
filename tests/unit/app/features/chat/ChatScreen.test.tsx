@@ -16,6 +16,20 @@ import { navigated, selectCanGoBack, selectRoute } from '@app/store/uiSlice'
 import { coreWrites } from '../../../fakeCoreHttp'
 import { renderWithStore } from '../../../renderWithStore'
 
+// Records each markdown parse, so a test can tell which answers re-rendered.
+const parsed = vi.hoisted(() => ({ texts: [] as string[] }))
+vi.mock('react-markdown', async (importOriginal) => {
+  const real = await importOriginal<typeof import('react-markdown')>()
+  const Real = real.default
+  return {
+    ...real,
+    default: (props: React.ComponentProps<typeof Real>) => {
+      parsed.texts.push(String(props.children))
+      return <Real {...props} />
+    }
+  }
+})
+
 const model = (id: string, overrides: Partial<ModelInfo> = {}): ModelInfo => ({
   id,
   state: 'stopped',
@@ -521,6 +535,31 @@ describe('ChatScreen', () => {
       nextFrame()
       expect(screen.getByRole('img', { name: 'Ember, streaming' })).toBeInTheDocument()
     })
+  })
+
+  it('does not parse a finished answer again while the next one streams', async () => {
+    const running = run({ state: 'running' })
+    const { push } = show({
+      open: {
+        transcript: transcript({
+          seq: 3,
+          items: [input(1, 'hi'), answer(2, 'Earlier answer'), input(3, 'again')],
+          runs: [running],
+          activeRun: running
+        })
+      }
+    })
+    await screen.findByText('Earlier answer')
+    await push(event('run.started', 4, { chatId: 'c1' }))
+    parsed.texts.length = 0
+
+    for (const [n, text] of ['One', ' two', ' three'].entries()) {
+      await push(event('message.delta', undefined, { text, n: n + 1 }))
+      nextFrame()
+    }
+
+    await waitFor(() => expect(screen.getByText('One two three')).toBeInTheDocument())
+    expect(parsed.texts).not.toContain('Earlier answer')
   })
 
   it('picks the model of a new chat, and the first send uses it', async () => {

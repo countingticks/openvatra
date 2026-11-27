@@ -113,7 +113,14 @@ const Chunk = memo(function Chunk({
  * `live` is for a growing answer: it is cut at safe breaks so only the last chunk re-parses, and a code fence
  * is highlighted once it closes.
  */
-export function Markdown({ text, live = false }: { text: string; live?: boolean }): React.JSX.Element {
+// Memoized: a finished answer re-parses only when its text changes, not when the chat around it re-renders.
+export const Markdown = memo(function Markdown({
+  text,
+  live = false
+}: {
+  text: string
+  live?: boolean
+}): React.JSX.Element {
   if (!live) {
     return (
       <div className="break-words">
@@ -132,4 +139,4 @@ export function Markdown({ text, live = false }: { text: string; live?: boolean 
       ))}
     </div>
   )
-}
+})
