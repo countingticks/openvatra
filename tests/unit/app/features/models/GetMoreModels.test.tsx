@@ -374,7 +374,11 @@ describe('Get more models: searching Hugging Face', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       type(dialog, 'llama')
-      await wait(400)
+      // Synchronously: the debounce fires and the search starts, but no promise runs before the checks, so the
+      // fake's answer can't arrive first (the async advance let it, on a fast run).
+      act(() => {
+        vi.advanceTimersByTime(400)
+      })
       expect(within(dialog).getByText('Searching…')).toBeInTheDocument()
       expect(within(dialog).queryByText('unsloth /')).not.toBeInTheDocument()
     } finally {
