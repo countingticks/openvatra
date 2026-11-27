@@ -58,7 +58,13 @@ test.describe('a version-1 settings file', () => {
   })
 
   test('an old file left on the Settings tab opens on Chat', async () => {
-    await expect(mainWindow.getByRole('heading', { level: 1, name: 'Chat' })).toBeVisible()
+    // The tab, not a heading: the chat's "New chat" heading gives way to the welcome card once core lists no chat
+    // model, and the sidebar is closed (inert) here, hence includeHidden.
+    await expect(
+      mainWindow
+        .getByRole('navigation', { name: 'Main', includeHidden: true })
+        .getByRole('button', { name: 'Chat', includeHidden: true })
+    ).toHaveAttribute('aria-current', 'page')
   })
 
   test('keeps the rest of the old file instead of setting it aside', async () => {
