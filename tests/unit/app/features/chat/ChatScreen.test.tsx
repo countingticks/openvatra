@@ -25,7 +25,7 @@ vi.mock('react-markdown', async (importOriginal) => {
     ...real,
     default: (props: React.ComponentProps<typeof Real>) => {
       parsed.texts.push(String(props.children))
-      return <Real {...props} />
+      return Real(props)
     }
   }
 })
